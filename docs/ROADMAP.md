@@ -12,17 +12,18 @@
 - אימות: `npm run dev`/`typecheck`/`lint` נקיים, `npm --prefix functions run build` נקי
 - Eclipse Temurin JRE 21 הותקן (winget), Firestore+Auth+Storage emulators נבדקו ועולים יחד ללא שגיאות קומפילציה ב-`firestore.rules`/`storage.rules`
 
-**Still open before Phase 1 sign-off**: `@firebase/rules-unit-testing` טסטים אוטומטיים (isolation בין משתמשים, immutability של usageLog) עדיין לא נכתבו — רק נבדק שה-rules עולות בלי שגיאת syntax.
+## Phase 1 — MVP ✅ הושלם (2026-08-25)
+- Google Sign-In מלא (popup → ID token → Server Action `createSession` יוצרת session cookie `__session` + `users/{uid}` ב-first login)
+- `src/proxy.ts` (לא `middleware.ts` — ראה `docs/DECISIONS.md` #8) מגן על `(protected)` ברמת fast-path, אימות מלא ב-`(protected)/layout.tsx`
+- CRUD כרטיסים מלא (create/list/edit/archive) דרך client SDK + Security Rules
+- Usage log: `src/actions/usage.ts` (Server Action, Admin SDK transaction) — מונע overdraft, מעדכן `currentBalance` אטומית
+- Categories: system defaults, נזרעות דרך `npm run seed:categories`
+- Security Rules מלאות + 19 טסטים ב-`tests/rules/firestore.test.ts` (`npm run test:rules`) — כולם עוברים מול Firestore emulator
+- Consent banner (חוסם UI עד הסכמה) + Privacy Policy + Terms pages אמיתיים
+- Layout רספונסיבי בסיסי (Header + nav + dropdown משתמש)
+- אימות: `typecheck`/`lint`/`build` נקיים, dev server + emulators נבדקו יחד (proxy redirect, דפים ציבוריים) ידנית דרך curl
 
-## Phase 1 — MVP (הבא)
-- Google Sign-In מלא (popup + session cookie + middleware הגנה על `(protected)`)
-- יצירת `users/{uid}` ב-first login
-- CRUD כרטיסים מלא (create/list/edit/archive)
-- Usage log: הוספת שימוש עם עדכון `currentBalance` אטומי (Firestore Transaction)
-- Categories: system defaults בלבד
-- Security Rules מלאות + rules-unit-testing (תלוי בהתקנת Java)
-- Consent banner + Privacy Policy page (בסיסי אך אמיתי)
-- Layout רספונסיבי בסיסי
+**נשאר לבדוק ידנית (לא אוטומטי עדיין)**: זרימת Google sign-in אמיתית בדפדפן (לא נבדקה עם browser automation — Playwright עדיין לא מותקן, ראו Phase 6/verification gap).
 
 ## Phase 2 — Media & Enrichment
 תמונות כרטיס/קבלות (Storage), custom categories/tags, שיפור נגישות טפסים.

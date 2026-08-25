@@ -22,4 +22,4 @@
 3. בדיקה עם קורא מסך NVDA (Windows — סביבת המשתמש) לפחות על flows קריטיים.
 
 ## סטטוס נוכחי
-Phase 0: shadcn/ui + RTL מוגדרים, `layout.tsx` עם `lang="he" dir="rtl"`. עדיין אין קומפוננטות מוצר לבדיקה.
+Phase 1: טפסי כרטיס/שימוש/עריכה (`CardForm`, `AddUsageForm`, `EditCardDialog`) בנויים עם `Label`+`htmlFor`, שגיאות עם `role="alert"` ו-`aria-describedby`. `ConsentBanner` עם `role="alertdialog"`/`aria-modal`/`aria-labelledby`. עדיין לא בוצעה בדיקת Lighthouse/NVDA בפועל — יש לבצע לפני שחרור רחב.

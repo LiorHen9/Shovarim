@@ -14,7 +14,9 @@ Next.js 16 (App Router, React 19, TypeScript strict) + Firebase (Firestore, Auth
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 | `npm run build` | production build |
-| `npx firebase emulators:start` | Firestore/Auth/Storage/Functions emulators — **דורש Java** (JRE) מותקן מקומית לרכיבי Firestore/Storage; Auth emulator עובד גם בלי Java |
+| `npx firebase emulators:start` | Firestore/Auth/Storage/Functions emulators — דורש Java (JRE), כבר מותקן |
+| `npm run test:rules` | 19 Security Rules unit tests (`tests/rules/`) — **דורש Firestore emulator רץ** (`firebase emulators:start --only firestore`) |
+| `npm run seed:categories` | זריעת קטגוריות ברירת מחדל (Admin SDK, נגד emulator לפי `.env.local`) |
 | `npm --prefix functions run build` | קומפילציית Cloud Functions |
 
 ## מיפוי docs/
@@ -28,6 +30,7 @@ Next.js 16 (App Router, React 19, TypeScript strict) + Firebase (Firestore, Auth
 - `docs/ACCESSIBILITY.md` — checklist WCAG 2.1 AA ספציפי לפרויקט.
 
 ## עקרונות עבודה קבועים
+- **Next.js 16 שינה מוסכמות מ-training data** (ראה `AGENTS.md` בשורש) — לדוגמה `middleware.ts` הוחלף ב-`src/proxy.ts` (פונקציה `proxy`, לא `middleware`). לפני שימוש ב-API של Next שלא נבדק כאן, לבדוק מול `node_modules/next/dist/docs/`.
 - כל שינוי ארכיטקטוני/פיצ'ר משמעותי → לעדכן את קובץ ה-`docs/` הרלוונטי (במיוחד `DECISIONS.md`, `FEATURES.md`, `ROADMAP.md`) כדי שהתיעוד לא יתיישן.
 - Admin SDK (`src/lib/firebase/admin.ts`) — רק בקוד server-side (Server Actions, Cloud Functions). לעולם לא import מ-Client Component (מוגן ב-`server-only`).
 - כל collection/subcollection חדש ב-Firestore → קודם לעדכן `firestore.rules` (deny-by-default) ו-`docs/DATA_MODEL.md`.

@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed:categories": "tsx --env-file=.env.local scripts/seed-categories.ts",
+    "test:rules": "vitest run tests/rules"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -32,6 +34,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -40,6 +43,8 @@
     "eslint-config-next": "16.3.2",
     "firebase-tools": "^15.28.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.23.12",
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }

@@ -38,3 +38,18 @@
 **תאריך**: 2026-08-25
 **החלטה**: הפרויקט מגיע עם `.env.local` מוכן מראש שמצביע על "demo-shovarim" (project id שמור של Firebase ל-emulator-only), לא על פרויקט GCP אמיתי.
 **נימוק**: מאפשר `npm run dev` + emulators לעבוד מיד בלי שהמשתמש יצטרך לחבר קודם חשבון Firebase אמיתי. חיבור לפרויקט אמיתי הוא צעד מודע נפרד (`firebase login && firebase use --add` + מילוי `.env.example`).
+
+## 8. `proxy.ts` במקום `middleware.ts` (Next.js 16 breaking change)
+**תאריך**: 2026-08-25
+**החלטה**: הגנת routes מוגדרת ב-`src/proxy.ts` (פונקציה `proxy`), לא `src/middleware.ts`.
+**נימוק**: Next.js 16 שינה את השם (deprecation, לא רק תוספת) — `middleware.ts` עדיין "עובד" אבל מדפיס אזהרת deprecation ב-build. הקובץ שנוצר על ידי `create-next-app` (`AGENTS.md`) מזהיר במפורש שזו גרסת Next.js עם breaking changes מול training data — ראינו זאת בפועל כאן. Proxy גם ברירת המחדל שלו היא Node.js runtime (לא Edge כמו middleware הישן), מה שהיה יכול לפשט העברת אימות מלא ל-proxy עצמו — נשארנו עם הפיצול המתועד (fast-path ב-proxy, אימות מלא ב-`(protected)/layout.tsx`) כדי לשמור על עקביות עם `docs/ARCHITECTURE.md` ולא להוסיף תלות ב-Admin SDK על כל בקשה.
+
+## 9. Session cookie (`__session`) + provider-agnostic first-login bootstrap
+**תאריך**: 2026-08-25
+**החלטה**: התחברות client-side (Google popup) → `user.getIdToken()` → Server Action `createSession` שמאמת את ה-token, יוצרת session cookie בשם `__session` (14 יום, httpOnly), ויוצרת `users/{uid}` אם לא קיים (`ensureUserProfile`, לפי `decoded.firebase.sign_in_provider`).
+**נימוק**: `__session` הוא שם העוגייה היחיד ש-Firebase Hosting מעביר ל-backend — אימוץ מוקדם למרות ש-Hosting נדחה (החלטה #5), כדי לא להצטרך migration של cookie name בעתיד. יצירת הפרופיל דרך `sign_in_provider` (לא פרמטר נפרד) עובדת אוטומטית גם עבור Apple כשיתווסף (Phase 7) בלי שינוי בקוד ה-bootstrap.
+
+## 10. `usageLog` נכתב דרך Server Action (Admin SDK), לא client SDK
+**תאריך**: 2026-08-25
+**החלטה**: `src/actions/usage.ts` (`addUsageEntry`) הוא הנתיב היחיד להוספת שימוש — לא כתיבת client SDK ישירה כמו ביצירת כרטיס.
+**נימוק**: מימוש בפועל של החלטה #3 — הטרנזקציה קוראת/מעדכנת `currentBalance` ומוסיפה entry באטומיות תוך אימות ownership ומניעת overdraft (`amount > currentBalance` נדחה), הכל בצד שרת עם Zod validation נוספת. Firestore Rules על `usageLog` (immutability, `amount > 0`) עדיין קיימות כהגנת defense-in-depth למקרה של נתיב client עתידי, אך אינן הנתיב הראשי היום.
