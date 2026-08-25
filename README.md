@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Shovarim — ניהול שוברים וכרטיסי מתנה
 
-## Getting Started
+אפליקציית ווב לניהול כרטיסי מתנה ושוברים: יתרה, תוקף, יומן שימושים, קטגוריות, התראות תפוגה, דוחות. Next.js + Firebase.
 
-First, run the development server:
+לתיעוד מלא (ארכיטקטורה, מודל נתונים, אבטחה, פרטיות, roadmap) ראו [`CLAUDE.md`](./CLAUDE.md) ותיקיית [`docs/`](./docs).
+
+## התחלה מהירה
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+האפליקציה עולה מול Firebase Emulators כברירת מחדל (`.env.local`, project id `demo-shovarim`) — לא נדרש חשבון Firebase אמיתי לפיתוח מקומי.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+להרצת ה-emulators (Firestore/Storage דורשים Java מותקן):
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npx firebase emulators:start
+```
 
-## Learn More
+לחיבור לפרויקט Firebase אמיתי: מלאו `.env.example` והריצו `firebase login && firebase use --add`.
 
-To learn more about Next.js, take a look at the following resources:
+## פקודות עיקריות
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| פקודה | מטרה |
+|---|---|
+| `npm run dev` | dev server |
+| `npm run typecheck` | בדיקת טיפוסים |
+| `npm run lint` | ESLint |
+| `npm run build` | build לפרודקשן |

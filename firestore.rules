@@ -1,0 +1,76 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    function isNewOwner() {
+      return isOwner(request.resource.data.ownerId);
+    }
+
+    function isExistingOwner() {
+      return isOwner(resource.data.ownerId);
+    }
+
+    // Deny everything by default; every collection below is an explicit exception.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{uid} {
+      allow read, update: if isOwner(uid);
+      allow create: if isOwner(uid) && request.resource.data.uid == uid;
+      allow delete: if false; // deletion goes through the account-deletion Cloud Function only
+    }
+
+    match /consents/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid) && request.resource.data.uid == uid;
+      allow delete: if false;
+    }
+
+    match /cards/{cardId} {
+      allow read: if isExistingOwner();
+      allow create: if isNewOwner();
+      allow update: if isExistingOwner() && isNewOwner()
+        && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if isExistingOwner();
+
+      match /usageLog/{entryId} {
+        allow read: if isExistingOwner();
+        allow create: if isNewOwner()
+          && request.resource.data.cardId == cardId
+          && request.resource.data.amount > 0;
+        // Immutable audit trail: no edits or deletes of past usage entries.
+        allow update, delete: if false;
+      }
+    }
+
+    match /categories/{categoryId} {
+      allow read: if isSignedIn()
+        && (resource.data.ownerId == 'system' || isExistingOwner());
+      allow create: if isNewOwner();
+      allow update, delete: if isExistingOwner();
+    }
+
+    match /reminders/{reminderId} {
+      // Reminders are produced by the scheduled Cloud Function (Admin SDK bypasses rules);
+      // clients may only read their own.
+      allow read: if isExistingOwner();
+      allow write: if false;
+    }
+
+    match /auditLog/{entryId} {
+      // Written only by Cloud Functions via the Admin SDK.
+      allow read: if isExistingOwner();
+      allow write: if false;
+    }
+  }
+}
