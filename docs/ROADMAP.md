@@ -9,9 +9,10 @@
 - `src/lib/firebase/{client,admin}.ts`, `src/lib/auth/{authService,providers,googleProvider}.ts`
 - טיפוסים (`src/types/`) + Zod schemas (`src/lib/validation/`) עבור cards/usageLog
 - `docs/*.md` + root `CLAUDE.md`
-- אימות: `npm run dev`/`typecheck`/`lint` נקיים, `npm --prefix functions run build` נקי, Auth emulator עולה ומגיב
+- אימות: `npm run dev`/`typecheck`/`lint` נקיים, `npm --prefix functions run build` נקי
+- Eclipse Temurin JRE 21 הותקן (winget), Firestore+Auth+Storage emulators נבדקו ועולים יחד ללא שגיאות קומפילציה ב-`firestore.rules`/`storage.rules`
 
-**Known gap**: Java לא מותקן בסביבת הפיתוח → Firestore/Storage emulators לא נבדקו עדיין, וכך גם `firestore.rules`/`storage.rules` לא עברו rules-unit-testing בפועל. יש להתקין JRE לפני Phase 1 sign-off מלא (ראה `docs/ARCHITECTURE.md`).
+**Still open before Phase 1 sign-off**: `@firebase/rules-unit-testing` טסטים אוטומטיים (isolation בין משתמשים, immutability של usageLog) עדיין לא נכתבו — רק נבדק שה-rules עולות בלי שגיאת syntax.
 
 ## Phase 1 — MVP (הבא)
 - Google Sign-In מלא (popup + session cookie + middleware הגנה על `(protected)`)
