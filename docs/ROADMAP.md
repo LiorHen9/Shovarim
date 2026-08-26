@@ -60,6 +60,11 @@
 
 **נשאר לבדוק ידנית**: קליק-דרך בדפדפן עם שני חשבונות אמיתיים (הזמנה, קבלה/דחייה, פעולות מנהל/צופה בפועל על רשימה משותפת).
 
+## Phase 3.3 — תשתית Deploy ו-CI/CD
+Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production יחיד. GitHub Actions: quality gate (typecheck/lint/build/test:rules) על כל PR, deploy אוטומטי ל-Firestore rules/indexes/Storage rules/Functions ב-push ל-main. App Hosting עצמו נפרס אוטומטית דרך Cloud Build (git-integrated), בנפרד מ-GitHub Actions. סוגר את ADR #5 (ראו ADR #16). פרטים מלאים ב-`docs/DEPLOYMENT.md`.
+
+**נשאר לבדוק**: ראו סעיף Verification ב-`docs/DEPLOYMENT.md` — PR ראשון עם CI ירוק, deploy ראשון ל-rules/functions, rollout ראשון ל-App Hosting, smoke test מלא על ה-URL החי, תרגול rollback אחד.
+
 ## Phase 4 — Notifications
 Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Firebase Extension / Resend).
 
@@ -68,6 +73,7 @@ Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Che
 
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.
+(הערה: החלטת ה-hosting/deploy טופלה מוקדם יותר ב-Phase 3.3 — לא כאן, בניגוד למה שנרמז במקור ב-ADR #5.)
 
 ## Phase 7 — Reports & Analytics
 דשבורד יתרות/תפוגות/מגמות, אגרגציות מחושבות server-side (לא client-side על datasets גדולים).
