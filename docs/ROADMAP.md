@@ -65,15 +65,30 @@ Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production י
 
 **נשאר לבדוק**: ראו סעיף Verification ב-`docs/DEPLOYMENT.md` — PR ראשון עם CI ירוק, deploy ראשון ל-rules/functions, rollout ראשון ל-App Hosting, smoke test מלא על ה-URL החי, תרגול rollback אחד.
 
-## Phase 4 — Notifications
-Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Firebase Extension / Resend).
-
-## Phase 5 — Privacy Hardening
+## Phase 4 — Privacy Hardening
 Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Check, security review מקיף, הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים.
+
+## Phase 5 — צ'אטבוט/CLI לשיחה חופשית
+שיחה חופשית בשפה טבעית מעל הנתונים (הוספה/עריכה/מחיקה/שאילתה על כרטיסים, יומן שימושים, יתרות, רשימות), חשוף דרך CLI פנימי לבדיקה ובהמשך WhatsApp/Telegram. סוגר החלטה ארכיטקטונית ב-`docs/DECISIONS.md` ADR #17.
+
+- **ממשק כלים ל-LLM: MCP, לא OpenAPI/Swagger ציבורי** — שרת MCP פנימי (`functions/src/mcp/` או package ייעודי) חושף tools (`listCards`, `getCard`, `createCard`, `updateCard`, `deleteCard`, `logUsage`, `deleteUsageEntry`, `updateBalance`, `listCardLists`, `createList`, ...). MCP הוא הפרוטוקול הטבעי לצריכה על ידי LLM עם tool-calling (Claude), ואין צורך חיצוני שמצדיק REST ציבורי מתועד ב-Swagger — הצרכן היחיד הוא שכבת האורקסטרציה שלנו. אפשר לשקול generate OpenAPI spec מאותם Zod schemas בעתיד רק אם ייווסף צרכן חיצוני שאינו MCP-aware (deferred, לא כרגע).
+- **שכבת שירות משותפת** — הלוגיקה הקיימת ב-`src/actions/*.ts` (ownership checks, Zod validation, `runTransaction`) מחולצת/מנוצלת מחדש על ידי ה-MCP tools, לא מיושמת פעמיים. שני הנתיבים (Server Actions ל-UI, MCP tools לצ'אטבוט) קוראים לאותה שכבת לוגיקה — כדי שתיקון אבטחה/ולידציה בנתיב אחד לא ישכח מהשני.
+- **מנגנון הרשאות — הליבה של הפיצ'ר**: ה-`uid` הפועל **תמיד** נגזר בצד שרת (session cookie מאומת ב-CLI, מיפוי ערוץ→uid מאומת ב-WhatsApp/Telegram) ולעולם לא מתקבל כפרמטר מה-LLM — סכימות ה-input של ה-tools לא כוללות שדה `uid`/`ownerId` בכלל, כדי שאי אפשר יהיה "לשכנע" את המודל (prompt injection או הזיה) לפעול בשם משתמש אחר. כל tool קורא לאותן פונקציות אכיפת בעלות/שיתוף קיימות (`src/lib/auth/listAccess.ts`) — לא מימוש מקביל.
+- **אישור מפורש לפעולות הרסניות** — מחיקת כרטיס/רשומת שימוש דרך הצ'אטבוט דורשת סבב אישור בשיחה (המודל שואל, מחכה לתשובה חיובית מפורשת, ורק אז קורא ל-tool) — מפחית סיכון לפירוש שגוי של טקסט חופשי מעורפל שגורם לאובדן נתונים בלתי הפיך.
+- **Semantic cache מבודד לפי משתמש** — מפתח ה-cache חייב לכלול `uid`, לעולם לא cache משותף בין משתמשים (התשובות עשויות לכלול נתונים אישיים/פיננסיים). שאילתות שחושפות `cvv`/`barcodeOrCode` לא נשמרות ב-cache כלל.
+- **הרחבת audit log** — כל קריאת tool (מי, איזה tool, פרמטרים ללא סודות, תוצאה, ערוץ) נכתבת ל-`auditLog` (collection שכבר קיים ב-`docs/DATA_MODEL.md`, נכתב היום רק בהקשר מחיקת חשבון).
+- **Rate limiting per-uid** על שכבת הרצת ה-tools — ערוצי WhatsApp/Telegram הם משטח תקיפה חדש (spoofing של מספר טלפון) בהשוואה לאפליקציית ה-web המאומתת מול Google.
+- **קישור ערוץ→משתמש** (WhatsApp/Telegram) — collection חדש (`channelLinks/{channelId}` או שדה ב-`users/{uid}`) שידרוש עדכון `firestore.rules`+`docs/DATA_MODEL.md` בזמן המימוש בפועל (ראו כלל קבוע ב-`CLAUDE.md`). זרימת linking (קוד אימות חד-פעמי מהאפליקציה) לא מתוכננת עדיין ברמת המימוש.
+- **App Check + Secret Manager** — טוקני בוט WhatsApp/Telegram ומפתח Anthropic API כ-`secret:` references, לא plaintext, באותו pattern כמו `FIREBASE_ADMIN_PRIVATE_KEY` ב-`apphosting.yaml`/Cloud Functions config.
+
+**נשאר לבדוק בזמן המימוש**: בחירת ה-runtime ל-MCP server (בתוך Cloud Functions מול תהליך נפרד), ולידציית latency של semantic cache, ו-threat-modeling ממוקד ל-prompt injection על קלט חופשי (ראו הרחבה ב-`docs/SECURITY.md`).
 
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.
 (הערה: החלטת ה-hosting/deploy טופלה מוקדם יותר ב-Phase 3.3 — לא כאן, בניגוד למה שנרמז במקור ב-ADR #5.)
 
-## Phase 7 — Reports & Analytics
+## Phase 7 — Notifications
+Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Firebase Extension / Resend).
+
+## Phase 8 — Reports & Analytics
 דשבורד יתרות/תפוגות/מגמות, אגרגציות מחושבות server-side (לא client-side על datasets גדולים).

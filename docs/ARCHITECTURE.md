@@ -40,7 +40,7 @@ functions/             # Cloud Functions — package נפרד עם package.json/
 ```
 
 ## Firebase services בשימוש
-Firestore (native mode), Auth, Storage, Cloud Functions (2nd gen), Cloud Messaging (web push), Hosting/App Hosting (deferred — ראה DECISIONS.md #5).
+Firestore (native mode), Auth, Storage, Cloud Functions (2nd gen), Cloud Messaging (web push), Firebase App Hosting (production, מ-Phase 3.3 — ראה `docs/DEPLOYMENT.md` ו-`docs/DECISIONS.md` #16).
 
 ## סביבת פיתוח מקומית
 `.env.local` מוגדר כברירת מחדל מול Firebase Emulators בלבד (`demo-shovarim` — project id שמור של Firebase לשימוש emulator-only, לא דורש חשבון GCP אמיתי). לחיבור לפרויקט Firebase אמיתי: למלא את `.env.example` (client config + service account) וליצור `.env.local` חדש, ולהריץ `firebase login && firebase use --add`.
