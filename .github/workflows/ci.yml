@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      # Dummy values so `next build` doesn't need real Firebase credentials.
+      # src/lib/firebase/adminApp.ts initializes eagerly at import time and
+      # takes the emulator branch (no real creds required) when
+      # FIREBASE_USE_EMULATOR=true — see docs/DEPLOYMENT.md.
+      NEXT_PUBLIC_FIREBASE_API_KEY: demo-api-key
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: demo-shovarim.firebaseapp.com
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: demo-shovarim
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: demo-shovarim.appspot.com
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+      NEXT_PUBLIC_FIREBASE_APP_ID: "1:000000000000:web:0000000000000000000000"
+      NEXT_PUBLIC_USE_FIREBASE_EMULATOR: "true"
+      FIREBASE_USE_EMULATOR: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - name: Firestore/Storage rules tests (emulator)
+        run: npx firebase emulators:exec --only firestore,auth,storage --project demo-shovarim "npm run test:rules"
+
+  functions:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  deploy-rules-and-functions:
+    needs: [quality, functions]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for Workload Identity Federation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+      - run: npm ci
+      - run: npm ci --prefix functions
+      - run: npm run build --prefix functions
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+      - run: npx firebase deploy --only firestore:rules,firestore:indexes,storage,functions --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive

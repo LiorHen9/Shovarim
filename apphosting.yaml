@@ -1,0 +1,56 @@
+# Firebase App Hosting build/run config for the Next.js app.
+# See docs/DEPLOYMENT.md for the full runbook (region choice, secrets setup, first rollout).
+#
+# Values marked REPLACE_ME must be filled in with the real Firebase project's
+# values before the App Hosting backend is created — see docs/DEPLOYMENT.md.
+
+runConfig:
+  minInstances: 0
+  maxInstances: 2
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  # Public Firebase client config — inlined into the client bundle at build
+  # time by Next.js, so these need BUILD availability (not just RUNTIME).
+  # Not secrets: protected by Firestore/Storage Security Rules, not by hiding
+  # this config (see docs/SECURITY.md).
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "REPLACE_ME"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "REPLACE_ME.firebaseapp.com"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "REPLACE_ME"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "REPLACE_ME.appspot.com"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "REPLACE_ME"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "REPLACE_ME"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_USE_FIREBASE_EMULATOR
+    value: "false"
+    availability: [BUILD, RUNTIME]
+
+  # Server-only Admin SDK config.
+  - variable: FIREBASE_USE_EMULATOR
+    value: "false"
+    availability: [RUNTIME]
+  - variable: FIREBASE_ADMIN_PROJECT_ID
+    value: "REPLACE_ME"
+    availability: [RUNTIME]
+  - variable: FIREBASE_ADMIN_CLIENT_EMAIL
+    value: "REPLACE_ME@REPLACE_ME.iam.gserviceaccount.com"
+    availability: [RUNTIME]
+  # Real secret — never a plaintext value. Populate via
+  # Set-AppHosting-AdminKey.ps1 (wraps `firebase apphosting:secrets:set` +
+  # `grantaccess`) before the first rollout.
+  - variable: FIREBASE_ADMIN_PRIVATE_KEY
+    secret: firebase-admin-private-key
+    availability: [RUNTIME]
