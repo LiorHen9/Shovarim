@@ -75,4 +75,4 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
-      - run: npx firebase deploy --only firestore:rules,firestore:indexes,storage,functions --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
+      - run: npx firebase deploy --only firestore:rules,firestore:indexes,storage,functions --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive --debug
