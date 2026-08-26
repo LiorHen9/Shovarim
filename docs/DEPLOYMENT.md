@@ -130,6 +130,29 @@ Push ל-`main` מפעיל **שני צינורות עצמאיים** באותו ר
 
 ה-job `quality` ב-CI רץ במצב emulator בדיוק מהסיבה הזו — `next build` לא צריך credentials אמיתיים.
 
-## נקודה פתוחה לבדיקה בסמוקה הראשונה
+## Smoke test ראשון — תוצאות (2026-08-27)
 
-`docs/DECISIONS.md` ADR #9 אימץ מראש את שם ה-cookie `__session` כי זה השם היחיד ש-Firebase Hosting הקלאסי מעביר ל-backend. **יש לוודא בבדיקת production הראשונה שההתנהגות זהה תחת App Hosting** — התחברות + ריענון עמוד + בדיקה שה-session נשמר.
+Backend: `shovarim-web`, region `europe-west4`, URL: `https://shovarim-web--shovarim-prod.europe-west4.hosted.app`.
+
+**אוטומטי (נבדק דרך curl, לא דורש דפדפן/אימות)**:
+- `GET /` → 200, HTML מרונדר server-side נכון (`<html lang="he" dir="rtl">`, `<title>שוברים</title>`) — מוודא שה-SSR pipeline של Next.js על App Hosting עובד בפועל, לא רק שה-build עבר.
+- `GET /dashboard`, `/cards`, `/settings` ללא session cookie → 307 ל-`/?next=<path>` — `src/proxy.ts` fast-path עובד זהה לפיתוח מקומי.
+- תגובות ה-redirect האלה **אינן** מקבלות `Cache-Control`/`Cdn-Cache-Status: hit` (נבדק בפועל: `miss`) — כלומר שכבת ה-CDN של App Hosting לא cache-ת את ההחלטה "מוגן/לא מוגן", מה שהיה יכול לגרום לדליפת redirect שגוי בין משתמשים. דפי ה-marketing הציבוריים (`/`) כן מקבלים `s-maxage`/cache HIT, כצפוי לדף לא-אישי.
+- `GET /privacy`, `/terms` → 200.
+- `GET /nonexistent-route` → 404 תקין.
+
+**ידני, אושר בפועל על ידי המשתמש**:
+- Google Sign-In על ה-URL החי — נכשל בהתחלה עם "ההתחברות נכשלה, נסו שוב" (מיידי, בלי לפתוח פופאפ גוגל) → אובחן כ-`auth/unauthorized-domain`: דומיין App Hosting לא היה ברשימת Authorized domains של Firebase Auth (ברירת המחדל כוללת רק `*.firebaseapp.com`/`*.web.app`). **תוקן** בהוספת `shovarim-web--shovarim-prod.europe-west4.hosted.app` ל-Authorized domains בקונסולה (Authentication → Settings) — הגדרת runtime, לא דורשת rollout חדש. אושר בפועל שההתחברות עובדת אחרי התיקון.
+
+**נשאר לבדוק ידנית (קליק-דרך בדפדפן, לא בוצע ע"י Claude — אין כלי browser automation בסביבה הזו, ראה caveat דומה בכל Phase קודם ב-`docs/ROADMAP.md`)**:
+- ריענון עמוד אחרי התחברות ווידוא שה-session cookie (`__session`, ADR #9) שורד — App Hosting לא עובר דרך שכבת ה-rewrite של Firebase Hosting הקלאסי, אז שם העוגייה כבר לא באמת "כפוי" מבחינה טכנית, אבל אין סיבה טכנית שהוא לא יעבוד; לא אומת בפועל ב-round-trip מלא.
+- יצירת/עריכת/מחיקת כרטיס, יומן שימושים, עדכון יתרה, העלאת תמונת כרטיס/קבלה, יצירה+שיתוף רשימה עם חשבון שני אמיתי — כל אלה עובדים מול ה-emulator בפיתוח, אך טרם נבדקו קליק-דרך על נתוני production אמיתיים.
+
+## Rollback drill — בוצע ואומת (2026-08-27)
+
+תרגול מכוון אחד, על מנת לוודא שנתיב ה-rollback עובד לפני שסומכים עליו ב-אירוע אמיתי:
+1. `firebase apphosting:rollouts:create shovarim-web --git-commit c9f328a --project shovarim-prod` — קביעת baseline (ה-commit העדכני ביותר ב-`main` באותו רגע).
+2. `firebase apphosting:rollouts:create shovarim-web --git-commit fba6f0d --project shovarim-prod` (**rollback** ל-commit קודם) → הצליח, `curl` ל-`/` אחרי ה-rollout החזיר 200 עם ה-HTML הצפוי, `/dashboard` המשיך להפנות נכון.
+3. `firebase apphosting:rollouts:create shovarim-web --git-commit c9f328a --project shovarim-prod` (roll-forward בחזרה) → הצליח, `curl` אימת 200.
+
+שני ה-rollouts גם קיבלו GitHub check עצמאי בשם `App Hosting - Rollout (...)` על ה-commit המתאים (`conclusion: success`) — אימות חיצוני נוסף מעבר לפלט ה-CLI. מסקנה: נתיב ה-rollback (`firebase apphosting:rollouts:create --git-commit <sha>`) עובד כמתועד, בהנחה שה-commit שאליו חוזרים היה בעצמו build תקין (חזרה ל-commit עם config שבור, כמו זה שלפני ADR #16/#5, הייתה נכשלת בשלב ה-build ולא בהחלפת התנועה בפועל — App Hosting לא מחליף תנועה על build כושל).
