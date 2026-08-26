@@ -8,6 +8,7 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 - **`ownerId` immutable**: ב-`update` על `cards`, נבדק ש-`request.resource.data.ownerId == resource.data.ownerId` (אי אפשר "להעביר בעלות" על כרטיס דרך כתיבת client).
 - **`usageLog` immutable**: `allow update, delete: if false` — יומן שימושים הוא audit trail, לא ניתן לעריכה. תיקון = רשומה חדשה.
 - **`categories` עם `ownerId == "system"`**: קריאה לכל משתמש מחובר, כתיבה אף פעם לא מ-client (רק Admin SDK).
+- **שיתוף רשימות** (`docs/DECISIONS.md` #15): גישה לכרטיסי רשימה משותפת נבדקת דרך `get()` על `cardLists/{listId}/members/{uid}` בתוך ה-Rules עצמן (`isAcceptedListMember`/`isManagerOfList`) — לא הרחבה של `ownerId`. הזמנה נפתרת מאימייל ל-uid רק דרך Admin SDK (`inviteListMember`), כדי לא לחשוף client-side lookup שמאפשר לבדוק אילו כתובות מייל רשומות במערכת.
 - **`reminders`, `auditLog`**: `allow write: if false` לגמרי — נכתבים רק מ-Cloud Functions דרך Admin SDK, ש-Rules לא חלות עליו.
 - ולידציית שדות בסיסית ב-Rules עצמן (למשל `usageLog.amount > 0`) כשכבה נוספת מעבר לוולידציית client — client-side Zod יכול לעקוף, Rules לא.
 
@@ -20,7 +21,7 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 
 ## הצפנה
 - Firestore/Storage: הצפנה at-rest כברירת מחדל של Google Cloud — מספיקה לרוב השדות.
-- `barcodeOrCode` (מספר כרטיס בפועל, השדה הרגיש ביותר): כברירת מחדל נסמכים על הצפנת at-rest. שכבת הצפנת application-level נוספת (AES-256 עם מפתח מ-Secret Manager, מוצפן/מפוענח רק ב-Server Action) היא upgrade עתידי מתועד — לא מיושם ב-MVP.
+- `barcodeOrCode` (מספר כרטיס בפועל) ו-`cvv` (Phase 3) — שני השדות הרגישים ביותר: כברירת מחדל נסמכים על הצפנת at-rest. שכבת הצפנת application-level נוספת (AES-256 עם מפתח מ-Secret Manager, מוצפן/מפוענח רק ב-Server Action) היא upgrade עתידי מתועד ב-`docs/ROADMAP.md` Phase 5 — לא מיושם עדיין.
 
 ## ניהול Secrets
 - Firebase **client** config (`NEXT_PUBLIC_FIREBASE_*`) — לא סוד אמיתי, מותר לחשוף ב-bundle. מוגן ע"י Security Rules, לא ע"י הסתרת ה-config.

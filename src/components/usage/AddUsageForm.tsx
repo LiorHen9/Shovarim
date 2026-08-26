@@ -1,16 +1,31 @@
 "use client";
 
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { collection, doc } from "firebase/firestore";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ImageDropInput } from "@/components/ui/ImageDropInput";
 import { addUsageEntry } from "@/actions/usage";
+import { db } from "@/lib/firebase/client";
+import { uploadReceiptImage } from "@/lib/storage/upload";
 import { createUsageEntrySchema, type CreateUsageEntryInput } from "@/lib/validation/usageLog";
 
-export function AddUsageForm({ cardId }: { cardId: string }) {
+export function AddUsageForm({
+  cardId,
+  ownerUid,
+  canUploadReceipt,
+}: {
+  cardId: string;
+  ownerUid: string;
+  canUploadReceipt: boolean;
+}) {
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptInputKey, setReceiptInputKey] = useState(0);
   const {
     register,
     handleSubmit,
@@ -23,9 +38,16 @@ export function AddUsageForm({ cardId }: { cardId: string }) {
 
   async function onSubmit(values: CreateUsageEntryInput) {
     try {
-      await addUsageEntry(values);
+      const entryRef = doc(collection(db, "cards", cardId, "usageLog"));
+      const receiptImageUrl = receiptFile
+        ? await uploadReceiptImage(ownerUid, cardId, entryRef.id, receiptFile)
+        : null;
+
+      await addUsageEntry({ ...values, entryId: entryRef.id, receiptImageUrl });
       toast.success("השימוש נוסף והיתרה עודכנה");
       reset({ cardId, amount: 0, date: new Date(), purpose: "", location: null });
+      setReceiptFile(null);
+      setReceiptInputKey((k) => k + 1);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "הוספת השימוש נכשלה");
     }
@@ -81,6 +103,15 @@ export function AddUsageForm({ cardId }: { cardId: string }) {
         <Label htmlFor="location">מיקום (אופציונלי)</Label>
         <Input id="location" {...register("location")} />
       </div>
+
+      {canUploadReceipt && (
+        <ImageDropInput
+          key={receiptInputKey}
+          label="צילום קבלה (אופציונלי)"
+          previewAlt="תצוגה מקדימה של הקבלה"
+          onFileSelected={setReceiptFile}
+        />
+      )}
 
       <Button type="submit" disabled={isSubmitting}>
         {isSubmitting ? "שומר..." : "הוספה"}

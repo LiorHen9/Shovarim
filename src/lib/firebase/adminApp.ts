@@ -12,12 +12,14 @@ function buildAdminApp(): App {
   const existing = getApps()[0];
   if (existing) return existing;
 
+  const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+
   const useEmulators = process.env.FIREBASE_USE_EMULATOR === "true";
   if (useEmulators) {
     // The Admin SDK auto-detects the emulator hosts from these env vars
     // (set by `firebase emulators:start` / .env.local), so no credentials
     // are required in local development.
-    return initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
+    return initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID, storageBucket });
   }
 
   const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
@@ -32,7 +34,7 @@ function buildAdminApp(): App {
     );
   }
 
-  return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) });
+  return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }), storageBucket });
 }
 
 const adminApp = buildAdminApp();

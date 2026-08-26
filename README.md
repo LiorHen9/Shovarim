@@ -16,7 +16,7 @@ npm run dev
 להרצת ה-emulators (Firestore/Storage דורשים Java מותקן):
 
 ```bash
-npx firebase emulators:start
+npx firebase emulators:start --import=./emulator-data --export-on-exit=./emulator-data
 ```
 
 לחיבור לפרויקט Firebase אמיתי: מלאו `.env.example` והריצו `firebase login && firebase use --add`.

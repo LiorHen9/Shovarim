@@ -49,3 +49,4 @@ ui-debug.log
 pglite-debug.log
 functions/lib/
 functions/node_modules/
+/emulator-data/

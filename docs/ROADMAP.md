@@ -25,20 +25,49 @@
 
 **נשאר לבדוק ידנית (לא אוטומטי עדיין)**: זרימת Google sign-in אמיתית בדפדפן (לא נבדקה עם browser automation — Playwright עדיין לא מותקן, ראו Phase 6/verification gap).
 
-## Phase 2 — Media & Enrichment
-תמונות כרטיס/קבלות (Storage), custom categories/tags, שיפור נגישות טפסים.
+## Phase 2 — Media & Enrichment ✅ הושלם (2026-08-25)
+- תמונות כרטיס/קבלות דרך Storage: `src/lib/storage/upload.ts` (`uploadCardImage`/`uploadReceiptImage`), `ImageDropInput`, `CardImageUpload` על עמוד פרטי הכרטיס, thumbnail ברשימת כרטיסים ותמונת קבלה ביומן שימושים. ה-id (כרטיס/רשומת שימוש) נוצר בצד הלקוח (`doc()` ללא כתיבה) לפני ההעלאה, כך שהעלאת הקובץ מתבצעת לפני יצירת המסמך — תואם את עקרון ה-immutability של יומן השימושים (`docs/DECISIONS.md` #3/#4/#10)
+- קטגוריות/תגיות מותאמות אישית: `useCategories` (query `ownerId in ["system", uid]`), `CategorySelect` עם יצירה מהירה (`CreateCategoryDialog`), `TagsInput` נגיש, ניהול (עריכה/מחיקה) קטגוריות אישיות ב-`/settings` (`CategoryManager`) — קטגוריות מערכת מוצגות read-only
+- שיפור נגישות טפסים: כל שדה חדש עם `Label`/`aria-describedby`/תמונות עם `alt` משמעותי, `TagsInput` נגיש למקלדת עם `aria-live` announcements, אזור יתרת הכרטיס עטוף ב-`aria-live="polite"`
+- אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` (19 טסטים) עוברים ללא שינוי — לא נדרש שינוי ב-`firestore.rules`/`storage.rules` (המסלולים כבר היו מוגדרים מ-Phase 0/1)
 
-## Phase 3 — Notifications
+**נשאר לבדוק ידנית**: Lighthouse Accessibility ו-NVDA על הזרימות החדשות (ראו `docs/ACCESSIBILITY.md`).
+
+## Phase 3 — ניהול כרטיס מתקדם ✅ הושלם (2026-08-26)
+- עדכון יתרה ידני: `src/actions/balance.ts` (`updateCardBalance`, Server Action + `runTransaction`), `UpdateBalanceDialog` בעמוד פרטי הכרטיס — לא יוצר רשומת `usageLog`, חריגה מתועדת ב-`docs/DECISIONS.md` #11
+- שדה `acceptingRetailersUrl` (URL לרשתות מכבדות) ב-`createCardSchema`/`editCardDetailsSchema`, טופס הוספה/עריכה
+- שדה `cvv` (3–4 ספרות) ב-`createCardSchema`/`editCardDetailsSchema`, בסמוך לשדה התוקף בטופס הוספה/עריכה — מאוחסן כמו `barcodeOrCode` (ללא הצפנת application-level, ראו `docs/SECURITY.md`)
+- אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` (19 טסטים) עוברים ללא שינוי — לא נדרש שינוי ב-`firestore.rules` (כלל ה-update הקיים על `cards` כבר מתיר כל שדה חוץ מ-`ownerId`, ועדכון היתרה הידני עובר Admin SDK כמו יומן השימושים)
+
+**נשאר לבדוק ידנית**: קליק-דרך בדפדפן (יצירת/עריכת כרטיס עם CVV+URL, עדכון יתרה ידני מקצה לקצה) — Playwright עדיין לא מותקן (ראו gap מ-Phase 1/2).
+
+## Phase 3.1 — ניהול רשימות כרטיסים ✅ הושלם (2026-08-26)
+- `cardLists/{listId}` (collection חדש) + שדה חובה `cards.listId` — כל כרטיס שייך לרשימה אחת, נאכף גם ב-`firestore.rules` (`create` דורש `listId` לא ריק)
+- `/cards` הפך לעמוד סקירת רשימות (folders + מספר כרטיסים), `/cards/lists/[listId]` (חדש) הוא עמוד ניהול הכרטיסים בתוך רשימה בודדת (כולל שינוי שם ומחיקת רשימה ריקה); `/cards/[cardId]` מקשר בחזרה לרשימה שלו במקום לעמוד הכללי
+- `CardForm`: כרטיס ראשון בלי רשימות קיימות → יצירת רשימה ראשונית ("הרשימה שלי") אוטומטית; אחרת שדה רשימה חובה דרך `ListSelect` (כולל "+ רשימה חדשה" באותו pattern כמו `CategorySelect`); `?listId=` ב-`/cards/new` מדלג על הבחירה כשמגיעים מתוך עמוד רשימה קיימת
+- אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` — 25/25 עוברים (19 קיימים + 6 חדשים ל-`cardLists`/דרישת `listId`), ראו `docs/DECISIONS.md` #13
+- מחיקת כרטיס: `src/actions/card.ts` (`deleteCard`, Server Action + Admin SDK `recursiveDelete` + ניקוי Storage), `DeleteCardButton` בשורת הכרטיס ב-`/cards/lists/[listId]` ובעמוד פרטי הכרטיס (`/cards/[cardId]`, מפנה בחזרה לרשימה אחרי מחיקה) — שני המקומות עם דיאלוג אישור. `firestore.rules` לא שונה (`allow delete` על `cards` כבר היה קיים). ראו `docs/DECISIONS.md` #14
+- אימות: `typecheck`/`lint`/`build` נקיים לאחר הוספת מחיקת כרטיס
+
+**נשאר לבדוק ידנית**: קליק-דרך בדפדפן (יצירת כרטיס ראשון עם יצירת רשימה אוטומטית, יצירת כרטיס נוסף עם בחירת/יצירת רשימה, שינוי שם/מחיקת רשימה, מחיקת כרטיס משני המקומות + אישור שה-usageLog/תמונות נמחקו בפועל).
+
+## Phase 3.2 — שיתוף רשימות ✅ הושלם (2026-08-26)
+- `cardLists/{listId}/members/{memberUid}` (subcollection חדש) — הרשאה פר-משתמש (`manager`/`viewer`), שנבחרת ומשתנה על ידי בעל הרשימה בלבד. הזמנה לפי אימייל + אישור מהמוזמן: `inviteListMember` (`src/actions/listShare.ts`, Admin SDK) מפענח אימייל ל-uid ויוצר מסמך `status:"pending"`; קבלה/דחייה היא כתיבת client רגילה על ידי המוזמן. ראו `docs/DECISIONS.md` #15
+- `firestore.rules`: קריאה על `cards`/`usageLog` נפתחה לכל חבר מאושר ברשימה; יצירה/עדכון/מחיקה על `cards` גם למי שהוא `manager` מאושר. כתיבת `usageLog`/עדכון יתרה/מחיקת כרטיס נשארו אך ורק דרך Server Actions קיימים, שהורחבו לבדוק גם חברות מאושרת (`src/lib/auth/listAccess.ts`)
+- UI: `ShareListDialog` (ניהול הזמנות/הרשאות/הסרה, לבעלים בלבד) ב-`/cards/lists/[listId]`, `PendingInvitationsPanel` (קבלה/דחייה) ב-`/cards`, תג "משותפת" לרשימות לא-בבעלות, הסתרת פעולות ניהול (עריכה/מחיקה/הוספת שימוש/עדכון יתרה) מ-"צופה"
+- מגבלה מכוונת: העלאת תמונת כרטיס/קבלה נשארה לבעלים בלבד — `storage.rules` לא הורחבו לתמוך במנהלים משותפים (ידרוש `firestore.get()` צולב-שירות שלא נבדק)
+- אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` — 40/40 עוברים (25 קיימים + 15 חדשים לשיתוף)
+
+**נשאר לבדוק ידנית**: קליק-דרך בדפדפן עם שני חשבונות אמיתיים (הזמנה, קבלה/דחייה, פעולות מנהל/צופה בפועל על רשימה משותפת).
+
+## Phase 4 — Notifications
 Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Firebase Extension / Resend).
 
-## Phase 4 — Reports & Analytics
-דשבורד יתרות/תפוגות/מגמות, אגרגציות מחושבות server-side (לא client-side על datasets גדולים).
-
 ## Phase 5 — Privacy Hardening
-Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Check, security review מקיף.
+Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Check, security review מקיף, הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים.
 
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.
 
-## Phase 7 — Apple Sign-In
-כש-Apple Developer Account זמין: `appleProvider.ts` + הוספה ל-`SUPPORTED_PROVIDERS`. שאר הקוד לא אמור להשתנות.
+## Phase 7 — Reports & Analytics
+דשבורד יתרות/תפוגות/מגמות, אגרגציות מחושבות server-side (לא client-side על datasets גדולים).

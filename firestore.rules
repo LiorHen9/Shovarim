@@ -19,6 +19,36 @@ service cloud.firestore {
       return isOwner(resource.data.ownerId);
     }
 
+    // --- List sharing (docs/DECISIONS.md #15) ---
+    // A member doc lives at cardLists/{listId}/members/{memberUid}, doc id ==
+    // memberUid. Helpers below read it via get()/exists(); every caller must
+    // short-circuit through isSignedIn()/exists() first so a missing doc never
+    // reaches `.data` (that throws, which Firestore treats as deny — safe, but
+    // wasteful to trigger on every check).
+    function memberDoc(listId) {
+      return get(/databases/$(database)/documents/cardLists/$(listId)/members/$(request.auth.uid));
+    }
+
+    function memberDocExists(listId) {
+      return exists(/databases/$(database)/documents/cardLists/$(listId)/members/$(request.auth.uid));
+    }
+
+    function isAcceptedListMember(listId) {
+      return isSignedIn() && memberDocExists(listId) && memberDoc(listId).data.status == 'accepted';
+    }
+
+    function isManagerOfList(listId) {
+      return isAcceptedListMember(listId) && memberDoc(listId).data.role == 'manager';
+    }
+
+    function isPendingInvitee(listId) {
+      return isSignedIn() && memberDocExists(listId) && memberDoc(listId).data.status == 'pending';
+    }
+
+    function listOwnerId(listId) {
+      return get(/databases/$(database)/documents/cardLists/$(listId)).data.ownerId;
+    }
+
     // Deny everything by default; every collection below is an explicit exception.
     match /{document=**} {
       allow read, write: if false;
@@ -36,19 +66,90 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /cards/{cardId} {
-      allow read: if isExistingOwner();
+    match /cardLists/{listId} {
+      allow read: if isExistingOwner() || isAcceptedListMember(listId) || isPendingInvitee(listId);
       allow create: if isNewOwner();
       allow update: if isExistingOwner() && isNewOwner()
         && request.resource.data.ownerId == resource.data.ownerId;
       allow delete: if isExistingOwner();
 
+      match /members/{memberUid} {
+        function isListOwnerCaller() {
+          return isSignedIn() && listOwnerId(listId) == request.auth.uid;
+        }
+
+        function isSelf() {
+          return isSignedIn() && request.auth.uid == memberUid;
+        }
+
+        allow read: if isListOwnerCaller() || isSelf();
+
+        // Owner invites a member — must target this doc's uid explicitly, with
+        // a valid role, always starting out pending (see src/actions/listShare.ts,
+        // which resolves the invite email to memberUid via the Admin SDK first).
+        allow create: if isListOwnerCaller()
+          && request.resource.data.memberUid == memberUid
+          && request.resource.data.listId == listId
+          && request.resource.data.role in ['manager', 'viewer']
+          && request.resource.data.status == 'pending';
+
+        // Owner may change an existing member's role (status left untouched);
+        // the invitee may flip their own doc from pending -> accepted only.
+        allow update: if request.resource.data.memberUid == resource.data.memberUid
+          && request.resource.data.listId == resource.data.listId
+          && (
+            (isListOwnerCaller()
+              && request.resource.data.role in ['manager', 'viewer']
+              && request.resource.data.status == resource.data.status)
+            || (isSelf()
+              && resource.data.status == 'pending'
+              && request.resource.data.status == 'accepted'
+              && request.resource.data.role == resource.data.role)
+          );
+
+        // Owner removes a member, or a member removes themselves (decline/leave).
+        allow delete: if isListOwnerCaller() || isSelf();
+      }
+    }
+
+    // A rule scoped to a fixed ancestor (like the nested `members` match above)
+    // does not extend to collectionGroup queries — those need a `{path=**}`
+    // rule of their own. Used by useCardLists/usePendingInvitations, which both
+    // query collectionGroup(db, "members") filtered by memberUid == the caller,
+    // matching the condition below so Firestore can prove the query is safe.
+    match /{path=**}/members/{memberUid} {
+      allow read: if isSignedIn() && resource.data.memberUid == request.auth.uid;
+    }
+
+    match /cards/{cardId} {
+      // `list` requests (useCards.ts queries `where("listId", "in", listIds)`)
+      // only guarantee resource.data for fields the query itself filters on —
+      // reading resource.data.ownerId here throws "Property ownerId is
+      // undefined" for a list request. Route ownership through listId
+      // (which the query does filter on) via listOwnerId() instead.
+      allow read: if isOwner(listOwnerId(resource.data.listId)) || isAcceptedListMember(resource.data.listId);
+
+      allow create: if request.resource.data.listId is string
+        && request.resource.data.listId.size() > 0
+        && request.resource.data.ownerId == listOwnerId(request.resource.data.listId)
+        && (isNewOwner() || isManagerOfList(request.resource.data.listId));
+
+      allow update: if request.resource.data.ownerId == resource.data.ownerId
+        && (isExistingOwner() || isManagerOfList(resource.data.listId));
+
+      allow delete: if isExistingOwner() || isManagerOfList(resource.data.listId);
+
       match /usageLog/{entryId} {
-        allow read: if isExistingOwner();
+        allow read: if isExistingOwner()
+          || isAcceptedListMember(get(/databases/$(database)/documents/cards/$(cardId)).data.listId);
         allow create: if isNewOwner()
           && request.resource.data.cardId == cardId
           && request.resource.data.amount > 0;
-        // Immutable audit trail: no edits or deletes of past usage entries.
+        // Immutable audit trail for direct client access: no client-side edits
+        // or deletes. A scoped Server Action (Admin SDK, bypasses these rules)
+        // does allow deletion with optional balance restoration — see
+        // docs/DECISIONS.md #12. Manager writes also go through that same
+        // Server Action path (docs/DECISIONS.md #15), never direct client writes.
         allow update, delete: if false;
       }
     }

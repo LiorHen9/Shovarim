@@ -22,4 +22,10 @@
 3. בדיקה עם קורא מסך NVDA (Windows — סביבת המשתמש) לפחות על flows קריטיים.
 
 ## סטטוס נוכחי
-Phase 1: טפסי כרטיס/שימוש/עריכה (`CardForm`, `AddUsageForm`, `EditCardDialog`) בנויים עם `Label`+`htmlFor`, שגיאות עם `role="alert"` ו-`aria-describedby`. `ConsentBanner` עם `role="alertdialog"`/`aria-modal`/`aria-labelledby`. עדיין לא בוצעה בדיקת Lighthouse/NVDA בפועל — יש לבצע לפני שחרור רחב.
+Phase 1: טפסי כרטיס/שימוש/עריכה (`CardForm`, `AddUsageForm`, `EditCardDialog`) בנויים עם `Label`+`htmlFor`, שגיאות עם `role="alert"` ו-`aria-describedby`. `ConsentBanner` עם `role="alertdialog"`/`aria-modal`/`aria-labelledby`.
+
+Phase 2: אותו דפוס הורחב לרכיבים החדשים — `ImageDropInput` (label+`aria-describedby`+`alt` משמעותי לתצוגה מקדימה), `TagsInput` (נגיש למקלדת: Enter/פסיק להוספה, Backspace להסרת התגית האחרונה, כפתור הסרה מתויג לכל צ'יפ, `aria-live="polite"` על שינויים), `CategorySelect` (מבוסס Radix `Select` קיים). יתרת הכרטיס בעמוד פרטי הכרטיס עטופה כעת ב-`aria-live="polite"` כדי שעדכוני `onSnapshot` יוכרזו לקורא מסך.
+
+Phase 3: אותו דפוס הוחל על השדות החדשים (`cvv`, `acceptingRetailersUrl` ב-`CardForm`/`EditCardDialog`) ועל `UpdateBalanceDialog` (`Label`+`htmlFor`, `aria-describedby`+`role="alert"` לשגיאות).
+
+עדיין לא בוצעה בדיקת Lighthouse/NVDA בפועל — יש לבצע לפני שחרור רחב.

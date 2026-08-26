@@ -8,6 +8,7 @@
 |---|---|---|
 | `email`, `displayName`, `photoURL` | `users` | זהות בסיסית, מגיע מ-Google/Apple auth |
 | `barcodeOrCode` | `cards` | פוטנציאלית רגיש — מספר כרטיס אמיתי, ראה `docs/SECURITY.md` |
+| `cvv` | `cards` | רגיש מאוד — יחד עם `barcodeOrCode` מאפשר שימוש בכרטיס, ראה `docs/SECURITY.md` |
 | `cardImageUrl`, `receiptImageUrl` | `cards`, `usageLog` | תמונות עשויות להכיל מידע מזהה נוסף (למשל בקבלה) |
 | `location`, `purpose` | `usageLog` | התנהגות/הרגלי צריכה — נחשב profiling data תחת GDPR |
 | `fcmTokens` | `users` | מזהה מכשיר |
@@ -29,7 +30,7 @@ Server Action `exportUserData(uid)` (`src/actions/privacy.ts`, Admin SDK) — א
 Phase 5.
 
 ## Data Minimization
-- `barcodeOrCode`, `location` — אופציונליים בלבד, לא נאספים אם המשתמש לא מזין.
+- `barcodeOrCode`, `cvv`, `location`, `acceptingRetailersUrl` — אופציונליים בלבד, לא נאספים אם המשתמש לא מזין.
 - אין איסוף מיקום GPS אוטומטי — רק טקסט חופשי שהמשתמש מקליד.
 - `fcmTokens` נמחקים בעת sign-out/uninstall (לא נשמרים ללא צורך).
 

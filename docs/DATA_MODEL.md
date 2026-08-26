@@ -30,7 +30,8 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 ```ts
 {
   id: string;
-  ownerId: string;              // immutable אחרי create
+  ownerId: string;              // immutable אחרי create; תמיד ownerId של הרשימה, גם כשמנהל משותף יוצר את הכרטיס
+  listId: string;               // ראו cardLists/{listId} למטה — כל כרטיס שייך לרשימה אחת
   name: string;
   categoryId: string | null;
   tags: string[];
@@ -41,11 +42,45 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
   purchaseDate: Timestamp | null;
   cardImageUrl: string | null;
   barcodeOrCode: string | null;
+  cvv: string | null;                // רגיש, ראה docs/SECURITY.md — הצפנת application-level נדחית ל-Phase 5
+  acceptingRetailersUrl: string | null;
+  notes: string | null;
   status: "active" | "expired" | "depleted" | "archived";
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 ```
+מחיקת כרטיס (`DeleteCardButton` → `deleteCard` ב-`src/actions/card.ts`) היא מחיקה מלאה, לא ארכוב (`status: "archived"` הוא פעולה נפרדת) — מוחקת גם את תת-האוסף `usageLog` (recursiveDelete) וגם קבצי Storage תחת `users/{uid}/cards/{cardId}/`, ראו `docs/DECISIONS.md` #14.
+
+## `cardLists/{listId}`
+`src/types/cardList.ts`
+```ts
+{
+  id: string;
+  ownerId: string;
+  name: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+כל כרטיס (`cards.listId`) שייך לרשימה אחת בדיוק — שדה חובה, נאכף גם ב-`firestore.rules` (`create` דורש `listId` לא ריק). כשמשתמש מוסיף את הכרטיס הראשון שלו ואין לו עדיין אף רשימה, `CardForm` יוצר אוטומטית רשימה ראשונית ("הרשימה שלי") ומשייך אליה — ראו `docs/DECISIONS.md` #13. מחיקת רשימה מותרת מה-UI רק כשהיא ריקה (0 כרטיסים ו-0 חברים משותפים), כדי למנוע כרטיסים/שיתופים "יתומים".
+
+## `cardLists/{listId}/members/{memberUid}` (subcollection)
+`src/types/cardListMember.ts`
+```ts
+{
+  id: string;                    // == memberUid
+  listId: string;
+  memberUid: string;
+  email: string;                 // snapshot של המייל שהוזמן, לתצוגה
+  role: "manager" | "viewer";
+  status: "pending" | "accepted";
+  invitedBy: string;             // uid של בעל הרשימה
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+שיתוף רשימה — ראו `docs/DECISIONS.md` #15. doc id תמיד שווה ל-`memberUid`, נוצר על ידי `inviteListMember` (`src/actions/listShare.ts`, Admin SDK מפענח אימייל ל-uid). "מנהל" מאושר (`status:"accepted"`) יכול לנהל כרטיסים ברשימה כמו הבעלים; "צופה" מאושר יכול רק לקרוא. כרטיסים שנוצרים דרך שיתוף עדיין נכתבים עם `ownerId` של בעל הרשימה (לא של היוצר בפועל) — ראו הערה ב-`cards` למעלה וב-`usageLog.createdBy` למטה.
 
 ## `cards/{cardId}/usageLog/{entryId}` (subcollection, immutable)
 `src/types/usageLog.ts`
@@ -61,10 +96,10 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
   receiptImageUrl: string | null;
   balanceAfter: number;          // snapshot לצורך audit/דוחות מהירים
   createdAt: Timestamp;
-  createdBy: string;              // == ownerId היום; מוכן לעתיד multi-user per card
+  createdBy: string;              // uid של מי שביצע בפועל — בעל הרשימה או מנהל משותף (docs/DECISIONS.md #15)
 }
 ```
-**אין update/delete** — ראה `firestore.rules`. תיקון טעות = רשומת correction חדשה, לא עריכה בדיעבד.
+**אין update, ואין delete מצד הלקוח** — ראה `firestore.rules`. מחיקה כן אפשרית, אך רק דרך Server Action ייעודי (`deleteUsageEntry` ב-`src/actions/usage.ts`, Admin SDK) שמאפשר גם להחזיר את הסכום ליתרת הכרטיס באותה טרנזקציה — ראה `docs/DECISIONS.md` #12. עריכה בדיעבד עדיין לא נתמכת; תיקון טעות שאינו מחיקה = רשומת correction חדשה.
 
 ## `categories/{categoryId}`
 `src/types/category.ts`
@@ -111,7 +146,14 @@ Append-only, נכתב רק מ-Admin SDK (Cloud Functions). אירועים: login
 ## אינדקסים מרוכבים (`firestore.indexes.json`)
 - `cards`: `ownerId ASC, expiryDate ASC` — דוחות "עומד לפוג"
 - `cards`: `ownerId ASC, status ASC, createdAt DESC` — רשימת כרטיסים לפי סטטוס
+- `cards`: `listId ASC, createdAt DESC` — שליפת כרטיסים לפי הרשימות הנגישות למשתמש (`useCards`, כולל רשימות משותפות), ראו `docs/DECISIONS.md` #15
+- `cardLists`: `ownerId ASC, createdAt ASC` — שאילתת רשימות המשתמש (`useCardLists`)
+- `members` (collection group): `memberUid ASC, status ASC` — "השיתופים/ההזמנות שלי" על פני רשימות של בעלים שונים (`useCardLists`, `usePendingInvitations`), ראו `docs/DECISIONS.md` #15
 - `usageLog` (collection group): `ownerId ASC, date DESC` — יומן שימושים גלובלי למשתמש
+
+**שים לב**: סינון הכרטיסים בתוך רשימה ספציפית (`/cards/lists/[listId]`) נעשה בצד לקוח (`cards.filter(c => c.listId === listId)`) על תוצאות `useCards` הקיים, לא ע"י שאילתת Firestore נוספת עם `where("listId", "==", ...)` — כך נמנע אינדקס מורכב נוסף (`ownerId + listId + createdAt`). סביר להסתמך על כך כל עוד מספר הכרטיסים למשתמש קטן (שימוש אישי); אם זה ישתנה, יש להוסיף את השאילתה+אינדקס בהתאם.
 
 ## עדכון יתרה
 כל כתיבת usage entry חייבת לקרות בתוך `runTransaction`: קריאת `currentBalance` הנוכחי → חישוב → עדכון אטומי + כתיבת ה-entry החדש. מונע race conditions ממספר מכשירים/טאבים בו-זמנית. מיושם ב-`src/actions/usage.ts` (Phase 1).
+
+עדכון יתרה **ידני** (ללא usage entry, Phase 3) — `src/actions/balance.ts` (`updateCardBalance`): גם הוא `runTransaction` + Server Action (עקביות עם ההחלטה למעלה ועם `docs/DECISIONS.md` #3/#11), אך לא כותב ל-`usageLog` בכלל — מיועד לתיקוני יתרה (למשל אימות מול בית העסק), לא לרישום הוצאה.
