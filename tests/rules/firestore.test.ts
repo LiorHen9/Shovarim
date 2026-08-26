@@ -95,8 +95,13 @@ describe("cards", () => {
 
   it("user B cannot read user A's card", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(context.firestore().doc("cardLists/list1"), {
+        ownerId: USER_A,
+        name: "List A",
+      });
       await setDoc(context.firestore().doc("cards/card1"), {
         ownerId: USER_A,
+        listId: "list1",
         name: "Card A",
         currentBalance: 50,
         currency: "ILS",
@@ -113,8 +118,13 @@ describe("cards", () => {
 
   it("user B cannot update user A's card", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(context.firestore().doc("cardLists/list1"), {
+        ownerId: USER_A,
+        name: "List A",
+      });
       await setDoc(context.firestore().doc("cards/card1"), {
         ownerId: USER_A,
+        listId: "list1",
         name: "Card A",
         currentBalance: 50,
         currency: "ILS",
@@ -128,8 +138,13 @@ describe("cards", () => {
 
   it("cannot change ownerId of an existing card via update", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(context.firestore().doc("cardLists/list1"), {
+        ownerId: USER_A,
+        name: "List A",
+      });
       await setDoc(context.firestore().doc("cards/card1"), {
         ownerId: USER_A,
+        listId: "list1",
         name: "Card A",
         currentBalance: 50,
         currency: "ILS",
@@ -143,8 +158,13 @@ describe("cards", () => {
 
   it("unauthenticated user cannot read any card", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(context.firestore().doc("cardLists/list1"), {
+        ownerId: USER_A,
+        name: "List A",
+      });
       await setDoc(context.firestore().doc("cards/card1"), {
         ownerId: USER_A,
+        listId: "list1",
         name: "Card A",
         currentBalance: 50,
         currency: "ILS",
@@ -456,8 +476,13 @@ describe("cards access via a shared list", () => {
 describe("usageLog (immutable audit trail)", () => {
   async function seedCard() {
     await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(context.firestore().doc("cardLists/list1"), {
+        ownerId: USER_A,
+        name: "List A",
+      });
       await setDoc(context.firestore().doc("cards/card1"), {
         ownerId: USER_A,
+        listId: "list1",
         name: "Card A",
         currentBalance: 50,
         currency: "ILS",
