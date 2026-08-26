@@ -21,10 +21,11 @@
 | ניהול רשימות כרטיסים | ✅ הושלם | Phase 3.1 — כל כרטיס שייך לרשימה אחת (`cardLists`, `cards.listId`). `/cards` מציג את רשימות המשתמש, `/cards/lists/[listId]` מנהל את הכרטיסים של רשימה בודדת (כולל שינוי שם ומחיקת רשימה ריקה). ביצירת כרטיס ראשון בלי רשימות קיימות, `CardForm` יוצר רשימה ראשונית אוטומטית; אחרת נדרשת בחירה דרך `ListSelect` (כולל "+ רשימה חדשה"). ראו `docs/DECISIONS.md` #13 |
 | מחיקת כרטיס | ✅ הושלם | Phase 3.1 — `src/actions/card.ts` (`deleteCard`, Admin SDK), `DeleteCardButton` (דיאלוג אישור) בשורת הכרטיס ב-`/cards/lists/[listId]` ובעמוד פרטי הכרטיס. מוחק גם את `usageLog` (recursiveDelete) וגם קבצי Storage (תמונת כרטיס/קבלות). ראו `docs/DECISIONS.md` #14 |
 | שיתוף רשימות (מנהל/צופה, הזמנה לפי אימייל+אישור) | ✅ הושלם | Phase 3.2 — `cardLists/{listId}/members`, `src/actions/listShare.ts` (`inviteListMember`), `ShareListDialog` (ניהול שיתוף לבעלים), `PendingInvitationsPanel` (קבלה/דחייה למוזמן) ב-`/cards`. "מנהל" מנהל כרטיסים/שימושים/יתרה כמו הבעלים; "צופה" קריאה בלבד. העלאת תמונת כרטיס/קבלה נשארה לבעלים בלבד (מגבלת Storage Rules). ראו `docs/DECISIONS.md` #15 |
-| התראות תפוגה (push/email) | ⏳ מתוכנן | Phase 4 |
-| ייצוא נתונים (GDPR) | ⏳ מתוכנן | Phase 5 |
-| מחיקת חשבון מלאה (GDPR) | ⏳ מתוכנן | Phase 5 |
-| App Check | ⏳ מתוכנן | Phase 5 |
-| הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים | ⏳ מתוכנן | Phase 5 |
+| ייצוא נתונים (GDPR) | ⏳ מתוכנן | Phase 4 |
+| מחיקת חשבון מלאה (GDPR) | ⏳ מתוכנן | Phase 4 |
+| App Check | ⏳ מתוכנן | Phase 4 |
+| הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים | ⏳ מתוכנן | Phase 4 |
+| צ'אטבוט/CLI לשיחה חופשית (הוספה/עריכה/מחיקה/שאילתה בשפה טבעית) | ⏳ מתוכנן | Phase 5 — MCP tools, ראו `docs/DECISIONS.md` #17 |
 | PWA (installable, offline) | ⏳ מתוכנן | Phase 6 |
-| דוחות וסטטיסטיקות | ⏳ מתוכנן | Phase 7 |
+| התראות תפוגה (push/email) | ⏳ מתוכנן | Phase 7 |
+| דוחות וסטטיסטיקות | ⏳ מתוכנן | Phase 8 |

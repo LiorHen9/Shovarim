@@ -5,7 +5,7 @@
 ## ארכיטקטורה
 
 - **Firebase App Hosting** — מריץ את אפליקציית ה-Next.js (SSR, Server Actions). רץ בפועל על Cloud Run מתחת למכסה. מחובר ישירות ל-GitHub repo (`LiorHen9/Shovarim`, branch `main`) — **כל push ל-main מפעיל rollout אוטומטי דרך Cloud Build, בנפרד לגמרי מ-GitHub Actions**.
-- **Cloud Functions for Firebase** (`functions/`) — מיועד ל-webhooks (WhatsApp/Telegram לצ'אטבוט העתידי) ולעבודות רקע/מתוזמנות (Phase 4: תזכורות תפוגה). ריק כרגע (`functions/src/index.ts`).
+- **Cloud Functions for Firebase** (`functions/`) — מיועד ל-webhooks (WhatsApp/Telegram לצ'אטבוט העתידי, Phase 5) ולעבודות רקע/מתוזמנות (Phase 7: תזכורות תפוגה). ריק כרגע (`functions/src/index.ts`).
 - **Firestore, Auth, Storage** — משותפים בין App Hosting ל-Cloud Functions, אותו פרויקט Firebase.
 - **סביבה אחת בלבד**: production. אין staging נפרד כרגע.
 - **GitHub Actions** לא פורס את האפליקציה עצמה (App Hosting עושה זאת אוטומטית) — תפקידו: (א) quality gate על כל PR/push, (ב) פריסת Firestore rules/indexes, Storage rules, ו-Cloud Functions — אלה **לא** מנוהלים על ידי App Hosting.
@@ -62,7 +62,7 @@
 
    # roles/editor + firebaserules.admin: פרגמטי ל-MVP. firebase deploy --only
    # functions דורש הרשאות רחבות על פני Cloud Build/Functions/Artifact
-   # Registry/Pub/Sub/Run שמסורבל למנות במדויק. לכווץ בהמשך (מתאים ל-Phase 5
+   # Registry/Pub/Sub/Run שמסורבל למנות במדויק. לכווץ בהמשך (מתאים ל-Phase 4
    # privacy hardening) אם רוצים least-privilege עכשיו במקום מאוחר יותר.
    gcloud projects add-iam-policy-binding $PROJECT_ID \
      --member="serviceAccount:github-deploy@${PROJECT_ID}.iam.gserviceaccount.com" \
