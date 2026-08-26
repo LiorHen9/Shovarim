@@ -1,8 +1,5 @@
 # Firebase App Hosting build/run config for the Next.js app.
 # See docs/DEPLOYMENT.md for the full runbook (region choice, secrets setup, first rollout).
-#
-# Values marked REPLACE_ME must be filled in with the real Firebase project's
-# values before the App Hosting backend is created — see docs/DEPLOYMENT.md.
 
 runConfig:
   minInstances: 0
@@ -17,40 +14,44 @@ env:
   # Not secrets: protected by Firestore/Storage Security Rules, not by hiding
   # this config (see docs/SECURITY.md).
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: "REPLACE_ME"
+    value: "AIzaSyBTX7UVWoOf6-_UGZZTahB47khE9c8bmFs"
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-    value: "REPLACE_ME.firebaseapp.com"
+    value: "shovarim-prod.firebaseapp.com"
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-    value: "REPLACE_ME"
+    value: "shovarim-prod"
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-    value: "REPLACE_ME.appspot.com"
+    value: "shovarim-prod.firebasestorage.app"
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-    value: "REPLACE_ME"
+    value: "340911758477"
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_APP_ID
-    value: "REPLACE_ME"
+    value: "1:340911758477:web:9ca5c245abd2ddfae3d6c4"
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_USE_FIREBASE_EMULATOR
     value: "false"
     availability: [BUILD, RUNTIME]
 
-  # Server-only Admin SDK config.
+  # Server-only Admin SDK config. BUILD availability is required too, not
+  # just RUNTIME: src/lib/firebase/adminApp.ts builds the Admin SDK app
+  # eagerly at module import time, and `next build` imports that module
+  # while tracing the app — without these present at build time it throws
+  # "Missing Firebase Admin credentials" and the whole build fails.
   - variable: FIREBASE_USE_EMULATOR
     value: "false"
-    availability: [RUNTIME]
+    availability: [BUILD, RUNTIME]
   - variable: FIREBASE_ADMIN_PROJECT_ID
-    value: "REPLACE_ME"
-    availability: [RUNTIME]
+    value: "shovarim-prod"
+    availability: [BUILD, RUNTIME]
   - variable: FIREBASE_ADMIN_CLIENT_EMAIL
-    value: "REPLACE_ME@REPLACE_ME.iam.gserviceaccount.com"
-    availability: [RUNTIME]
+    value: "firebase-adminsdk-fbsvc@shovarim-prod.iam.gserviceaccount.com"
+    availability: [BUILD, RUNTIME]
   # Real secret — never a plaintext value. Populate via
   # Set-AppHosting-AdminKey.ps1 (wraps `firebase apphosting:secrets:set` +
   # `grantaccess`) before the first rollout.
   - variable: FIREBASE_ADMIN_PRIVATE_KEY
     secret: firebase-admin-private-key
-    availability: [RUNTIME]
+    availability: [BUILD, RUNTIME]
