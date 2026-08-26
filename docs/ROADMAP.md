@@ -60,10 +60,13 @@
 
 **נשאר לבדוק ידנית**: קליק-דרך בדפדפן עם שני חשבונות אמיתיים (הזמנה, קבלה/דחייה, פעולות מנהל/צופה בפועל על רשימה משותפת).
 
-## Phase 3.3 — תשתית Deploy ו-CI/CD
-Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production יחיד. GitHub Actions: quality gate (typecheck/lint/build/test:rules) על כל PR, deploy אוטומטי ל-Firestore rules/indexes/Storage rules/Functions ב-push ל-main. App Hosting עצמו נפרס אוטומטית דרך Cloud Build (git-integrated), בנפרד מ-GitHub Actions. סוגר את ADR #5 (ראו ADR #16). פרטים מלאים ב-`docs/DEPLOYMENT.md`.
+## Phase 3.3 — תשתית Deploy ו-CI/CD ✅ הושלם (2026-08-27)
+Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production יחיד (`shovarim-prod`, region `europe-west4`, backend `shovarim-web`). GitHub Actions: quality gate (typecheck/lint/build/test:rules) על כל PR, deploy אוטומטי ל-Firestore rules/indexes/Storage rules/Functions ב-push ל-main — אומת בפועל (`deploy-rules-and-functions` הצליח על שני ה-push-ים האחרונים ל-main). App Hosting עצמו נפרס אוטומטית דרך Cloud Build (git-integrated), בנפרד מ-GitHub Actions. סוגר את ADR #5 (ראו ADR #16). פרטים מלאים + תוצאות ב-`docs/DEPLOYMENT.md`.
+- Rollout ראשון הצליח אחרי תיקון שתי תקלות: (1) משתני Admin SDK היו `RUNTIME`-only ב-`apphosting.yaml` בעוד ש-`next build` צריך אותם גם ב-`BUILD` בגלל init עייז ב-`adminApp.ts`; (2) גרסה ראשונה של סוד `FIREBASE_ADMIN_PRIVATE_KEY` ב-Secret Manager הייתה פגומה (נחתכה בהדבקה אינטראקטיבית) — תוקן ע"י הזרקה מחדש דרך `--data-file` מקובץ ה-service-account המקורי.
+- Smoke test אוטומטי (curl: SSR רינדור נכון, הגנת routes, CDN לא cache-ת redirects) + Google Sign-In ידני על ה-URL החי — עברו. תיקון נדרש: הוספת דומיין ה-App Hosting ל-Authorized domains ב-Firebase Auth (לא היה שם כברירת מחדל, גרם ל-`auth/unauthorized-domain` מיידי). פירוט מלא ב-`docs/DEPLOYMENT.md`.
+- תרגול rollback אחד (rollback ל-commit קודם + roll-forward) בוצע ואומת בהצלחה, כולל אימות חיצוני דרך GitHub checks.
 
-**נשאר לבדוק**: ראו סעיף Verification ב-`docs/DEPLOYMENT.md` — PR ראשון עם CI ירוק, deploy ראשון ל-rules/functions, rollout ראשון ל-App Hosting, smoke test מלא על ה-URL החי, תרגול rollback אחד.
+**נשאר לבדוק ידנית**: קליק-דרך בדפדפן על ה-URL החי עם התחברות אמיתית — יצירת/עריכת/מחיקת כרטיס, יומן שימושים, עדכון יתרה, העלאת תמונה, יצירה+שיתוף רשימה עם חשבון שני. לא בוצע אוטומטית (Playwright עדיין לא מותקן — אותו gap כמו Phase 1/2/3/3.1/3.2).
 
 ## Phase 4 — Privacy Hardening
 Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Check, security review מקיף, הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים.
