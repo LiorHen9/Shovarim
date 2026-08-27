@@ -43,13 +43,17 @@ export function AddUsageForm({
         ? await uploadReceiptImage(ownerUid, cardId, entryRef.id, receiptFile)
         : null;
 
-      await addUsageEntry({ ...values, entryId: entryRef.id, receiptImageUrl });
+      const result = await addUsageEntry({ ...values, entryId: entryRef.id, receiptImageUrl });
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("השימוש נוסף והיתרה עודכנה");
       reset({ cardId, amount: 0, date: new Date(), purpose: "", location: null });
       setReceiptFile(null);
       setReceiptInputKey((k) => k + 1);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "הוספת השימוש נכשלה");
+    } catch {
+      toast.error("הוספת השימוש נכשלה");
     }
   }
 

@@ -52,11 +52,15 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
 
   async function onInvite(values: InviteListMemberInput) {
     try {
-      await inviteListMember(values);
+      const result = await inviteListMember(values);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("ההזמנה נשלחה");
       reset({ listId, email: "", role: "viewer" });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "שליחת ההזמנה נכשלה");
+    } catch {
+      toast.error("שליחת ההזמנה נכשלה");
     }
   }
 

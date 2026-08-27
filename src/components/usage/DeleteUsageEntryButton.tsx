@@ -36,11 +36,15 @@ export function DeleteUsageEntryButton({
   async function handleDelete(restoreBalance: boolean) {
     setPending(true);
     try {
-      await deleteUsageEntry({ cardId, entryId, restoreBalance });
+      const result = await deleteUsageEntry({ cardId, entryId, restoreBalance });
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
       toast.success(restoreBalance ? "השימוש נמחק והסכום הוחזר ליתרה" : "השימוש נמחק");
       setOpen(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "מחיקת השימוש נכשלה");
+    } catch {
+      toast.error("מחיקת השימוש נכשלה");
     } finally {
       setPending(false);
     }

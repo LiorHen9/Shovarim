@@ -39,11 +39,15 @@ export function UpdateBalanceDialog({
 
   async function onSubmit(values: UpdateBalanceInput) {
     try {
-      await updateCardBalance(values);
+      const result = await updateCardBalance(values);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("היתרה עודכנה");
       setOpen(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "עדכון היתרה נכשל");
+    } catch {
+      toast.error("עדכון היתרה נכשל");
     }
   }
 
