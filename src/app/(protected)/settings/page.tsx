@@ -3,6 +3,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { CategoryManager } from "@/components/categories/CategoryManager";
 import { ExportDataButton } from "@/components/settings/ExportDataButton";
+import { DeleteAccountSection } from "@/components/settings/DeleteAccountSection";
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -25,12 +26,17 @@ export default function SettingsPage() {
       <div className="space-y-2">
         <h2 className="font-semibold">נתונים אישיים</h2>
         <ExportDataButton />
+      </div>
+
+      <div className="space-y-2">
+        <h2 className="font-semibold">מחיקת חשבון</h2>
+        <DeleteAccountSection />
         <p className="text-sm text-muted-foreground">
-          מחיקת חשבון תתווסף כאן בהמשך — ראו{" "}
+          ראו{" "}
           <a href="/privacy" className="underline underline-offset-2">
             מדיניות הפרטיות
-          </a>
-          .
+          </a>{" "}
+          לפרטים נוספים.
         </p>
       </div>
     </div>

@@ -84,8 +84,14 @@ Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production י
 - **טווח מכוון**: לא כולל את הנתונים של כרטיסים/רשומות שימוש ברשימות משותפות שהמשתמש רק צופה/מנהל בהן (אלה נתוני משתמש אחר, לא שלו) — ראו הבחנה דומה ב-`docs/SECURITY.md`.
 - אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` — 40/40 עוברים ללא שינוי (לא נדרש שינוי ב-`firestore.rules`, הכל דרך Admin SDK). E2E חדש: `tests/e2e/settings.spec.ts` (יצירת כרטיס → ייצוא → אימות תוכן הקובץ שהורד) — עבר מול ה-emulator.
 
+### שלב 4.2 — מחיקת חשבון מלאה (Right to Erasure, grace period) ✅ הושלם (2026-08-27)
+זרימה דו-שלבית לפי `docs/PRIVACY.md`: (1) `requestAccountDeletion`/`cancelAccountDeletion` (`src/actions/privacy.ts`, Server Actions, Admin SDK) קובעות/מאפסות `users/{uid}.deletionRequestedAt` — idempotent, הפיך לחלוטין עד שה-sweep רץ. UI: `DeleteAccountSection` ב-`/settings` (דיאלוג אישור לבקשה, כרטיס inline לביטול) + `DeletionPendingBanner` — באנר גלובלי לא-חוסם ב-`(protected)/layout.tsx` (לצד `ConsentBanner`), כדי שבקשה פתוחה תהיה גלויה בכל עמוד ולא רק ב-Settings. (2) ה-Cloud Function המתוזמן **הראשון** בפרויקט: `functions/src/index.ts` (`deleteExpiredAccounts`, `onSchedule("0 3 * * *", ...)`, region `europe-west4` תואם ל-App Hosting) קורא ל-`functions/src/accountDeletion.ts` (`sweepExpiredAccountDeletions`) שסורק משתמשים שחלף עליהם חלון grace של 30 יום ומוחק אותם בפועל (`deleteUserAccount`: Firestore/Storage לפני Auth, `auditLog` נכתב לפני שמתחילים) — ראו `docs/DECISIONS.md` #24 לפירוט המלא כולל למה `functions/` נשאר עצמאי (לא משתף קוד עם `src/`) וסקריפט האימות הידני (`scripts/sweep-account-deletions.ts`, `npm run sweep:account-deletions -- <uid>`) שמריץ את קוד ה-production האמיתי דרך `tsx` בלי לשכפל אותו.
+- אימות: `typecheck`/`lint`/`build` (גם באפליקציה וגם ב-`functions/`) נקיים, `test:rules` — 40/40 עוברים ללא שינוי (לא נדרש שינוי ב-`firestore.rules`). E2E חדש: `tests/e2e/settings.spec.ts` (בקשת מחיקה → אימות תאריך בבאנר הגלובלי ובעמוד ה-settings → ביטול) — עבר מול ה-emulator.
+
+**נשאר לבדוק ידנית**: הרצת `npm run sweep:account-deletions -- <uid>` על משתמש עם נתונים אמיתיים (כרטיסים/רשימות/יומן שימושים/תמונות) מול ה-emulator, לאימות שה-cascade deletion המלא (Firestore+Storage+Auth) עובד מקצה לקצה — לא ניתן לבדוק את זה אוטומטית ב-Playwright (לא ניתן "לקפוץ" 30 יום, וה-scheduled trigger עצמו לא ניתן לדימוי מהימן ב-Firebase emulators).
+
 ### נשאר (מתוכנן, לא בוצע)
-מחיקת חשבון מלאה (grace period), App Check, security review מקיף, הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים.
+App Check, security review מקיף, הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים.
 
 ## Phase 5 — צ'אטבוט/CLI לשיחה חופשית
 שיחה חופשית בשפה טבעית מעל הנתונים (הוספה/עריכה/מחיקה/שאילתה על כרטיסים, יומן שימושים, יתרות, רשימות), חשוף דרך CLI פנימי לבדיקה ובהמשך WhatsApp/Telegram. סוגר החלטה ארכיטקטונית ב-`docs/DECISIONS.md` ADR #17.

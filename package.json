@@ -13,6 +13,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "seed:categories": "tsx --env-file=.env.local scripts/seed-categories.ts",
     "mcp:cli": "tsx --env-file=.env.local scripts/mcp-cli.ts",
+    "sweep:account-deletions": "tsx --env-file=.env.local scripts/sweep-account-deletions.ts",
     "test:rules": "vitest run tests/rules",
     "test:e2e": "playwright test"
   },
