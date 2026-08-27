@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { collection, doc, serverTimestamp, setDoc, Timestamp } from "firebase/firestore";
+import { collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { ListSelect } from "@/components/lists/ListSelect";
 import { useCardLists } from "@/hooks/useCardLists";
 import { db } from "@/lib/firebase/client";
 import { uploadCardImage } from "@/lib/storage/upload";
+import { createCard } from "@/actions/card";
 import { createCardSchema, type CreateCardInput } from "@/lib/validation/card";
 
 const DEFAULT_LIST_NAME = "הרשימה שלי";
@@ -99,28 +100,34 @@ export function CardForm({ uid, initialListId }: { uid: string; initialListId?: 
       const cardImageUrl =
         imageFile && listOwnerId === uid ? await uploadCardImage(uid, cardRef.id, imageFile) : null;
 
-      await setDoc(cardRef, {
-        ownerId: listOwnerId,
+      // The doc itself is written server-side (createCard Server Action), not
+      // via setDoc here — cvv/barcodeOrCode need to pass through the Admin
+      // SDK to be encrypted (src/lib/crypto/fieldEncryption.ts) before they
+      // reach Firestore. cardRef.id was only generated client-side above so
+      // the image upload (still a direct client Storage write) had an id to
+      // key off before the card doc exists.
+      const result = await createCard({
+        cardId: cardRef.id,
         listId,
         name: values.name,
         categoryId: values.categoryId,
         tags: values.tags,
         initialBalance: values.initialBalance,
-        currentBalance: values.initialBalance,
-        currency: values.currency.toUpperCase(),
-        expiryDate: values.expiryDate ? Timestamp.fromDate(values.expiryDate) : null,
-        purchaseDate: values.purchaseDate ? Timestamp.fromDate(values.purchaseDate) : null,
+        currency: values.currency,
+        expiryDate: values.expiryDate,
+        purchaseDate: values.purchaseDate,
         cardImageUrl,
         barcodeOrCode: values.barcodeOrCode,
         cvv: values.cvv,
         acceptingRetailersUrl: values.acceptingRetailersUrl,
         notes: values.notes,
-        status: "active",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
       });
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("הכרטיס נוסף");
-      router.push(`/cards/${cardRef.id}`);
+      router.push(`/cards/${result.cardId}`);
     } catch (error) {
       console.error(error);
       toast.error(error instanceof Error ? error.message : "שמירת הכרטיס נכשלה");

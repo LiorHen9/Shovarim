@@ -41,8 +41,8 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
   expiryDate: Timestamp | null;
   purchaseDate: Timestamp | null;
   cardImageUrl: string | null;
-  barcodeOrCode: string | null;
-  cvv: string | null;                // רגיש, ראה docs/SECURITY.md — הצפנת application-level נדחית ל-Phase 5
+  barcodeOrCode: string | null;      // מוצפן (AES-256-GCM), ראה docs/SECURITY.md — לא טקסט גלוי ב-Firestore
+  cvv: string | null;                // מוצפן (AES-256-GCM), ראה docs/SECURITY.md — לא טקסט גלוי ב-Firestore
   acceptingRetailersUrl: string | null;
   notes: string | null;
   status: "active" | "expired" | "depleted" | "archived";

@@ -35,6 +35,19 @@ env:
     value: "false"
     availability: [BUILD, RUNTIME]
 
+  # Firebase App Check (docs/SECURITY.md threat #4). Not a secret — identifies
+  # the site to reCAPTCHA, same trust model as the other NEXT_PUBLIC_* config
+  # above. REPLACE_ME until the one-time Console registration in
+  # docs/DEPLOYMENT.md happens (Firebase Console -> App Check -> Apps ->
+  # register web app -> reCAPTCHA v3 provider); src/lib/firebase/appCheck.ts
+  # skips initialization rather than throwing while this is empty.
+  - variable: NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY
+    value: "REPLACE_ME"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG
+    value: "false"
+    availability: [BUILD, RUNTIME]
+
   # Server-only Admin SDK config. BUILD availability is required too, not
   # just RUNTIME: src/lib/firebase/adminApp.ts builds the Admin SDK app
   # eagerly at module import time, and `next build` imports that module
@@ -55,6 +68,18 @@ env:
   - variable: FIREBASE_ADMIN_PRIVATE_KEY
     secret: firebase-admin-private-key
     availability: [BUILD, RUNTIME]
+
+  # AES-256 key for application-level encryption of cvv/barcodeOrCode
+  # (src/lib/crypto/fieldEncryption.ts) — a defense-in-depth layer beyond
+  # Firestore's at-rest encryption, see docs/SECURITY.md. RUNTIME only: the
+  # key is parsed lazily inside encrypt/decrypt calls, not at module import
+  # time like adminApp.ts, so next build never needs it. Populate via
+  # Set-AppHosting-CardEncryptionKey.ps1 before the first rollout that uses
+  # it; generate the value with
+  # `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
+  - variable: CARD_FIELD_ENCRYPTION_KEY
+    secret: card-field-encryption-key
+    availability: [RUNTIME]
 
   # Anthropic Claude API — production authenticates via Workload Identity
   # Federation (src/lib/mcp/anthropicClient.ts, docs/DECISIONS.md ADR #20),
