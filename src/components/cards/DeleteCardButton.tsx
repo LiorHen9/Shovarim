@@ -33,12 +33,16 @@ export function DeleteCardButton({
   async function handleDelete() {
     setPending(true);
     try {
-      await deleteCard({ cardId });
+      const result = await deleteCard({ cardId });
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("הכרטיס נמחק");
       setOpen(false);
       if (redirectTo) router.push(redirectTo);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "מחיקת הכרטיס נכשלה");
+    } catch {
+      toast.error("מחיקת הכרטיס נכשלה");
     } finally {
       setPending(false);
     }

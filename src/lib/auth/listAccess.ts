@@ -3,6 +3,7 @@ import "server-only";
 import type { Transaction } from "firebase-admin/firestore";
 
 import { adminDb } from "@/lib/firebase/admin";
+import { ActionError } from "@/lib/actions/errors";
 
 interface CardOwnership {
   ownerId: string;
@@ -29,5 +30,5 @@ export async function assertCanManageCard(
   const member = memberSnap.data();
 
   if (member?.status === "accepted" && member?.role === "manager") return;
-  throw new Error("אין הרשאה לכרטיס זה");
+  throw new ActionError("אין הרשאה לכרטיס זה");
 }
