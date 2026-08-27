@@ -84,7 +84,16 @@ Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Che
 - **קישור ערוץ→משתמש** (WhatsApp/Telegram) — collection חדש (`channelLinks/{channelId}` או שדה ב-`users/{uid}`) שידרוש עדכון `firestore.rules`+`docs/DATA_MODEL.md` בזמן המימוש בפועל (ראו כלל קבוע ב-`CLAUDE.md`). זרימת linking (קוד אימות חד-פעמי מהאפליקציה) לא מתוכננת עדיין ברמת המימוש.
 - **App Check + Secret Manager** — טוקני בוט WhatsApp/Telegram ומפתח Anthropic API כ-`secret:` references, לא plaintext, באותו pattern כמו `FIREBASE_ADMIN_PRIVATE_KEY` ב-`apphosting.yaml`/Cloud Functions config.
 
-**נשאר לבדוק בזמן המימוש**: בחירת ה-runtime ל-MCP server (בתוך Cloud Functions מול תהליך נפרד), ולידציית latency של semantic cache, ו-threat-modeling ממוקד ל-prompt injection על קלט חופשי (ראו הרחבה ב-`docs/SECURITY.md`).
+**נשאר לבדוק בזמן המימוש**: ולידציית latency של semantic cache, ו-threat-modeling ממוקד ל-prompt injection על קלט חופשי (ראו הרחבה ב-`docs/SECURITY.md`). בחירת ה-runtime ל-MCP server הוכרעה לשלב 5.1 (ראו מטה, סוגר ADR #19) — תיבחן מחדש כשמתווספים ערוצי webhook.
+
+### שלב 5.1 — Walking skeleton (tool קריאה יחיד, בביצוע)
+מטרה: להוכיח מקצה לקצה שמודל האבטחה (uid נגזר בצד שרת, שכבת שירות משותפת, audit log) עובד בפועל — לפני בניית כל משטח ה-tools. סוגר את החלטת ה-runtime שנשארה פתוחה למעלה, ADR #19.
+
+- **Runtime**: תהליך Node מקומי (`mcp-server/`, stdio transport) — לא Cloud Function. CLI (`scripts/mcp-cli.ts`) מקבל uid כארגומנט, מנפיק לו custom token דרך Admin SDK (`adminAuth.createCustomToken` — האפליקציה תומכת רק ב-Google, אין נתיב סיסמה ל-CLI לנהוג בו) ומחליף אותו client-side ל-ID token אמיתי, שהשרת מאמת עם `adminAuth.verifyIdToken` ונועל uid בסגירה — לא flag/env קבוע.
+- **Tool יחיד**: `listCards`, סכימת input ריקה (`z.object({})`) — בכוונה, כדי לאכוף מבנית שאין דרך למודל "להעביר" uid.
+- **שכבת שירות חדשה**: `src/lib/services/cards.ts` (`listCardsForUid`) — מקביל בצד Admin SDK ללוגיקת `useCards`/`useCardLists` הקיימת (client-only כרגע). לא extraction מ-Server Action קיים — הקוד השרתי הראשון לקריאת כרטיסים, כדי שגם tools עתידיים וגם Server Actions עתידיים ישתמשו בו במקום לשכפל.
+- **Audit log**: כל קריאת tool נכתבת ל-`auditLog` (`src/types/auditLog.ts` — type חדש, ראה `docs/DATA_MODEL.md`).
+- **נדחה במפורש** (לא נשכח — צעדים הבאים): tools כותבים/הרסניים + אישור מפורש בשיחה, ערוצי WhatsApp/Telegram (`channelLinks`), semantic cache, rate limiting per-uid, App Check/Secret Manager (מספיק `.env.local` ב-dev).
 
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.

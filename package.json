@@ -12,10 +12,13 @@
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "seed:categories": "tsx --env-file=.env.local scripts/seed-categories.ts",
+    "mcp:cli": "tsx --env-file=.env.local scripts/mcp-cli.ts",
     "test:rules": "vitest run tests/rules"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.121.0",
     "@hookform/resolvers": "^5.9.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
