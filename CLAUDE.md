@@ -16,6 +16,7 @@ Next.js 16 (App Router, React 19, TypeScript strict) + Firebase (Firestore, Auth
 | `npm run build` | production build |
 | `npx firebase emulators:start --import=./emulator-data --export-on-exit=./emulator-data` | Firestore/Auth/Storage/Functions emulators עם שמירת דאטה בין הרצות — דורש Java (JRE), כבר מותקן |
 | `npm run test:rules` | 19 Security Rules unit tests (`tests/rules/`) — **דורש Firestore emulator רץ** (`firebase emulators:start --only firestore`) |
+| `npm run test:e2e` | Playwright E2E tests (`tests/e2e/`) — **דורש Firebase emulators רצים** (auth+firestore+storage) ו-dev server (מופעל אוטומטית ע"י `playwright.config.ts`) |
 | `npm run seed:categories` | זריעת קטגוריות ברירת מחדל (Admin SDK, נגד emulator לפי `.env.local`) |
 | `npm --prefix functions run build` | קומפילציית Cloud Functions |
 

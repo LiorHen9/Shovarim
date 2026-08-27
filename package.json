@@ -13,7 +13,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "seed:categories": "tsx --env-file=.env.local scripts/seed-categories.ts",
     "mcp:cli": "tsx --env-file=.env.local scripts/mcp-cli.ts",
-    "test:rules": "vitest run tests/rules"
+    "test:rules": "vitest run tests/rules",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.121.0",
@@ -41,6 +42,7 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
