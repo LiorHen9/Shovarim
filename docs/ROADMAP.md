@@ -23,7 +23,7 @@
 - Layout רספונסיבי בסיסי (Header + nav + dropdown משתמש)
 - אימות: `typecheck`/`lint`/`build` נקיים, dev server + emulators נבדקו יחד (proxy redirect, דפים ציבוריים) ידנית דרך curl
 
-**נשאר לבדוק ידנית (לא אוטומטי עדיין)**: זרימת Google sign-in אמיתית בדפדפן (לא נבדקה עם browser automation — Playwright עדיין לא מותקן, ראו Phase 6/verification gap).
+**נשאר לבדוק ידנית**: זרימת ה-popup של Google sign-in עצמה (Google חוסם דפדפנים אוטומטיים) — הזרימה שאחריה (session cookie, יצירת `users/{uid}`, redirect ל-dashboard) כן אוטומטית כעת דרך Playwright, ראו תשתית E2E למטה.
 
 ## Phase 2 — Media & Enrichment ✅ הושלם (2026-08-25)
 - תמונות כרטיס/קבלות דרך Storage: `src/lib/storage/upload.ts` (`uploadCardImage`/`uploadReceiptImage`), `ImageDropInput`, `CardImageUpload` על עמוד פרטי הכרטיס, thumbnail ברשימת כרטיסים ותמונת קבלה ביומן שימושים. ה-id (כרטיס/רשומת שימוש) נוצר בצד הלקוח (`doc()` ללא כתיבה) לפני ההעלאה, כך שהעלאת הקובץ מתבצעת לפני יצירת המסמך — תואם את עקרון ה-immutability של יומן השימושים (`docs/DECISIONS.md` #3/#4/#10)
@@ -39,7 +39,7 @@
 - שדה `cvv` (3–4 ספרות) ב-`createCardSchema`/`editCardDetailsSchema`, בסמוך לשדה התוקף בטופס הוספה/עריכה — מאוחסן כמו `barcodeOrCode` (ללא הצפנת application-level, ראו `docs/SECURITY.md`)
 - אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` (19 טסטים) עוברים ללא שינוי — לא נדרש שינוי ב-`firestore.rules` (כלל ה-update הקיים על `cards` כבר מתיר כל שדה חוץ מ-`ownerId`, ועדכון היתרה הידני עובר Admin SDK כמו יומן השימושים)
 
-**נשאר לבדוק ידנית**: קליק-דרך בדפדפן (יצירת/עריכת כרטיס עם CVV+URL, עדכון יתרה ידני מקצה לקצה) — Playwright עדיין לא מותקן (ראו gap מ-Phase 1/2).
+**נשאר לבדוק ידנית**: עריכת כרטיס קיים (כולל CVV+URL) ועדכון יתרה ידני מקצה לקצה — יצירת כרטיס בסיסית (שם + יתרה) כבר מכוסה אוטומטית ב-`tests/e2e/cards.spec.ts`, ראו תשתית E2E למטה.
 
 ## Phase 3.1 — ניהול רשימות כרטיסים ✅ הושלם (2026-08-26)
 - `cardLists/{listId}` (collection חדש) + שדה חובה `cards.listId` — כל כרטיס שייך לרשימה אחת, נאכף גם ב-`firestore.rules` (`create` דורש `listId` לא ריק)
@@ -66,7 +66,14 @@ Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production י
 - Smoke test אוטומטי (curl: SSR רינדור נכון, הגנת routes, CDN לא cache-ת redirects) + Google Sign-In ידני על ה-URL החי — עברו. תיקון נדרש: הוספת דומיין ה-App Hosting ל-Authorized domains ב-Firebase Auth (לא היה שם כברירת מחדל, גרם ל-`auth/unauthorized-domain` מיידי). פירוט מלא ב-`docs/DEPLOYMENT.md`.
 - תרגול rollback אחד (rollback ל-commit קודם + roll-forward) בוצע ואומת בהצלחה, כולל אימות חיצוני דרך GitHub checks.
 
-**נשאר לבדוק ידנית**: קליק-דרך בדפדפן על ה-URL החי עם התחברות אמיתית — יצירת/עריכת/מחיקת כרטיס, יומן שימושים, עדכון יתרה, העלאת תמונה, יצירה+שיתוף רשימה עם חשבון שני. לא בוצע אוטומטית (Playwright עדיין לא מותקן — אותו gap כמו Phase 1/2/3/3.1/3.2).
+**נשאר לבדוק ידנית**: קליק-דרך בדפדפן על ה-URL החי עם התחברות Google אמיתית — יצירת/עריכת/מחיקת כרטיס, יומן שימושים, עדכון יתרה, העלאת תמונה, יצירה+שיתוף רשימה עם חשבון שני. Playwright (ראו תשתית E2E למטה) מכסה אוטומטית זרימות מקבילות מול ה-emulator המקומי/CI בלבד — לא מריץ מול ה-URL החי, ולא יכול לדמות את ה-popup של Google עצמו.
+
+## תשתית E2E (Playwright) ✅ הושלם (2026-08-27)
+- `@playwright/test` (chromium בלבד כרגע) מותקן, `npx playwright test` / `npm run test:e2e`; קונפיג ב-`playwright.config.ts` — `webServer` מריץ `npm run dev` מול Firebase Emulators (`.env.local`), אף פעם לא מול פרויקט אמיתי
+- כניסה אוטומטית ל-E2E ללא Google popup אמיתי (חסום לדפדפנים אוטומטיים): עמוד בדיקה בלבד `src/app/(public)/e2e/sign-in/page.tsx` + Server Action `src/actions/testAuth.ts` (`mintTestCustomToken`, נעול ל-`FIREBASE_USE_EMULATOR=true` בלבד) — עובר באותו נתיב `signInWithCustomToken` → `createSession` כמו כניסה אמיתית. ראו `docs/DECISIONS.md` #18
+- כיסוי נוכחי: `tests/e2e/public.spec.ts` (עמוד נחיתה, redirect למי שלא מחובר, terms/privacy), `tests/e2e/dashboard.spec.ts` (dashboard ריק למשתמש חדש), `tests/e2e/cards.spec.ts` (יצירת כרטיס בסיסית מקצה לקצה)
+- CI: `.github/workflows/ci.yml` מתקין chromium (`playwright install --with-deps`) ומריץ `test:rules && test:e2e` יחד בתוך אותו `firebase emulators:exec`; דוח HTML מועלה כ-artifact בכישלון
+- **נשאר**: הרחבת כיסוי לעריכת כרטיס/עדכון יתרה/שיתוף רשימות (ראו ה"נשאר לבדוק ידנית" בפאזות למעלה), ולא מכסה ולא יכול לכסות את ה-popup האמיתי של Google או את ה-URL החי ב-production
 
 ## Phase 4 — Privacy Hardening
 Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Check, security review מקיף, הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים.
