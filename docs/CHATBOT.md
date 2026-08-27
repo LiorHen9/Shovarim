@@ -1,6 +1,6 @@
 # CHATBOT — סטטוס הסוכן (MCP + Claude)
 
-מצב נכון ל-2026-08-27 (סוף שלב 5.2). עדכן מסמך זה עם כל שינוי משמעותי בארכיטקטורת הצ'אטבוט/MCP — ראה גם `docs/ROADMAP.md` Phase 5 (השלבים המלאים) ו-`docs/DECISIONS.md` ADR #17/#19/#20 (הרציונל המלא).
+מצב נכון ל-2026-08-28 (סוף שלב 5.3). עדכן מסמך זה עם כל שינוי משמעותי בארכיטקטורת הצ'אטבוט/MCP — ראה גם `docs/ROADMAP.md` Phase 5 (השלבים המלאים) ו-`docs/DECISIONS.md` ADR #17/#19/#20/#21 (הרציונל המלא).
 
 ## תמונת מצב כללית
 
@@ -16,8 +16,9 @@
 | `mcp-server/index.ts` | שרת ה-MCP עצמו (stdio transport), מאמת ID token פעם אחת, נועל `uid` בסגירה |
 | `src/lib/mcp/agentLoop.ts` | לולאת tool-use משותפת של Claude (`runAgentTurn`, `toAnthropicTools`) — מיועדת לשימוש חוזר ע"י route עתידי |
 | `src/lib/mcp/anthropicClient.ts` | בניית ה-client; DEV=`ANTHROPIC_API_KEY`, PROD=Workload Identity Federation |
-| `src/lib/mcp/config.ts` | `MODEL_ID = "claude-sonnet-5"`, `MAX_TOKENS = 16000` |
+| `src/lib/mcp/config.ts` | `MODEL_ID = "claude-sonnet-5"`, `MAX_TOKENS = 16000`, `RATE_LIMIT_WINDOW_MS`/`RATE_LIMIT_MAX_CALLS` |
 | `src/lib/services/cards.ts` | לוגיקת קריאת כרטיסים בצד שרת (`listCardsForUid`) — משותפת בין MCP tools לעתידיים Server Actions |
+| `src/lib/services/rateLimit.ts` | `checkAndConsumeRateLimit` — fixed-window rate limit פר-uid (`rateLimits/{uid}`) |
 | `src/types/auditLog.ts` | טיפוס רשומת audit log לקריאות tool |
 
 ## האם יש System Prompt?
@@ -38,7 +39,7 @@
 
 ## Tools
 
-כרגע **tool יחיד**: `listCards` (`mcp-server/index.ts:58-75`) — ללא input schema (`z.object({})`), כדי לאכוף מבנית שאין דרך למודל "להעביר" `uid`. מחזיר כרטיסים דרך `listCardsForUid(uid)`, אחרי `serializeCardsForLlm` שמסיר `cvv`/`barcodeOrCode` לפני שהמידע מגיע ל-LLM בכלל.
+כרגע **tool יחיד**: `listCards` (`mcp-server/index.ts`) — ללא input schema (`z.object({})`), כדי לאכוף מבנית שאין דרך למודל "להעביר" `uid`. מחזיר כרטיסים דרך `listCardsForUid(uid)`, אחרי `serializeCardsForLlm` שמסיר `cvv`/`barcodeOrCode` לפני שהמידע מגיע ל-LLM בכלל. רשום דרך `withToolExecution` — wrapper מרוכז שבודק rate limit וכותב audit log; tools עתידיים (שלב 5.4) יירשמו דרכו במקום לשכפל.
 
 סט הכלים המתוכנן המלא (שלב 5.4, טרם מומש): `listCards, getCard, createCard, updateCard, deleteCard, logUsage, deleteUsageEntry, updateBalance, listCardLists, createList, ...` — ראה `docs/ROADMAP.md` שורה 85.
 
@@ -49,7 +50,8 @@
 - **Audit log** — כל קריאת tool נכתבת ל-`auditLog/{entryId}` (`writeAuditLog`), טיפוס `mcp_tool_call`.
 - **הפרדת קרדנציאלים DEV/PROD** — `ANTHROPIC_API_KEY` חייב להיות unset ב-prod (עוקף WIF בשקט אם קיים) — ADR #20.
 - **הנחיה ברמת system prompt נגד הזיה** — לא מנגנון אכיפה, רק הנחיה טקסטואלית.
-- **חסר עדיין**: אין content moderation, אין rate limiting (מתוכנן — שלב 5.3, ADR #21), אין stop sequences, אין allow/deny lists. אישור מפורש לפעולות הרסניות (מחיקה) מתוכנן לשלב 5.4 ולא קיים היום כי אין עדיין tools כותבים.
+- **Rate limiting per-uid** — `rateLimits/{uid}` (fixed window, 30 קריאות/5 דקות), נאכף בתוך `withToolExecution` לפני כל handler; חריגה חוזרת כ-tool error (`isError: true`), לא כשגיאת פרוטוקול. ADR #21 ב-`docs/DECISIONS.md`.
+- **חסר עדיין**: אין content moderation, אין stop sequences, אין allow/deny lists. אישור מפורש לפעולות הרסניות (מחיקה) מתוכנן לשלב 5.4 ולא קיים היום כי אין עדיין tools כותבים.
 
 ## Skills
 

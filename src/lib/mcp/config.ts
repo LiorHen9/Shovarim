@@ -5,3 +5,9 @@
 // the dominant driver of per-question cost.
 export const MODEL_ID = "claude-sonnet-5";
 export const MAX_TOKENS = 16000;
+
+// Fixed-window rate limit per uid, enforced by src/lib/services/rateLimit.ts
+// around every MCP tool call (docs/ROADMAP.md Phase 5.3, docs/DECISIONS.md
+// ADR #21).
+export const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+export const RATE_LIMIT_MAX_CALLS = 30;

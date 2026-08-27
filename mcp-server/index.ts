@@ -11,7 +11,42 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import { adminAuth } from "../src/lib/firebase/adminApp";
 import { listCardsForUid } from "../src/lib/services/cards";
+import { checkAndConsumeRateLimit, RateLimitExceededError } from "../src/lib/services/rateLimit";
 import { writeAuditLog } from "../src/lib/audit/log";
+import type { AuditLogChannel } from "../src/types/auditLog";
+
+type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+
+// Central wrapper every tool handler goes through (docs/ROADMAP.md Phase
+// 5.3): checks the per-uid rate limit before running the handler, and writes
+// exactly one auditLog entry per call either way. A rate-limit rejection is
+// returned as a normal tool error (isError: true) rather than thrown — MCP
+// tool errors are reported back to the model as a tool_result, not a
+// protocol-level failure, so Claude can tell the user to slow down instead of
+// the whole turn crashing.
+async function withToolExecution(
+  { uid, tool, channel }: { uid: string; tool: string; channel: AuditLogChannel },
+  handler: () => Promise<string>
+): Promise<ToolResult> {
+  try {
+    await checkAndConsumeRateLimit(uid);
+  } catch (error) {
+    if (error instanceof RateLimitExceededError) {
+      await writeAuditLog({ uid, eventType: "mcp_tool_call", tool, channel, result: "error" });
+      return { content: [{ type: "text", text: error.message }], isError: true };
+    }
+    throw error;
+  }
+
+  try {
+    const resultText = await handler();
+    await writeAuditLog({ uid, eventType: "mcp_tool_call", tool, channel, result: "success" });
+    return { content: [{ type: "text", text: resultText }] };
+  } catch (error) {
+    await writeAuditLog({ uid, eventType: "mcp_tool_call", tool, channel, result: "error" });
+    throw error;
+  }
+}
 
 // cvv/barcodeOrCode are the two most sensitive fields on a card (see
 // docs/SECURITY.md) and aren't useful for a "list my cards" answer — dropped
@@ -48,18 +83,11 @@ async function main() {
     {
       description: "רשימת כרטיסי המתנה של המשתמש המחובר (בבעלותו או משותפים עמו).",
     },
-    async () => {
-      try {
+    async () =>
+      withToolExecution({ uid, tool: "listCards", channel: "cli" }, async () => {
         const cards = await listCardsForUid(uid);
-        await writeAuditLog({ uid, eventType: "mcp_tool_call", tool: "listCards", channel: "cli", result: "success" });
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(serializeCardsForLlm(cards)) }],
-        };
-      } catch (error) {
-        await writeAuditLog({ uid, eventType: "mcp_tool_call", tool: "listCards", channel: "cli", result: "error" });
-        throw error;
-      }
-    }
+        return JSON.stringify(serializeCardsForLlm(cards));
+      })
   );
 
   const transport = new StdioServerTransport();
