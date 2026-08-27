@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signInWithCustomToken } from "firebase/auth";
 
@@ -16,6 +16,14 @@ import { mintTestCustomToken } from "@/actions/testAuth";
 // mintTestCustomToken() throws outside the emulator, and the check below is
 // a second, client-side guard — see docs/DECISIONS.md #18.
 export default function E2ESignInPage() {
+  return (
+    <Suspense fallback={null}>
+      <E2ESignIn />
+    </Suspense>
+  );
+}
+
+function E2ESignIn() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const ran = useRef(false);
