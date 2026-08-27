@@ -70,10 +70,11 @@ Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production י
 
 ## תשתית E2E (Playwright) ✅ הושלם (2026-08-27)
 - `@playwright/test` (chromium בלבד כרגע) מותקן, `npx playwright test` / `npm run test:e2e`; קונפיג ב-`playwright.config.ts` — `webServer` מריץ `npm run dev` מול Firebase Emulators (`.env.local`), אף פעם לא מול פרויקט אמיתי
-- כניסה אוטומטית ל-E2E ללא Google popup אמיתי (חסום לדפדפנים אוטומטיים): עמוד בדיקה בלבד `src/app/(public)/e2e/sign-in/page.tsx` + Server Action `src/actions/testAuth.ts` (`mintTestCustomToken`, נעול ל-`FIREBASE_USE_EMULATOR=true` בלבד) — עובר באותו נתיב `signInWithCustomToken` → `createSession` כמו כניסה אמיתית. ראו `docs/DECISIONS.md` #18
+- כניסה אוטומטית ל-E2E ללא Google popup אמיתי (חסום לדפדפנים אוטומטיים): עמוד בדיקה בלבד `src/app/(public)/e2e/sign-in/page.tsx` + Server Action `src/actions/testAuth.ts` (`mintTestCustomToken`, נעול ל-`FIREBASE_USE_EMULATOR=true` בלבד) — עובר באותו נתיב `signInWithCustomToken` → `createSession` כמו כניסה אמיתית. ראו `docs/DECISIONS.md` #23
 - כיסוי נוכחי: `tests/e2e/public.spec.ts` (עמוד נחיתה, redirect למי שלא מחובר, terms/privacy), `tests/e2e/dashboard.spec.ts` (dashboard ריק למשתמש חדש), `tests/e2e/cards.spec.ts` (יצירת כרטיס בסיסית מקצה לקצה)
 - CI: `.github/workflows/ci.yml` מתקין chromium (`playwright install --with-deps`) ומריץ `test:rules && test:e2e` יחד בתוך אותו `firebase emulators:exec`; דוח HTML מועלה כ-artifact בכישלון
 - **נשאר**: הרחבת כיסוי לעריכת כרטיס/עדכון יתרה/שיתוף רשימות (ראו ה"נשאר לבדוק ידנית" בפאזות למעלה), ולא מכסה ולא יכול לכסות את ה-popup האמיתי של Google או את ה-URL החי ב-production
+- **תוקן**: `/e2e/sign-in` נכשל בבנייה (`useSearchParams()` בלי Suspense boundary) — תוקן ע"י עטיפה ב-`<Suspense>`, ה-branch מוזג עם `main` העדכני (כולל שלב 5.2) ופתר קונפליקטים ב-`docs/DECISIONS.md` (מספור ADR — E2E הפך ל-#23) וב-`package.json`
 
 ## Phase 4 — Privacy Hardening
 Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Check, security review מקיף, הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים.
@@ -91,7 +92,26 @@ Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Che
 - **קישור ערוץ→משתמש** (WhatsApp/Telegram) — collection חדש (`channelLinks/{channelId}` או שדה ב-`users/{uid}`) שידרוש עדכון `firestore.rules`+`docs/DATA_MODEL.md` בזמן המימוש בפועל (ראו כלל קבוע ב-`CLAUDE.md`). זרימת linking (קוד אימות חד-פעמי מהאפליקציה) לא מתוכננת עדיין ברמת המימוש.
 - **App Check + Secret Manager** — טוקני בוט WhatsApp/Telegram ומפתח Anthropic API כ-`secret:` references, לא plaintext, באותו pattern כמו `FIREBASE_ADMIN_PRIVATE_KEY` ב-`apphosting.yaml`/Cloud Functions config.
 
-**נשאר לבדוק בזמן המימוש**: בחירת ה-runtime ל-MCP server (בתוך Cloud Functions מול תהליך נפרד), ולידציית latency של semantic cache, ו-threat-modeling ממוקד ל-prompt injection על קלט חופשי (ראו הרחבה ב-`docs/SECURITY.md`).
+**נשאר לבדוק בזמן המימוש**: ולידציית latency של semantic cache, ו-threat-modeling ממוקד ל-prompt injection על קלט חופשי (ראו הרחבה ב-`docs/SECURITY.md`). בחירת ה-runtime ל-MCP server הוכרעה לשלב 5.1 (ראו מטה, סוגר ADR #19) — תיבחן מחדש כשמתווספים ערוצי webhook.
+
+### שלב 5.1 — Walking skeleton (tool קריאה יחיד, בביצוע)
+מטרה: להוכיח מקצה לקצה שמודל האבטחה (uid נגזר בצד שרת, שכבת שירות משותפת, audit log) עובד בפועל — לפני בניית כל משטח ה-tools. סוגר את החלטת ה-runtime שנשארה פתוחה למעלה, ADR #19.
+
+- **Runtime**: תהליך Node מקומי (`mcp-server/`, stdio transport) — לא Cloud Function. CLI (`scripts/mcp-cli.ts`) מקבל uid כארגומנט, מנפיק לו custom token דרך Admin SDK (`adminAuth.createCustomToken` — האפליקציה תומכת רק ב-Google, אין נתיב סיסמה ל-CLI לנהוג בו) ומחליף אותו client-side ל-ID token אמיתי, שהשרת מאמת עם `adminAuth.verifyIdToken` ונועל uid בסגירה — לא flag/env קבוע.
+- **Tool יחיד**: `listCards`, סכימת input ריקה (`z.object({})`) — בכוונה, כדי לאכוף מבנית שאין דרך למודל "להעביר" uid.
+- **שכבת שירות חדשה**: `src/lib/services/cards.ts` (`listCardsForUid`) — מקביל בצד Admin SDK ללוגיקת `useCards`/`useCardLists` הקיימת (client-only כרגע). לא extraction מ-Server Action קיים — הקוד השרתי הראשון לקריאת כרטיסים, כדי שגם tools עתידיים וגם Server Actions עתידיים ישתמשו בו במקום לשכפל.
+- **Audit log**: כל קריאת tool נכתבת ל-`auditLog` (`src/types/auditLog.ts` — type חדש, ראה `docs/DATA_MODEL.md`).
+- **נדחה במפורש** (לא נשכח — צעדים הבאים): tools כותבים/הרסניים + אישור מפורש בשיחה, ערוצי WhatsApp/Telegram (`channelLinks`), semantic cache, rate limiting per-uid, App Check/Secret Manager (מספיק `.env.local` ב-dev).
+
+### שלב 5.2 — מודל+עלות+הפרדת קרדיטים DEV/PROD (קוד הושלם 2026-08-27, הקמת Console/apphosting.yaml נשארה ידנית)
+סוגר את ADR #20. `src/lib/mcp/{config,anthropicClient,agentLoop}.ts` (חדשים) — מודל `claude-sonnet-5` (הוחלף מ-`claude-opus-5` הקבוע-קשיח שהיה הגורם המרכזי לעלות ~0.03$/שאלה), prompt caching (`cache_control` על בלוק ה-system, מכסה גם את סכימות ה-tools), compaction (beta) שפותר היסטוריה שגדלה בלי גבול. `agentLoop.ts` מחולץ מ-`scripts/mcp-cli.ts` כדי ש-Route Handler עתידי (שלב 5.4) ישתמש באותה לוגיקה, לא ישכפל. `anthropicClient.ts` מבדיל DEV (`ANTHROPIC_API_KEY` רגיל) מ-PROD (Anthropic-native Workload Identity Federation דרך GCP metadata server — **לא** Firebase, **לא** Vertex AI, ר' ההבהרה ב-ADR #20). `scripts/mcp-cli.ts` עודכן לצרוך את המודולים החדשים; אומת מקצה לקצה מול ה-emulator (tool call, תשובה נכונה, בידוד למשתמש חדש).
+**עדכון (2026-08-27)**: הקמת ה-Console (issuer `gcp-workloads`, service account, federation rule matched על `claims.email`+`claims.sub` של `firebase-app-hosting-compute@shovarim-prod.iam.gserviceaccount.com`) ומילוי 4 המשתנים ב-`apphosting.yaml` הושלמו. **נשאר**: אימות בפועל — ה-token exchange לא ניתן לבדיקה עד ש-`apphosting.yaml` יגיע ל-rollout אמיתי (merge ל-`main`), כי רק אז ה-backend החי קורא בפועל ל-metadata server. לבדוק אחרי rollout: `Claude Console → Settings → Workload identity → history` מראה החלפה מוצלחת, וקריאת Claude אמיתית מ-production מצליחה בלי `ANTHROPIC_API_KEY` מוגדר (ר' `docs/DEPLOYMENT.md`).
+
+### שלב 5.3 — Rate limiting per-uid (מתוכנן, לא בוצע)
+`rateLimits/{uid}` + Firestore transaction, fixed window, מרוכז ב-`withToolExecution` wrapper בתוך `mcp-server/index.ts`. סוגר ADR #21 (מתוכנן).
+
+### שלב 5.4 — צ'אטבוט ב-UI + סט tools מלא (מתוכנן, לא בוצע)
+Route Handler ראשון באפליקציה (`src/app/api/chat/route.ts`, streaming), tools כותבים/הרסניים עם אישור בשיחה, הרחבת שכבת השירות (`src/lib/services/{usage,balance,cardLists}.ts`), הרחבת audit log. סוגר ADR #22 (מתוכנן).
 
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.
