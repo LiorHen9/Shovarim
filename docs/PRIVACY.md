@@ -21,13 +21,12 @@
 `app/(public)/privacy/page.tsx`, `app/(public)/terms/page.tsx` — עמודים סטטיים, גרסתיים. כתובים בעברית וברורים (לא ז'רגון משפטי בלבד — GDPR מחייב שפה נהירה).
 
 ## זכות גישה/ייצוא (Right to Access/Portability)
-Server Action `exportUserData(uid)` (`src/actions/privacy.ts`, Admin SDK) — אוספת את כל המסמכים של המשתמש מכל ה-collections (`users`, `cards` + `usageLog` subcollections, `categories` עם `ownerId==uid`, `consents`) ל-JSON אחד, מוגשת להורדה. Phase 5.
+✅ הושלם (Phase 4.1, 2026-08-27). Server Action `exportUserData()` (`src/actions/privacy.ts`, Admin SDK, ללא פרמטר `uid` — נגזר מה-session) קוראת ל-`buildUserDataExport(uid)` (`src/lib/services/export.ts`) שאוספת `users/{uid}`, `consents/{uid}`, `cardLists`+`members` בבעלות המשתמש, חברויות ברשימות של אחרים, `cards`+`usageLog` בבעלות המשתמש ו-`categories` בבעלות המשתמש ל-JSON אחד. `ExportDataButton` ב-`/settings` מפעילה הורדה בדפדפן. כל קריאה נכתבת ל-`auditLog` (`eventType:"export"`).
 
 ## זכות מחיקה (Right to Erasure)
-זרימה דו-שלבית:
-1. משתמש מבקש מחיקה → נכתב `deletionRequestedAt` ב-`users/{uid}` (הפיכה — ניתן לבטל בחלון ה-grace period, למשל 30 יום).
-2. Cloud Function (scheduled) מוחקת בפועל אחרי חלון ה-grace: כל subcollections, קבצי Storage, ואת משתמש ה-Auth עצמו. הפעולה נכתבת ל-`auditLog` (לפני שהמשתמש נמחק — audit trail נשאר).
-Phase 5.
+✅ הושלם (Phase 4.2, 2026-08-27). זרימה דו-שלבית:
+1. משתמש מבקש מחיקה מ-`/settings` (`DeleteAccountSection`) → Server Action `requestAccountDeletion` (`src/actions/privacy.ts`, Admin SDK, ללא פרמטר `uid`) כותבת `deletionRequestedAt` ב-`users/{uid}` (idempotent — בקשה חוזרת לא דוחה את המועד) וכותבת `auditLog` (`eventType:"deletion_request"`). הפיך לחלוטין דרך `cancelAccountDeletion` (מנקה את השדה, כותבת `deletion_cancelled`) עד שה-Cloud Function רץ. באנר גלובלי לא-חוסם (`DeletionPendingBanner`, בכל עמוד מוגן) וגם כרטיס ב-`/settings` מציגים את התאריך הצפוי ומאפשרים ביטול.
+2. Cloud Function מתוזמן (`functions/src/index.ts`, `deleteExpiredAccounts`, יומי, `firebase-functions/v2/scheduler`) סורק `users` שחלף עליהם חלון grace של **30 יום** (`GRACE_PERIOD_DAYS`) ומוחק בפועל: `cardLists`/`cards` (כולל `members`/`usageLog` subcollections), `categories`, `consents`, מסמכי חברות ברשימות משותפות של אחרים, קבצי Storage, מסמך `users/{uid}`, ולבסוף את משתמש ה-Auth (בסדר הזה, כדי שכשל חלקי לא ישאיר משתמש תקוע). הפעולה נכתבת ל-`auditLog` (`deletion_completed`) לפני שמתחילים למחוק — audit trail נשאר. פרטים מלאים ב-`docs/DECISIONS.md` #24.
 
 ## Data Minimization
 - `barcodeOrCode`, `cvv`, `location`, `acceptingRetailersUrl` — אופציונליים בלבד, לא נאספים אם המשתמש לא מזין.

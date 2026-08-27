@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // functions/ is a separate TypeScript project (its own tsconfig/package.json,
+    // see docs/DECISIONS.md #24) — only its compiled output needs excluding here.
+    "functions/lib/**",
   ]),
 ]);
 

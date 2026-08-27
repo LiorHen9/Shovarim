@@ -129,7 +129,7 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 ```
 
 ## `consents/{uid}`
-GDPR consent tracking.
+`src/types/consent.ts`. GDPR consent tracking.
 ```ts
 {
   uid: string;
@@ -146,7 +146,7 @@ GDPR consent tracking.
 {
   id: string;
   uid: string;                  // המשתמש שביצע את הפעולה
-  eventType: "mcp_tool_call" | "login" | "export" | "deletion_request" | "deletion_completed" | "permission_change";
+  eventType: "mcp_tool_call" | "login" | "export" | "deletion_request" | "deletion_cancelled" | "deletion_completed" | "permission_change";
   tool: string | null;          // שם ה-MCP tool (למשל "listCards"), null לאירועים שאינם tool call
   channel: "cli" | "web" | "whatsapp" | "telegram" | null;
   paramsSummary: string | null; // תקציר פרמטרים ללא סודות (לא cvv/barcodeOrCode/tokens) — לא ה-input הגולמי
@@ -154,7 +154,7 @@ GDPR consent tracking.
   createdAt: Timestamp;
 }
 ```
-Append-only, נכתב רק מ-Admin SDK (Cloud Functions, וכן שרת ה-MCP המקומי ב-`mcp-server/` — ראו `docs/ROADMAP.md` שלב 5.1). `mcp_tool_call` הוא סוג האירוע הראשון שממומש בפועל (Phase 5.1); שאר סוגי האירועים (`login`/`export`/`deletion_*`/`permission_change`) עדיין לא נכתבים על ידי אף קוד קיים — יתווספו בשלבים העתידיים שמפיקים אותם.
+Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`src/lib/audit/log.ts`) — קרויה גם משרת ה-MCP המקומי ב-`mcp-server/` (`mcp_tool_call`, ראו `docs/ROADMAP.md` שלב 5.1) וגם מ-Server Actions ב-`src/actions/` (`export`/`deletion_request`/`deletion_cancelled`, ראו Phase 4.1/4.2). `deletion_completed` נכתב ישירות מ-`functions/src/accountDeletion.ts` (Admin SDK עצמאי, לא דרך `writeAuditLog` המשותפת — ראו `docs/DECISIONS.md` #24 לגבי הפרדת `functions/` מ-`src/`). `login`/`permission_change` עדיין לא נכתבים על ידי אף קוד קיים — יתווספו בשלבים העתידיים שמפיקים אותם.
 
 ## אינדקסים מרוכבים (`firestore.indexes.json`)
 - `cards`: `ownerId ASC, expiryDate ASC` — דוחות "עומד לפוג"

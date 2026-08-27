@@ -5,6 +5,7 @@ export type AuditLogEventType =
   | "login"
   | "export"
   | "deletion_request"
+  | "deletion_cancelled"
   | "deletion_completed"
   | "permission_change";
 

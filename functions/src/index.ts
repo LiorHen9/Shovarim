@@ -1,7 +1,17 @@
-// Cloud Functions entry point. Empty on purpose for Phase 0 — expiry
-// reminders, account deletion and other server-side triggers are added in
-// later phases (see docs/ROADMAP.md) and exported from here.
-//
-// When adding the first real function, call setGlobalOptions({ region: ... })
-// here with the same region chosen for Firestore/App Hosting (see
-// docs/DEPLOYMENT.md) — otherwise functions default to us-central1.
+import { setGlobalOptions } from "firebase-functions/v2";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+
+import { sweepExpiredAccountDeletions } from "./accountDeletion";
+
+// Same region as the App Hosting backend (docs/DEPLOYMENT.md, docs/DECISIONS.md #16)
+// to avoid cross-region latency between Firestore/Storage and Cloud Functions.
+setGlobalOptions({ region: "europe-west4" });
+
+// Right-to-erasure, stage 2 (docs/PRIVACY.md § "זכות מחיקה", docs/DECISIONS.md #24).
+// Runs daily; deleteUserAccount is idempotent-safe per user (a failure just
+// gets retried on the next run since deletionRequestedAt isn't cleared until
+// the user doc itself is deleted).
+export const deleteExpiredAccounts = onSchedule("0 3 * * *", async () => {
+  const { processed, failed } = await sweepExpiredAccountDeletions(new Date());
+  console.log(`Account deletion sweep: ${processed} deleted, ${failed} failed.`);
+});
