@@ -95,6 +95,16 @@ Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Che
 - **Audit log**: כל קריאת tool נכתבת ל-`auditLog` (`src/types/auditLog.ts` — type חדש, ראה `docs/DATA_MODEL.md`).
 - **נדחה במפורש** (לא נשכח — צעדים הבאים): tools כותבים/הרסניים + אישור מפורש בשיחה, ערוצי WhatsApp/Telegram (`channelLinks`), semantic cache, rate limiting per-uid, App Check/Secret Manager (מספיק `.env.local` ב-dev).
 
+### שלב 5.2 — מודל+עלות+הפרדת קרדיטים DEV/PROD (קוד הושלם 2026-08-27, הקמת Console/apphosting.yaml נשארה ידנית)
+סוגר את ADR #20. `src/lib/mcp/{config,anthropicClient,agentLoop}.ts` (חדשים) — מודל `claude-sonnet-5` (הוחלף מ-`claude-opus-5` הקבוע-קשיח שהיה הגורם המרכזי לעלות ~0.03$/שאלה), prompt caching (`cache_control` על בלוק ה-system, מכסה גם את סכימות ה-tools), compaction (beta) שפותר היסטוריה שגדלה בלי גבול. `agentLoop.ts` מחולץ מ-`scripts/mcp-cli.ts` כדי ש-Route Handler עתידי (שלב 5.4) ישתמש באותה לוגיקה, לא ישכפל. `anthropicClient.ts` מבדיל DEV (`ANTHROPIC_API_KEY` רגיל) מ-PROD (Anthropic-native Workload Identity Federation דרך GCP metadata server — **לא** Firebase, **לא** Vertex AI, ר' ההבהרה ב-ADR #20). `scripts/mcp-cli.ts` עודכן לצרוך את המודולים החדשים; אומת מקצה לקצה מול ה-emulator (tool call, תשובה נכונה, בידוד למשתמש חדש).
+**נשאר ידני**: הקמת ה-3 משאבים ב-Claude Console (issuer/service account/federation rule, ר' `docs/DEPLOYMENT.md`), ומילוי 4 המשתנים ב-`apphosting.yaml` בפועל — לא בוצע כחלק מהקוד כי דורש פעולה אינטראקטיבית בקונסולה (billing/IAM), באותו pattern כמו שאר ה-first-deploy runbook.
+
+### שלב 5.3 — Rate limiting per-uid (מתוכנן, לא בוצע)
+`rateLimits/{uid}` + Firestore transaction, fixed window, מרוכז ב-`withToolExecution` wrapper בתוך `mcp-server/index.ts`. סוגר ADR #21 (מתוכנן).
+
+### שלב 5.4 — צ'אטבוט ב-UI + סט tools מלא (מתוכנן, לא בוצע)
+Route Handler ראשון באפליקציה (`src/app/api/chat/route.ts`, streaming), tools כותבים/הרסניים עם אישור בשיחה, הרחבת שכבת השירות (`src/lib/services/{usage,balance,cardLists}.ts`), הרחבת audit log. סוגר ADR #22 (מתוכנן).
+
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.
 (הערה: החלטת ה-hosting/deploy טופלה מוקדם יותר ב-Phase 3.3 — לא כאן, בניגוד למה שנרמז במקור ב-ADR #5.)

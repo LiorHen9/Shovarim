@@ -30,8 +30,22 @@
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | GitHub Actions secret | מזהה תצורה, לא סוד קריטי בפני עצמו |
 | `GCP_SERVICE_ACCOUNT_EMAIL` | GitHub Actions secret | מזהה |
 | `FIREBASE_PROJECT_ID` | GitHub Actions secret | מזהה הפרויקט לפקודת ה-deploy |
+| `ANTHROPIC_FEDERATION_RULE_ID` / `ANTHROPIC_ORGANIZATION_ID` / `ANTHROPIC_SERVICE_ACCOUNT_ID` / `ANTHROPIC_WORKSPACE_ID` | `apphosting.yaml` (plain, לאחר הקמת WIF — ראו למטה) | מזהי קונפיגורציה, לא סוד — אין `ANTHROPIC_API_KEY` בפרודקשן כלל |
 
 אין כרגע secrets ל-FCM/Resend — Phase 4 טרם מומש (ראו `docs/ROADMAP.md`).
+
+## Anthropic Claude API — WIF ל-PROD, מפתח נפרד ל-DEV (ADR #20)
+
+נפרד לגמרי מ-WIF ה-GitHub Actions למעלה — זה על האימות מול ה-Claude API עצמו (platform.claude.com), לא מול GCP. **DEV**: `ANTHROPIC_API_KEY` רגיל ב-`.env.local`, מ-workspace "dev" נפרד ב-Anthropic Console. **PROD**: בלי מפתח סטטי בכלל — App Hosting (שרץ על Cloud Run) ממנפק בעצמו Google-signed identity token מה-service account המחובר אליו, ו-Anthropic מחליף אותו ב-access token זמני. `src/lib/mcp/anthropicClient.ts` בוחר אוטומטית לפי קיום `ANTHROPIC_FEDERATION_RULE_ID`.
+
+**הקמה חד-פעמית (Claude Console, `Settings → Workload identity → Connect workload → Google Cloud`)**:
+1. **Federation issuer**: `issuer_url: https://accounts.google.com`, `jwks: discovery` — לשימוש חוזר, לא ספציפי לפרויקט הזה.
+2. **מציאת ה-service account המחובר ל-backend**: כברירת מחדל `firebase-app-hosting-compute@shovarim-prod.iam.gserviceaccount.com` — לאמת ב-Console. Unique ID: `gcloud iam service-accounts describe SA_EMAIL --format='value(uniqueId)'`.
+3. **Anthropic service account** חדש, חבר ב-workspace **"prod"** נפרד (ולא ה-"dev" הקיים).
+4. **Federation rule**: match על `audience: "https://api.anthropic.com"` + `claims.sub` (numeric unique ID — **לא** `subject_prefix`, ר' אזהרת Anthropic נגד prefix על Google `sub`) + `claims.email`. `oauth_scope: "workspace:inference"` (Messages API בלבד).
+5. להעתיק את `fdrl_...` (federation rule id), `svac_...` (service account id), ה-org UUID, וה-`wrkspc_...` (workspace id) ל-4 המשתנים ב-`apphosting.yaml` (ראו טבלת ה-secrets למעלה) — **בלי** להוסיף `ANTHROPIC_API_KEY` שם בכלל.
+
+**בדיקה אחרי הקמה**: לוודא ב-`Settings → Workload identity → history` ב-Claude Console שהחלפת token מוצלחת מגיעה מ-production, ושקריאת Claude אמיתית מצליחה מה-backend החי בלי `ANTHROPIC_API_KEY` מוגדר.
 
 ## First-deploy runbook (סדר מדויק)
 

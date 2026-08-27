@@ -8,14 +8,15 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, signInWithCustomToken } from "firebase/auth";
 
 import { adminAuth } from "../src/lib/firebase/adminApp";
+import { runAgentTurn, toAnthropicTools } from "../src/lib/mcp/agentLoop";
+import { createAnthropicClient } from "../src/lib/mcp/anthropicClient";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -66,15 +67,6 @@ async function connectMcp(idToken: string): Promise<Client> {
   return client;
 }
 
-async function toAnthropicTools(mcp: Client): Promise<Anthropic.Tool[]> {
-  const { tools } = await mcp.listTools();
-  return tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description ?? "",
-    input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
-  }));
-}
-
 const SYSTEM_PROMPT =
   "אתה עוזר AI לניהול שוברים וכרטיסי מתנה (Shovarim). ענה בעברית. " +
   "השתמש בכלים שברשותך כדי לענות על שאלות לגבי הכרטיסים של המשתמש המחובר בלבד — " +
@@ -84,7 +76,7 @@ async function main() {
   const idToken = await signIn();
   const mcp = await connectMcp(idToken);
   const tools = await toAnthropicTools(mcp);
-  const anthropic = new Anthropic();
+  const client = createAnthropicClient();
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
   process.on("SIGINT", async () => {
@@ -94,48 +86,19 @@ async function main() {
 
   console.log(`מחובר. tools זמינים: ${tools.map((t) => t.name).join(", ")}. Ctrl+C ליציאה.`);
 
-  const messages: Anthropic.MessageParam[] = [];
+  let history: Anthropic.Beta.BetaMessageParam[] = [];
   for (;;) {
     const userInput = await rl.question("> ");
-    messages.push({ role: "user", content: userInput });
-
-    for (;;) {
-      const response = await anthropic.messages.create({
-        model: "claude-opus-5",
-        max_tokens: 16000,
-        system: SYSTEM_PROMPT,
-        tools,
-        messages,
-      });
-
-      messages.push({ role: "assistant", content: response.content });
-
-      for (const block of response.content) {
-        if (block.type === "text") console.log(block.text);
-      }
-
-      if (response.stop_reason !== "tool_use") break;
-
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-      for (const block of response.content) {
-        if (block.type !== "tool_use") continue;
-        const result = (await mcp.callTool({
-          name: block.name,
-          arguments: block.input as Record<string, unknown>,
-        })) as CallToolResult;
-        const text = result.content
-          .filter((c): c is { type: "text"; text: string } => c.type === "text")
-          .map((c) => c.text)
-          .join("\n");
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: text,
-          is_error: Boolean(result.isError),
-        });
-      }
-      messages.push({ role: "user", content: toolResults });
-    }
+    const result = await runAgentTurn({
+      client,
+      mcp,
+      systemPrompt: SYSTEM_PROMPT,
+      tools,
+      history,
+      userMessage: userInput,
+      onText: (text) => console.log(text),
+    });
+    history = result.history;
   }
 }
 
