@@ -21,6 +21,12 @@ jobs:
       NEXT_PUBLIC_FIREBASE_APP_ID: "1:000000000000:web:0000000000000000000000"
       NEXT_PUBLIC_USE_FIREBASE_EMULATOR: "true"
       FIREBASE_USE_EMULATOR: "true"
+      # Dummy AES-256 key so createCard/updateCardDetails/getCardSecrets
+      # (src/lib/crypto/fieldEncryption.ts) don't throw in CI — this is a
+      # fixed value used only to encrypt/decrypt test fixtures against the
+      # emulator, never a real secret (see docs/DEPLOYMENT.md for the real
+      # per-environment key setup).
+      CARD_FIELD_ENCRYPTION_KEY: "DzSypG4OA6dhGFcc1hhTdgZDXj6degkAJ6WO9eVuUQg="
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
