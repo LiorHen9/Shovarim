@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { doc, serverTimestamp, Timestamp, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,27 +16,34 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { TagsInput } from "@/components/ui/TagsInput";
 import { CategorySelect } from "@/components/categories/CategorySelect";
-import { db } from "@/lib/firebase/client";
+import { getCardSecrets, updateCardDetails } from "@/actions/card";
 import { editCardDetailsSchema, type EditCardDetailsInput } from "@/lib/validation/cardEdit";
 import type { GiftCard } from "@/types/card";
 
 export function EditCardDialog({ card, uid }: { card: GiftCard; uid: string }) {
   const [open, setOpen] = useState(false);
+  // cvv/barcodeOrCode are stored encrypted (src/lib/crypto/fieldEncryption.ts)
+  // — `card` (from the live onSnapshot listener) only ever holds ciphertext,
+  // so the plaintext form fields are fetched via getCardSecrets each time the
+  // dialog opens rather than read off the `card` prop.
+  const [secretsLoading, setSecretsLoading] = useState(false);
   const {
     register,
     control,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<EditCardDetailsInput>({
     resolver: zodResolver(editCardDetailsSchema),
     defaultValues: {
       name: card.name,
       expiryDate: card.expiryDate?.toDate() ?? null,
-      barcodeOrCode: card.barcodeOrCode,
-      cvv: card.cvv,
+      barcodeOrCode: null,
+      cvv: null,
       acceptingRetailersUrl: card.acceptingRetailersUrl,
       notes: card.notes,
       categoryId: card.categoryId,
@@ -45,28 +51,55 @@ export function EditCardDialog({ card, uid }: { card: GiftCard; uid: string }) {
     },
   });
 
-  async function onSubmit(values: EditCardDetailsInput) {
-    try {
-      await updateDoc(doc(db, "cards", card.id), {
-        name: values.name,
-        expiryDate: values.expiryDate ? Timestamp.fromDate(values.expiryDate) : null,
-        barcodeOrCode: values.barcodeOrCode,
-        cvv: values.cvv,
-        acceptingRetailersUrl: values.acceptingRetailersUrl,
-        notes: values.notes,
-        categoryId: values.categoryId,
-        tags: values.tags,
-        updatedAt: serverTimestamp(),
-      });
-      toast.success("הכרטיס עודכן");
-      setOpen(false);
-    } catch {
-      toast.error("העדכון נכשל");
+  async function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (!next) return;
+
+    reset({
+      name: card.name,
+      expiryDate: card.expiryDate?.toDate() ?? null,
+      barcodeOrCode: null,
+      cvv: null,
+      acceptingRetailersUrl: card.acceptingRetailersUrl,
+      notes: card.notes,
+      categoryId: card.categoryId,
+      tags: card.tags,
+    });
+
+    setSecretsLoading(true);
+    const result = await getCardSecrets({ cardId: card.id });
+    setSecretsLoading(false);
+    if ("error" in result) {
+      toast.error(result.error);
+      return;
     }
+    reset(
+      {
+        name: card.name,
+        expiryDate: card.expiryDate?.toDate() ?? null,
+        barcodeOrCode: result.barcodeOrCode,
+        cvv: result.cvv,
+        acceptingRetailersUrl: card.acceptingRetailersUrl,
+        notes: card.notes,
+        categoryId: card.categoryId,
+        tags: card.tags,
+      },
+      { keepDefaultValues: false }
+    );
+  }
+
+  async function onSubmit(values: EditCardDetailsInput) {
+    const result = await updateCardDetails({ cardId: card.id, ...values });
+    if ("error" in result) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("הכרטיס עודכן");
+    setOpen(false);
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline">עריכה</Button>
       </DialogTrigger>
@@ -74,6 +107,8 @@ export function EditCardDialog({ card, uid }: { card: GiftCard; uid: string }) {
         <DialogHeader>
           <DialogTitle>עריכת פרטי כרטיס</DialogTitle>
         </DialogHeader>
+        {secretsLoading && <Skeleton className="h-40 w-full" />}
+        {!secretsLoading && (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="edit-name">שם הכרטיס</Label>
@@ -162,6 +197,7 @@ export function EditCardDialog({ card, uid }: { card: GiftCard; uid: string }) {
             </Button>
           </DialogFooter>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );

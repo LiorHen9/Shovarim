@@ -2,6 +2,19 @@ import { z } from "zod";
 
 export const cardStatusSchema = z.enum(["active", "expired", "depleted", "archived"]);
 
+// Firestore-safe document id — no "/" (which firebase-admin's .doc() parses
+// as a path separator, letting a caller nest an arbitrary write into a
+// subcollection under a completely different, unowned document) and no
+// leading/trailing "." Server Actions are directly POST-able with arbitrary
+// payloads (not limited to what the UI sends), so this has to be enforced in
+// the schema, not just relied on as "the client always sends a real id."
+export const firestoreIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[A-Za-z0-9_-]+$/, "מזהה לא תקין");
+
 export const cvvSchema = z
   .string()
   .trim()
@@ -33,8 +46,27 @@ export const createCardSchema = z.object({
 
 export type CreateCardInput = z.infer<typeof createCardSchema>;
 
+// Server Action input for card creation (src/actions/card.ts createCard) —
+// createCardSchema plus the fields the client already resolved before
+// calling the action (cardId generated client-side for the Storage upload
+// path, listId chosen/created by CardForm, cardImageUrl from the completed
+// upload). See docs/DECISIONS.md for why card creation moved server-side.
+export const createCardServerSchema = createCardSchema.extend({
+  cardId: firestoreIdSchema,
+  listId: firestoreIdSchema,
+  cardImageUrl: z.string().trim().nullable(),
+});
+
+export type CreateCardServerInput = z.infer<typeof createCardServerSchema>;
+
 export const deleteCardSchema = z.object({
   cardId: z.string().trim().min(1),
 });
 
 export type DeleteCardInput = z.infer<typeof deleteCardSchema>;
+
+export const cardIdSchema = z.object({
+  cardId: firestoreIdSchema,
+});
+
+export type CardIdInput = z.infer<typeof cardIdSchema>;

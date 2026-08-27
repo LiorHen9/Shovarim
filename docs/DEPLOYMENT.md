@@ -27,6 +27,8 @@
 | `FIREBASE_ADMIN_PROJECT_ID` | `apphosting.yaml` (plain) | לא סוד |
 | `FIREBASE_ADMIN_CLIENT_EMAIL` | `apphosting.yaml` (plain) | לא סוד (מזהה, לא מפתח) |
 | `FIREBASE_ADMIN_PRIVATE_KEY` | Secret Manager, מוזרק דרך `secret:` reference ב-`apphosting.yaml` | **סוד אמיתי** — לעולם לא plaintext |
+| `CARD_FIELD_ENCRYPTION_KEY` | Secret Manager, מוזרק דרך `secret:` reference ב-`apphosting.yaml` | **סוד אמיתי** — מפתח AES-256 להצפנת `cvv`/`barcodeOrCode`, ראו למטה |
+| `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` | `apphosting.yaml` (plain) | לא סוד — מזהה site ל-reCAPTCHA |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | GitHub Actions secret | מזהה תצורה, לא סוד קריטי בפני עצמו |
 | `GCP_SERVICE_ACCOUNT_EMAIL` | GitHub Actions secret | מזהה |
 | `FIREBASE_PROJECT_ID` | GitHub Actions secret | מזהה הפרויקט לפקודת ה-deploy |
@@ -46,6 +48,21 @@
 5. להעתיק את `fdrl_...` (federation rule id), `svac_...` (service account id), ה-org UUID, וה-`wrkspc_...` (workspace id) ל-4 המשתנים ב-`apphosting.yaml` (ראו טבלת ה-secrets למעלה) — **בלי** להוסיף `ANTHROPIC_API_KEY` שם בכלל.
 
 **בדיקה אחרי הקמה**: לוודא ב-`Settings → Workload identity → history` ב-Claude Console שהחלפת token מוצלחת מגיעה מ-production, ושקריאת Claude אמיתית מצליחה מה-backend החי בלי `ANTHROPIC_API_KEY` מוגדר.
+
+## App Check + הצפנת שדות רגישים — הקמה חד-פעמית (Phase 4)
+
+קוד שני הפיצ'רים הושלם (`src/lib/firebase/appCheck.ts`, `src/lib/crypto/fieldEncryption.ts`) — הצעדים הבאים הם הקמת Console/secret שנשארה ידנית, באותו pattern כמו הקמת ה-WIF ל-Anthropic למעלה.
+
+**App Check**:
+1. Firebase Console → App Check → Apps → לבחור את אפליקציית ה-web → Register → provider `reCAPTCHA v3` → ליצור site key חדש ב-[Google reCAPTCHA admin console](https://www.google.com/recaptcha/admin) (v3, לא v2) עבור הדומיין של App Hosting.
+2. להחליף את ה-`REPLACE_ME` של `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` ב-`apphosting.yaml` בערך האמיתי.
+3. **רק אחרי** ש-rollout עם הקוד+ה-site key כבר חי בפרודקשן ומייצר טוקנים תקינים (לוודא ב-Console → App Check → Apps שיש "verified requests" מהאפליקציה) — להפעיל **Enforce** על Firestore ו-Storage (Console → App Check → APIs). לא לפני כן: enforce מוקדם מדי (לפני שלקוחות אמיתיים כבר שולחים טוקן) חוסם את כל הגישה לאפליקציה.
+4. מפתח debug (`NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG=true`, מוגדר כברירת מחדל ב-`.env.local`) משמש רק ב-dev/CI מול emulators — **לעולם לא** ב-`apphosting.yaml`/production.
+
+**הצפנת שדות רגישים** (`cvv`/`barcodeOrCode`):
+1. ליצור מפתח: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — **שונה** מהמפתח שב-`.env.local` (זה ל-dev/emulator בלבד, לא לשימוש בפרודקשן).
+2. `.\Set-AppHosting-CardEncryptionKey.ps1` (אחרי שה-backend כבר קיים, כמו שלב 8 ב-runbook למטה) — ירוץ `apphosting:secrets:set` (יבקש להדביק את המפתח) ואז `grantaccess`.
+3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב.
 
 ## First-deploy runbook (סדר מדויק)
 

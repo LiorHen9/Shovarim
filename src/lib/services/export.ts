@@ -1,6 +1,7 @@
 import type { Timestamp } from "firebase/firestore";
 
 import { adminDb } from "@/lib/firebase/admin";
+import { decryptNullableField } from "@/lib/crypto/fieldEncryption";
 import type { UserProfile, NotificationPrefs } from "@/types/user";
 import type { Consent } from "@/types/consent";
 import type { CardList } from "@/types/cardList";
@@ -99,7 +100,9 @@ export interface UserDataExport {
 // belonging to other users that this uid merely has shared-list read access
 // to. Unlike the MCP tool serialization (mcp-server/index.ts), cvv/
 // barcodeOrCode are included here: this is the user's own data going back to
-// themselves, not data handed to an LLM.
+// themselves, not data handed to an LLM. They're stored encrypted
+// (src/lib/crypto/fieldEncryption.ts) and decrypted below so the exported
+// JSON is human-readable, not ciphertext.
 export async function buildUserDataExport(uid: string): Promise<UserDataExport> {
   const [userSnap, consentSnap, ownedListsSnap, membershipsSnap, ownedCardsSnap, categoriesSnap] =
     await Promise.all([
@@ -191,8 +194,8 @@ export async function buildUserDataExport(uid: string): Promise<UserDataExport> 
         expiryDate: toIso(card.expiryDate),
         purchaseDate: toIso(card.purchaseDate),
         cardImageUrl: card.cardImageUrl,
-        barcodeOrCode: card.barcodeOrCode,
-        cvv: card.cvv,
+        barcodeOrCode: decryptNullableField(card.barcodeOrCode),
+        cvv: decryptNullableField(card.cvv),
         acceptingRetailersUrl: card.acceptingRetailersUrl,
         notes: card.notes,
         status: card.status,

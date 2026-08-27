@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { acceptingRetailersUrlSchema, cvvSchema, notesSchema } from "@/lib/validation/card";
+import { acceptingRetailersUrlSchema, cvvSchema, firestoreIdSchema, notesSchema } from "@/lib/validation/card";
 
 // Deliberately excludes balance/currency: those are changed only via the
 // usage-log transaction (src/actions/usage.ts) or the dedicated manual-balance
@@ -18,3 +18,11 @@ export const editCardDetailsSchema = z.object({
 });
 
 export type EditCardDetailsInput = z.infer<typeof editCardDetailsSchema>;
+
+// Server Action input (src/actions/card.ts updateCardDetails) — same shape
+// plus the cardId being edited.
+export const updateCardDetailsSchema = editCardDetailsSchema.extend({
+  cardId: firestoreIdSchema,
+});
+
+export type UpdateCardDetailsInput = z.infer<typeof updateCardDetailsSchema>;

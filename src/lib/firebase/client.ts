@@ -3,6 +3,8 @@ import { connectAuthEmulator, getAuth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
 
+import { initAppCheck } from "./appCheck";
+
 const firebaseConfig: FirebaseOptions = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -31,5 +33,18 @@ if (useEmulators) {
     connectFirestoreEmulator(db, "127.0.0.1", 8080);
     connectStorageEmulator(storage, "127.0.0.1", 9199);
     g.__shovarimEmulatorsConnected = true;
+  }
+}
+
+// Skipped entirely against emulators: App Check enforcement never applies to
+// emulated Firestore/Storage/Auth, and the debug-token flow still makes a
+// real network call to exchange the token — against the fake "demo-*"
+// project emulators use, that call has nothing real to talk to and just adds
+// startup latency for no benefit. See src/lib/firebase/appCheck.ts.
+if (!useEmulators && typeof window !== "undefined") {
+  const g = globalThis as unknown as { __shovarimAppCheckInitialized?: boolean };
+  if (!g.__shovarimAppCheckInitialized) {
+    initAppCheck(firebaseApp);
+    g.__shovarimAppCheckInitialized = true;
   }
 }

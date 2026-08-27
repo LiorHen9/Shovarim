@@ -90,8 +90,19 @@ Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production י
 
 **נשאר לבדוק ידנית**: הרצת `npm run sweep:account-deletions -- <uid>` על משתמש עם נתונים אמיתיים (כרטיסים/רשימות/יומן שימושים/תמונות) מול ה-emulator, לאימות שה-cascade deletion המלא (Firestore+Storage+Auth) עובד מקצה לקצה — לא ניתן לבדוק את זה אוטומטית ב-Playwright (לא ניתן "לקפוץ" 30 יום, וה-scheduled trigger עצמו לא ניתן לדימוי מהימן ב-Firebase emulators).
 
-### נשאר (מתוכנן, לא בוצע)
-App Check, security review מקיף, הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים.
+### שלב 4.3 — הצפנת שדות רגישים ✅ הושלם (2026-08-27)
+`src/lib/crypto/{fieldEncryptionCore,fieldEncryption}.ts` (AES-256-GCM, מפתח `CARD_FIELD_ENCRYPTION_KEY`) — `cvv`/`barcodeOrCode` מוצפנים לפני כתיבה ל-Firestore ומפוענחים רק על-פי דרישה. יצירה/עריכה של כרטיס (רק שני השדות הרגישים, לא שאר ה-CRUD) עברו מ-client SDK ישיר ל-Server Actions חדשים (`createCard`/`updateCardDetails`/`getCardSecrets` ב-`src/actions/card.ts`) כדי שהמפתח לעולם לא יגיע ל-client — ראו `docs/DECISIONS.md` #25 לפירוט המלא כולל השלכות על `EditCardDialog`/`buildUserDataExport`. סקריפט מיגרציה חד-פעמי אידמפוטנטי: `scripts/migrate-encrypt-sensitive-fields.ts` (`npm run migrate:encrypt-fields`).
+- אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` — 40/40 עוברים ללא שינוי (לא נדרש שינוי ב-`firestore.rules`, תוכן השדה לא נבדק שם).
+
+**נשאר לבדוק ידנית**: הרצת `npm run migrate:encrypt-fields` מול production אמיתי (יש רק דאטה ב-emulator כרגע) + קליק-דרך בדפדפן על יצירת/עריכת כרטיס עם CVV/מספר כרטיס, לאימות שהערך חוזר נכון בעריכה ובייצוא נתונים.
+
+### שלב 4.4 — Firebase App Check ✅ קוד הושלם (2026-08-27), הקמת Console נשארה ידנית
+`src/lib/firebase/appCheck.ts` (reCAPTCHA v3, מאותחל מ-`src/lib/firebase/client.ts`) + מצב debug ל-dev/CI מול emulators (`NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG`, מוגדר כברירת מחדל ב-`.env.local`). ראו `docs/DECISIONS.md` #26.
+**נשאר (Console, ידני)**: רישום site key אמיתי + מילוי `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` ב-`apphosting.yaml` + הפעלת "Enforce" על Firestore/Storage אחרי שיש טוקנים תקינים מפרודקשן — סדר מדויק מתועד ב-`docs/DEPLOYMENT.md`.
+
+### שלב 4.5 — Security review מקיף ✅ הושלם (2026-08-27)
+סקירה עם ה-skill `security-review` (סוכן מבודד, מוגבל לשינויים ב-branch הזה) על שלבים 4.3/4.4 — מצאה פרצה אמיתית: `createCard`/`updateCardDetails`/`getCardSecrets` קיבלו `cardId`/`listId` ללא הגבלת תווים, ומכיוון ש-Server Actions ניתנים לקריאה ישירה עם payload שרירותי (לא רק דרך ה-UI) ו-`firebase-admin`'s `.doc()` מפרש `/` כמפריד path, `cardId` מעוצב כמו `"<victimId>/usageLog/<injected>"` יצר מסמך בתת-אוסף של כרטיס אחר בלי בדיקת בעלות — אומת בפועל מול ה-emulator לפני התיקון. **תוקן**: `firestoreIdSchema` חדש (`src/lib/validation/card.ts`) אוכף `^[A-Za-z0-9_-]+$`. ראו `docs/DECISIONS.md` #25 ו-`docs/SECURITY.md` לפירוט המלא.
+- אימות אחרי התיקון: `typecheck`/`lint`/`build`/`test:rules` (40/40) נקיים, E2E מלא (8/8, כולל טסט הצפנה חדש) עובר במצב serial (תואם ל-worker count של CI).
 
 ## Phase 5 — צ'אטבוט/CLI לשיחה חופשית
 שיחה חופשית בשפה טבעית מעל הנתונים (הוספה/עריכה/מחיקה/שאילתה על כרטיסים, יומן שימושים, יתרות, רשימות), חשוף דרך CLI פנימי לבדיקה ובהמשך WhatsApp/Telegram. סוגר החלטה ארכיטקטונית ב-`docs/DECISIONS.md` ADR #17.
