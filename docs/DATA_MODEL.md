@@ -129,7 +129,7 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 ```
 
 ## `consents/{uid}`
-GDPR consent tracking.
+`src/types/consent.ts`. GDPR consent tracking.
 ```ts
 {
   uid: string;
@@ -154,7 +154,7 @@ GDPR consent tracking.
   createdAt: Timestamp;
 }
 ```
-Append-only, נכתב רק מ-Admin SDK (Cloud Functions, וכן שרת ה-MCP המקומי ב-`mcp-server/` — ראו `docs/ROADMAP.md` שלב 5.1). `mcp_tool_call` הוא סוג האירוע הראשון שממומש בפועל (Phase 5.1); שאר סוגי האירועים (`login`/`export`/`deletion_*`/`permission_change`) עדיין לא נכתבים על ידי אף קוד קיים — יתווספו בשלבים העתידיים שמפיקים אותם.
+Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`src/lib/audit/log.ts`) — קרויה גם משרת ה-MCP המקומי ב-`mcp-server/` (`mcp_tool_call`, ראו `docs/ROADMAP.md` שלב 5.1) וגם מ-Server Actions ב-`src/actions/` (`export`, ראו Phase 4.1). שאר סוגי האירועים (`login`/`deletion_*`/`permission_change`) עדיין לא נכתבים על ידי אף קוד קיים — יתווספו בשלבים העתידיים שמפיקים אותם.
 
 ## אינדקסים מרוכבים (`firestore.indexes.json`)
 - `cards`: `ownerId ASC, expiryDate ASC` — דוחות "עומד לפוג"

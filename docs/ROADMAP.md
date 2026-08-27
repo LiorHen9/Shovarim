@@ -77,7 +77,15 @@ Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production י
 - **תוקן**: `/e2e/sign-in` נכשל בבנייה (`useSearchParams()` בלי Suspense boundary) — תוקן ע"י עטיפה ב-`<Suspense>`, ה-branch מוזג עם `main` העדכני (כולל שלב 5.2) ופתר קונפליקטים ב-`docs/DECISIONS.md` (מספור ADR — E2E הפך ל-#23) וב-`package.json`
 
 ## Phase 4 — Privacy Hardening
-Export מלא, מחיקת חשבון מלאה (grace period), audit log, App Check, security review מקיף, הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים.
+
+### שלב 4.1 — ייצוא נתונים (Right to Access/Portability) ✅ הושלם (2026-08-27)
+`src/lib/services/export.ts` (`buildUserDataExport(uid)`) — אוסף `users/{uid}`, `consents/{uid}`, `cardLists` בבעלות המשתמש (כולל `members` subcollection), חברויות ברשימות של אחרים (`members` collection-group על `memberUid`), `cards` בבעלות המשתמש (כולל `usageLog` subcollection) ו-`categories` בבעלות המשתמש, ל-JSON אחד עם timestamps כ-ISO strings. Server Action `exportUserData` (`src/actions/privacy.ts`, ללא פרמטר `uid` — נגזר מה-session בלבד) כותבת `auditLog` עם `eventType:"export"`. `ExportDataButton` (`src/components/settings/ExportDataButton.tsx`) ב-`/settings` מפעילה הורדת קובץ בדפדפן. בשונה מסריאליזציה ל-LLM (`mcp-server/index.ts`), `cvv`/`barcodeOrCode` **כן** נכללים — זה המידע האישי של המשתמש חוזר אליו, לא נחשף למודל.
+- **שכבת audit log משותפת**: `src/lib/audit/log.ts` (`writeAuditLog`) חולצה מ-`mcp-server/index.ts` (שהשתמשה בה בעצמה קודם רק ל-`mcp_tool_call`) כדי ששני הנתיבים (Server Actions, MCP) יכתבו באותו פורמט.
+- **טווח מכוון**: לא כולל את הנתונים של כרטיסים/רשומות שימוש ברשימות משותפות שהמשתמש רק צופה/מנהל בהן (אלה נתוני משתמש אחר, לא שלו) — ראו הבחנה דומה ב-`docs/SECURITY.md`.
+- אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` — 40/40 עוברים ללא שינוי (לא נדרש שינוי ב-`firestore.rules`, הכל דרך Admin SDK). E2E חדש: `tests/e2e/settings.spec.ts` (יצירת כרטיס → ייצוא → אימות תוכן הקובץ שהורד) — עבר מול ה-emulator.
+
+### נשאר (מתוכנן, לא בוצע)
+מחיקת חשבון מלאה (grace period), App Check, security review מקיף, הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים.
 
 ## Phase 5 — צ'אטבוט/CLI לשיחה חופשית
 שיחה חופשית בשפה טבעית מעל הנתונים (הוספה/עריכה/מחיקה/שאילתה על כרטיסים, יומן שימושים, יתרות, רשימות), חשוף דרך CLI פנימי לבדיקה ובהמשך WhatsApp/Telegram. סוגר החלטה ארכיטקטונית ב-`docs/DECISIONS.md` ADR #17.

@@ -21,7 +21,7 @@
 `app/(public)/privacy/page.tsx`, `app/(public)/terms/page.tsx` — עמודים סטטיים, גרסתיים. כתובים בעברית וברורים (לא ז'רגון משפטי בלבד — GDPR מחייב שפה נהירה).
 
 ## זכות גישה/ייצוא (Right to Access/Portability)
-Server Action `exportUserData(uid)` (`src/actions/privacy.ts`, Admin SDK) — אוספת את כל המסמכים של המשתמש מכל ה-collections (`users`, `cards` + `usageLog` subcollections, `categories` עם `ownerId==uid`, `consents`) ל-JSON אחד, מוגשת להורדה. Phase 5.
+✅ הושלם (Phase 4.1, 2026-08-27). Server Action `exportUserData()` (`src/actions/privacy.ts`, Admin SDK, ללא פרמטר `uid` — נגזר מה-session) קוראת ל-`buildUserDataExport(uid)` (`src/lib/services/export.ts`) שאוספת `users/{uid}`, `consents/{uid}`, `cardLists`+`members` בבעלות המשתמש, חברויות ברשימות של אחרים, `cards`+`usageLog` בבעלות המשתמש ו-`categories` בבעלות המשתמש ל-JSON אחד. `ExportDataButton` ב-`/settings` מפעילה הורדה בדפדפן. כל קריאה נכתבת ל-`auditLog` (`eventType:"export"`).
 
 ## זכות מחיקה (Right to Erasure)
 זרימה דו-שלבית:

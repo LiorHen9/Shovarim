@@ -6,24 +6,12 @@
 // token and closed over below. It is never a tool input parameter — see
 // docs/SECURITY.md and docs/DECISIONS.md ADR #17: an LLM must have no channel
 // to influence which uid a tool call runs as.
-import { FieldValue } from "firebase-admin/firestore";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { adminAuth, adminDb } from "../src/lib/firebase/adminApp";
+import { adminAuth } from "../src/lib/firebase/adminApp";
 import { listCardsForUid } from "../src/lib/services/cards";
-
-async function writeAuditLog(uid: string, tool: string, result: "success" | "error") {
-  await adminDb.collection("auditLog").add({
-    uid,
-    eventType: "mcp_tool_call",
-    tool,
-    channel: "cli",
-    paramsSummary: null,
-    result,
-    createdAt: FieldValue.serverTimestamp(),
-  });
-}
+import { writeAuditLog } from "../src/lib/audit/log";
 
 // cvv/barcodeOrCode are the two most sensitive fields on a card (see
 // docs/SECURITY.md) and aren't useful for a "list my cards" answer — dropped
@@ -63,12 +51,12 @@ async function main() {
     async () => {
       try {
         const cards = await listCardsForUid(uid);
-        await writeAuditLog(uid, "listCards", "success");
+        await writeAuditLog({ uid, eventType: "mcp_tool_call", tool: "listCards", channel: "cli", result: "success" });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(serializeCardsForLlm(cards)) }],
         };
       } catch (error) {
-        await writeAuditLog(uid, "listCards", "error");
+        await writeAuditLog({ uid, eventType: "mcp_tool_call", tool: "listCards", channel: "cli", result: "error" });
         throw error;
       }
     }
