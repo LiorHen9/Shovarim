@@ -55,3 +55,26 @@ env:
   - variable: FIREBASE_ADMIN_PRIVATE_KEY
     secret: firebase-admin-private-key
     availability: [BUILD, RUNTIME]
+
+  # Anthropic Claude API — production authenticates via Workload Identity
+  # Federation (src/lib/mcp/anthropicClient.ts, docs/DECISIONS.md ADR #20),
+  # not a static ANTHROPIC_API_KEY. These are configuration IDs, not
+  # secrets — the actual credential is a short-lived token minted at request
+  # time from this backend's own attached GCP service account. RUNTIME only:
+  # createAnthropicClient() builds the client lazily inside a function call,
+  # not eagerly at module import time like adminApp.ts, so next build never
+  # needs these. Deliberately no ANTHROPIC_API_KEY entry here — the SDK's
+  # credential precedence puts a static key above federation, so adding one
+  # would silently disable WIF.
+  - variable: ANTHROPIC_FEDERATION_RULE_ID
+    value: "fdrl_018ttdqgfnFje2RjNdfmt2h1"
+    availability: [RUNTIME]
+  - variable: ANTHROPIC_ORGANIZATION_ID
+    value: "63d0ff42-6f87-41dc-bbed-0be8d6fd950e"
+    availability: [RUNTIME]
+  - variable: ANTHROPIC_SERVICE_ACCOUNT_ID
+    value: "svac_01VdXZJzaU6NXrcqnEwc1b2Z"
+    availability: [RUNTIME]
+  - variable: ANTHROPIC_WORKSPACE_ID
+    value: "wrkspc_01NNmbmN2Yi3LBEaEzYm8bEr"
+    availability: [RUNTIME]
