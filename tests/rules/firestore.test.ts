@@ -627,6 +627,14 @@ describe("server-managed collections (reminders, auditLog)", () => {
       setDoc(doc(dbA, "auditLog/entry1"), { ownerId: USER_A, event: "login" })
     );
   });
+
+  it("client cannot read or write rateLimits, even their own uid's doc", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, `rateLimits/${USER_A}`), { windowStart: new Date(), count: 1 })
+    );
+    await assertFails(getDoc(doc(dbA, `rateLimits/${USER_A}`)));
+  });
 });
 
 describe("consents", () => {

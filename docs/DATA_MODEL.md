@@ -156,6 +156,16 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 ```
 Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`src/lib/audit/log.ts`) — קרויה גם משרת ה-MCP המקומי ב-`mcp-server/` (`mcp_tool_call`, ראו `docs/ROADMAP.md` שלב 5.1) וגם מ-Server Actions ב-`src/actions/` (`export`/`deletion_request`/`deletion_cancelled`, ראו Phase 4.1/4.2). `deletion_completed` נכתב ישירות מ-`functions/src/accountDeletion.ts` (Admin SDK עצמאי, לא דרך `writeAuditLog` המשותפת — ראו `docs/DECISIONS.md` #24 לגבי הפרדת `functions/` מ-`src/`). `login`/`permission_change` עדיין לא נכתבים על ידי אף קוד קיים — יתווספו בשלבים העתידיים שמפיקים אותם.
 
+## `rateLimits/{uid}`
+`src/lib/services/rateLimit.ts` (אין type ייעודי — נגיש רק דרך `checkAndConsumeRateLimit`, לא נקרא ישירות במקום אחר)
+```ts
+{
+  windowStart: Timestamp;
+  count: number;
+}
+```
+מכסת קריאות tool קבועה (`RATE_LIMIT_MAX_CALLS`/`RATE_LIMIT_WINDOW_MS`, `src/lib/mcp/config.ts`) פר-`uid`, fixed window, נאכפת בתוך `runTransaction` סביב כל קריאת tool דרך ה-wrapper `withToolExecution` ב-`mcp-server/index.ts` (ראו `docs/ROADMAP.md` שלב 5.3, `docs/DECISIONS.md` ADR #21). מסמך פנימי בלבד — נכתב ונקרא רק מ-Admin SDK, `firestore.rules` חוסם קריאה/כתיבה מ-client לגמרי (אין UI שמציג את המכסה כרגע).
+
 ## אינדקסים מרוכבים (`firestore.indexes.json`)
 - `cards`: `ownerId ASC, expiryDate ASC` — דוחות "עומד לפוג"
 - `cards`: `ownerId ASC, status ASC, createdAt DESC` — רשימת כרטיסים לפי סטטוס

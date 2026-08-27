@@ -174,5 +174,12 @@ service cloud.firestore {
       allow read: if isExistingOwner();
       allow write: if false;
     }
+
+    match /rateLimits/{uid} {
+      // Internal MCP tool-execution quota (docs/ROADMAP.md Phase 5.3), read
+      // and written only via the Admin SDK. No UI surfaces this doc, so
+      // unlike auditLog/reminders there's no owner read either.
+      allow read, write: if false;
+    }
   }
 }

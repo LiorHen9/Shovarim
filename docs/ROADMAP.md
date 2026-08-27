@@ -132,8 +132,13 @@ Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production י
 סוגר את ADR #20. `src/lib/mcp/{config,anthropicClient,agentLoop}.ts` (חדשים) — מודל `claude-sonnet-5` (הוחלף מ-`claude-opus-5` הקבוע-קשיח שהיה הגורם המרכזי לעלות ~0.03$/שאלה), prompt caching (`cache_control` על בלוק ה-system, מכסה גם את סכימות ה-tools), compaction (beta) שפותר היסטוריה שגדלה בלי גבול. `agentLoop.ts` מחולץ מ-`scripts/mcp-cli.ts` כדי ש-Route Handler עתידי (שלב 5.4) ישתמש באותה לוגיקה, לא ישכפל. `anthropicClient.ts` מבדיל DEV (`ANTHROPIC_API_KEY` רגיל) מ-PROD (Anthropic-native Workload Identity Federation דרך GCP metadata server — **לא** Firebase, **לא** Vertex AI, ר' ההבהרה ב-ADR #20). `scripts/mcp-cli.ts` עודכן לצרוך את המודולים החדשים; אומת מקצה לקצה מול ה-emulator (tool call, תשובה נכונה, בידוד למשתמש חדש).
 **עדכון (2026-08-27)**: הקמת ה-Console (issuer `gcp-workloads`, service account, federation rule matched על `claims.email`+`claims.sub` של `firebase-app-hosting-compute@shovarim-prod.iam.gserviceaccount.com`) ומילוי 4 המשתנים ב-`apphosting.yaml` הושלמו. **נשאר**: אימות בפועל — ה-token exchange לא ניתן לבדיקה עד ש-`apphosting.yaml` יגיע ל-rollout אמיתי (merge ל-`main`), כי רק אז ה-backend החי קורא בפועל ל-metadata server. לבדוק אחרי rollout: `Claude Console → Settings → Workload identity → history` מראה החלפה מוצלחת, וקריאת Claude אמיתית מ-production מצליחה בלי `ANTHROPIC_API_KEY` מוגדר (ר' `docs/DEPLOYMENT.md`).
 
-### שלב 5.3 — Rate limiting per-uid (מתוכנן, לא בוצע)
-`rateLimits/{uid}` + Firestore transaction, fixed window, מרוכז ב-`withToolExecution` wrapper בתוך `mcp-server/index.ts`. סוגר ADR #21 (מתוכנן).
+### שלב 5.3 — Rate limiting per-uid ✅ הושלם (2026-08-28)
+`rateLimits/{uid}` + Firestore transaction (`checkAndConsumeRateLimit`, `src/lib/services/rateLimit.ts`), fixed window (30 קריאות/5 דקות, `src/lib/mcp/config.ts`), מרוכז ב-`withToolExecution` wrapper חדש בתוך `mcp-server/index.ts` — `listCards` עבר להשתמש בו במקום try/catch ידני. חסימה מוחזרת כ-tool error רגיל (`isError: true`), לא זריקה — `runAgentTurn` הקיים כבר מעביר את זה למודל כ-`tool_result` עם `is_error:true`. `firestore.rules`: `rateLimits/{uid}` חדש עם `allow read, write: if false` מפורש. סוגר ADR #21.
+- אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` — 41/41 עוברים (40 קיימים + טסט חדש ל-`rateLimits`).
+
+אומת ישירות מול ה-emulator: 31 קריאות רצופות ל-`checkAndConsumeRateLimit` על אותו uid — 30 הצליחו, ה-31 נדחתה עם `RateLimitExceededError` ("חרגת ממכסת הבקשות המותרת. נסה שוב בעוד 300 שניות."), מסמך `rateLimits/{uid}` הכיל `count:30` בדיוק.
+
+**נשאר לבדוק ידנית**: הרצת `npm run mcp:cli` בפועל עם 31 קריאות רצופות ל-`listCards` (דורש קריאות Claude אמיתיות), לאימות שההודעה חוזרת דרך המודל בשיחה בפועל ולא מפילה את ה-CLI — הלוגיקה הליבתית (`checkAndConsumeRateLimit`) כן אומתה ישירות למעלה.
 
 ### שלב 5.4 — צ'אטבוט ב-UI + סט tools מלא (מתוכנן, לא בוצע)
 Route Handler ראשון באפליקציה (`src/app/api/chat/route.ts`, streaming), tools כותבים/הרסניים עם אישור בשיחה, הרחבת שכבת השירות (`src/lib/services/{usage,balance,cardLists}.ts`), הרחבת audit log. סוגר ADR #22 (מתוכנן).
