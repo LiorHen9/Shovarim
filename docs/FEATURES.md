@@ -25,7 +25,7 @@
 | מחיקת חשבון מלאה (GDPR) | ⏳ מתוכנן | Phase 4 |
 | App Check | ⏳ מתוכנן | Phase 4 |
 | הצפנת שדות רגישים (מספר כרטיס, CVV) בבסיס הנתונים | ⏳ מתוכנן | Phase 4 |
-| צ'אטבוט/CLI לשיחה חופשית (הוספה/עריכה/מחיקה/שאילתה בשפה טבעית) | ⏳ מתוכנן | Phase 5 — MCP tools, ראו `docs/DECISIONS.md` #17 |
+| צ'אטבוט/CLI לשיחה חופשית (הוספה/עריכה/מחיקה/שאילתה בשפה טבעית) | ✅ הושלם | Phase 5 — עמוד `/chat` + `POST /api/chat` (streaming), 10 MCP tools (קריאה+כתיבה+הרסניים עם אישור בשיחה), `npm run mcp:cli` ל-CLI. ראו `docs/DECISIONS.md` #17, #22 |
 | PWA (installable, offline) | ⏳ מתוכנן | Phase 6 |
 | התראות תפוגה (push/email) | ⏳ מתוכנן | Phase 7 |
 | דוחות וסטטיסטיקות | ⏳ מתוכנן | Phase 8 |

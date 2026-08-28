@@ -17,6 +17,7 @@ import { connectAuthEmulator, getAuth, signInWithCustomToken } from "firebase/au
 import { adminAuth } from "../src/lib/firebase/adminApp";
 import { runAgentTurn, toAnthropicTools } from "../src/lib/mcp/agentLoop";
 import { createAnthropicClient } from "../src/lib/mcp/anthropicClient";
+import { SYSTEM_PROMPT } from "../src/lib/mcp/systemPrompt";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -66,11 +67,6 @@ async function connectMcp(idToken: string): Promise<Client> {
   await client.connect(transport);
   return client;
 }
-
-const SYSTEM_PROMPT =
-  "אתה עוזר AI לניהול שוברים וכרטיסי מתנה (Shovarim). ענה בעברית. " +
-  "השתמש בכלים שברשותך כדי לענות על שאלות לגבי הכרטיסים של המשתמש המחובר בלבד — " +
-  "אין לך גישה לנתונים של משתמשים אחרים, ואל תמציא מידע שלא הוחזר מכלי.";
 
 async function main() {
   const idToken = await signIn();

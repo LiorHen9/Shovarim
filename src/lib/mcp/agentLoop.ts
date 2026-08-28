@@ -33,6 +33,10 @@ export type AgentTurnParams = {
   history: Anthropic.Beta.BetaMessageParam[];
   userMessage: string;
   onText?: (text: string) => void;
+  // Fired right before each tool_use block is executed (docs/ROADMAP.md
+  // Phase 5.4) — lets a caller show "calling tool X" status. Purely
+  // additive/optional: existing callers (scripts/mcp-cli.ts) are unaffected.
+  onToolCall?: (name: string) => void;
 };
 
 export type AgentTurnResult = {
@@ -44,7 +48,7 @@ export type AgentTurnResult = {
 // stops requesting tools. Returns the updated history for the caller to keep
 // across turns - does not mutate the `history` it was given.
 export async function runAgentTurn(params: AgentTurnParams): Promise<AgentTurnResult> {
-  const { client, mcp, systemPrompt, tools, onText } = params;
+  const { client, mcp, systemPrompt, tools, onText, onToolCall } = params;
   const history: Anthropic.Beta.BetaMessageParam[] = [
     ...params.history,
     { role: "user", content: params.userMessage },
@@ -79,6 +83,7 @@ export async function runAgentTurn(params: AgentTurnParams): Promise<AgentTurnRe
     const toolResults: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const block of response.content) {
       if (block.type !== "tool_use") continue;
+      onToolCall?.(block.name);
       const result = (await mcp.callTool({
         name: block.name,
         arguments: block.input as Record<string, unknown>,
