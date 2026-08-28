@@ -38,3 +38,4 @@ Next.js 16 (App Router, React 19, TypeScript strict) + Firebase (Firestore, Auth
 - הוספת auth provider (כמו Apple) → דרך `src/lib/auth/` בלבד (ראה abstraction ב-`authService.ts`/`providers.ts`), ללא שינוי בקוד UI.
 - טפסים חדשים → Zod schema משותף ב-`src/lib/validation/` (client + server), react-hook-form, נגישות מלאה (label מקושר, שגיאות עם `aria-describedby`).
 - **לעולם לא לבצע שינויי קוד ישירות על branch `main`.** לפני כל `Edit`/`Write`, לבדוק `git branch --show-current` — אם זה `main`, לעצור ולהתריע למשתמש שצריך ליצור branch נפרד קודם (ולא ליצור אותו אוטומטית בלי לשאול), ורק אז לבצע את השינוי.
+- **אם נמצאים על `main` — לוודא סנכרון מול remote לפני כל דבר אחר.** להריץ `git fetch origin main` ולהשוות מול `origin/main`. אם ה-`main` המקומי לא מעודכן (יש הבדלים/פיגור), להתריע למשתמש ולשאול אם לבצע `git pull` (לא לבצע אוטומטית בלי לשאול). רק לאחר שה-`main` מעודכן (או שהמשתמש בחר לדלג), להמשיך לבדיקת ה-branch למעלה ולהציע פתיחת branch נפרד לשינוי.
