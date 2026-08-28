@@ -5,7 +5,7 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
 // Fast path only: checks whether a session cookie is present, not whether
 // it's valid. Full verification (adminAuth.verifySessionCookie) happens in
 // app/(protected)/layout.tsx — see docs/ARCHITECTURE.md.
-const PROTECTED_PREFIXES = ["/dashboard", "/cards", "/reports", "/settings"];
+const PROTECTED_PREFIXES = ["/dashboard", "/cards", "/reports", "/settings", "/chat", "/api/chat"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -23,5 +23,12 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/cards/:path*", "/reports/:path*", "/settings/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/cards/:path*",
+    "/reports/:path*",
+    "/settings/:path*",
+    "/chat/:path*",
+    "/api/chat/:path*",
+  ],
 };
