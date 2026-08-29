@@ -61,8 +61,10 @@
 
 **הצפנת שדות רגישים** (`cvv`/`barcodeOrCode`):
 1. ליצור מפתח: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — **שונה** מהמפתח שב-`.env.local` (זה ל-dev/emulator בלבד, לא לשימוש בפרודקשן).
-2. `.\Set-AppHosting-CardEncryptionKey.ps1` (אחרי שה-backend כבר קיים, כמו שלב 8 ב-runbook למטה) — ירוץ `apphosting:secrets:set` (יבקש להדביק את המפתח) ואז `grantaccess`.
-3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב.
+2. `.\Set-AppHosting-CardEncryptionKey.ps1` (אחרי שה-backend כבר קיים, כמו שלב 8 ב-runbook למטה) — ירוץ `apphosting:secrets:set` (יבקש להדביק את המפתח) ואז `grantaccess`. **בוצע בפועל: 2026-08-29** (version 1) — עד אז ה-secret לא היה קיים כלל וכל rollout נכשל, ראו הפוסט-מורטם למטה.
+   - בשאלה `Would you like to add this secret to apphosting.yaml?` לענות **n** — הרשומה כבר קיימת שם מ-PR #14, ותשובת `Y` הייתה מוסיפה כפילות עם `availability: [BUILD, RUNTIME]` במקום ה-`[RUNTIME]` המכוון (המפתח נטען lazily, `next build` לא צריך אותו — ראו ההערה ב-`apphosting.yaml` ואת הפוסט-מורטם של Phase 3.3).
+   - **גיבוי**: המפתח הוא הדבר היחיד שמפענח `cvv`/`barcodeOrCode` בפרודקשן. אובדן/רוטציה שלו הופכים את הערכים המוצפנים (`v1:` prefix) לבלתי ניתנים לשחזור.
+3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב. **טרם הורץ מול production.**
 
 ## First-deploy runbook (סדר מדויק)
 
@@ -135,8 +137,9 @@
 
 9. **Rollout ראשון** — קורה אוטומטית אחרי מיזוג ל-`main`, או ידנית:
    ```powershell
-   npx firebase apphosting:rollouts:create --project shovarim-prod --backend <backend-id>
+   npx firebase apphosting:rollouts:create shovarim-web --project shovarim-prod --git-branch main
    ```
+   `backendId` הוא ארגומנט **פוזיציוני**, לא `--backend` (הגרסה הקודמת של השורה הזו כאן הייתה שגויה ונכשלה עם `error: unknown option '--backend'`). אפשר `--git-commit <sha>` במקום `--git-branch`, ו-`-f` לדילוג על אישור.
 
 ## זרימת deploy שוטפת
 
@@ -144,9 +147,30 @@ Push ל-`main` מפעיל **שני צינורות עצמאיים** באותו ר
 1. App Hosting (Cloud Build, לא GitHub Actions) בונה ופורס את אפליקציית ה-Next.js.
 2. GitHub Actions מריץ quality gate, ואם עובר — פורס Firestore rules/indexes, Storage rules, ו-Functions.
 
+> **אזהרה — שני הצינורות נכשלים בנפרד, ורק אחד מהם מדווח.** GitHub Actions מציג ✅/❌ על ה-PR; כישלון של App Hosting **לא** מופיע שם בכלל. אפשר לראות "כל ה-checks ירוקים" בזמן שהאפליקציה החיה תקועה על build ישן. ראו הפוסט-מורטם למטה (2026-08-29).
+
+## פוסט-מורטם: secret חסר → 4 rollouts כושלים בשקט (2026-08-28/29)
+
+**מה קרה**: PR #14 (Phase 4) הוסיף ל-`apphosting.yaml` הפניה ל-secret `card-field-encryption-key`, אבל שלב ה-`Set-AppHosting-CardEncryptionKey.ps1` מה-runbook מעולם לא הורץ — ה-secret לא נוצר ב-Secret Manager כלל. כל rollout מאז נכשל עם `Misconfigured secret / Error resolving secret version ... versions/latest`.
+
+**למה זה לא נתפס במשך יומיים**: כל ה-GitHub Actions checks המשיכו לעבור (הם לא נוגעים ב-App Hosting), אז ה-PR-ים נראו ירוקים לגמרי. ארבעה merges רצופים (#14, #15, docs, #16) "הצליחו" בזמן שה-URL החי המשיך להגיש את ה-build של #13 מ-2026-08-27 17:45.
+
+**ההשלכה החמורה**: תיקון האבטחה של Phase 4.5 (`firestoreIdSchema`, חוסם path injection ב-`cardId`/`listId` דרך Server Actions — ראו ADR #25) היה בתוך #14, ולכן **לא היה בפרודקשן** מרגע גילויו ועד התיקון כאן. פער בין "מוזג" ל-"פרוס" הוא פער אבטחה אמיתי, לא רק אי-נוחות.
+
+**איך לאבחן** (ה-CLI המותקן מוגבל — אין `apphosting:rollouts:list` בגרסה הזו, ו-`backends:get` מחזיר רק טבלת סיכום בלי מידע על builds):
+```powershell
+npx firebase apphosting:secrets:describe <secret-name> --project shovarim-prod
+```
+404 = ה-secret לא קיים בכלל (צריך `secrets:set`, לא רק `grantaccess` — הודעת השגיאה של App Hosting מציעה `grantaccess` ומטעה במקרה הזה). טבלת versions = קיים, ואז הבעיה היא באמת הרשאות.
+
+**כללים שנגזרים מזה**:
+- כל הוספת `secret:` ל-`apphosting.yaml` חייבת להיות באותו PR עם הרצת `secrets:set`+`grantaccess` בפועל, או לכל הפחות עם בדיקה ידנית של ה-URL החי אחרי המיזוג. **לא להסתמך על ✅ של GitHub Actions כאישור שה-deploy עבר.**
+- אחרי כל merge ל-`main` שמשנה `apphosting.yaml` או מוסיף route חדש — לוודא בפועל מול ה-URL החי (למשל `curl -o /dev/null -w '%{http_code}' <url>/<route-חדש>`; 404 על route שאמור להתקיים = ה-rollout לא עבר).
+- כשמתקנים secret חסר, ה-rollout הכושל **לא מנסה שוב לבד** ואין commit חדש שיפעיל אותו — חייבים `apphosting:rollouts:create` ידני (שלב 9 למעלה).
+
 ## Rollback
 
-- **אפליקציה**: `firebase apphosting:rollouts:list --backend <id>` לראות rollouts קודמים, `firebase apphosting:rollouts:create --git-commit <sha-קודם>` לחזור אליהם.
+- **אפליקציה**: `firebase apphosting:rollouts:create shovarim-web --project shovarim-prod --git-commit <sha-קודם>` (backendId פוזיציוני). שימו לב: ל-CLI המותקן **אין** `apphosting:rollouts:list` — רשימת ה-rollouts הקודמים זמינה רק ב-Firebase Console → App Hosting → Rollouts, או ב-Cloud Build history.
 - **Firestore/Storage rules**: אין פקודת rollback ייעודית — `git checkout <commit-קודם> -- firestore.rules` (או storage.rules) ואז `.\Deploy-Firestore-Rules.ps1`.
 - **Functions**: לחזור ל-commit קודם ולהריץ `.\Deploy-Functions.ps1`.
 
