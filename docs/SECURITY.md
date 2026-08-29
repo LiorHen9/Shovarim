@@ -55,7 +55,17 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 - **הודעות כישלון אחידות בפדיון** — הצד השולח אנונימי, ואסור שיבחין בין "אין קוד" ל-"פג תוקף".
 - **נעילת ה-stand-in לאמולטור**: `src/actions/testChannelLink.ts` פודה קוד **בלי** `requireUid()` — כמו שהוובהוק יעשה — ולכן `FIREBASE_USE_EMULATOR !== "true"` שם הוא חסם אבטחה, לא נוחות בדיקה (אותו pattern כמו `mintTestCustomToken`).
 
-**מה עוד לא קיים ולכן עוד לא מאובטח**: אין webhook. גבול האמון שלו (`X-Hub-Signature-256` על הגוף הגולמי לפני כל פרסור, דדופליקציה של `messageId`, rate limit על turns ולא רק על tool calls) מתוכנן ל-5.5.b ומתועד ב-ADR #29 — עד אז אין נקודת כניסה חיצונית כלל.
+### ה-webhook של WhatsApp (Phase 5.5.b, ADR #30)
+`POST /api/whatsapp/webhook` הוא **ה-endpoint הראשון באפליקציה שנגיש לקורא לא מאומת** — לכל השאר יש session cookie או Firestore Rules מאחוריו. גבול האמון היחיד שלו:
+- **`X-Hub-Signature-256` (HMAC-SHA256 עם `WHATSAPP_APP_SECRET`) על הגוף הגולמי, לפני כל פרסור.** הבדיקה על `request.text()` ולא על JSON שסורסר מחדש — סריאליזציה חוזרת משנה סדר מפתחות ורווחים וה-digest לעולם לא יתאים. השוואה ב-`timingSafeEqual`, עם בדיקת אורך לפניה כדי שכותרת קטומה תיפסל ולא תזרוק. חתימה שגויה/חסרה → 401, בלי שום גישה ל-Firestore.
+- **אחרי החתימה, ה-payload מהימן מבחינה מבנית בלבד — לא מבחינת זהות.** המספר בהודעה עדיין אינו credential, וה-`uid` נגזר מ-`channelLinks` בדיוק כמו קודם.
+- **דדופליקציה לפני עיבוד** (`channelMessages`): retry של Meta לא מריץ פעמיים כלים כותבים. מפתח המסמך הוא hash ולא ה-`wamid` הגולמי, כי `wamid` עשוי להכיל `/` — path injection דרך `.doc()`, אותה מחלקה שנסגרה ב-ADR #25.
+- **rate limit על turns**, ולמספר שאינו מקושר לפי `channelKey` — זהו משטח ניחוש קודי הקישור, ו-12 ניסיונות ל-5 דקות הופכים סריקה של 32^8 לחסרת משמעות גם אם Meta הייתה מוכנה להעביר אותה.
+- **`WHATSAPP_PHONE_NUMBER_ID`** מסנן deliveries של מספרים אחרים תחת אותו Meta app.
+- **fail-closed לפני ההקמה**: בלי `WHATSAPP_APP_SECRET`/`WHATSAPP_VERIFY_TOKEN` ה-endpoint מחזיר 503 ואינו מעבד דבר — כלומר הקוד יכול להיפרס לפרודקשן לפני 5.5.c בלי לפתוח משטח תקיפה.
+- **`src/proxy.ts` לא מגן על `/api/*` ואסור שיגן**: redirect של endpoint JSON לדף HTML שובר את הקוראים שלו (המלכודת מקומיט `ff99bb8`). ההגנה כאן היא החתימה, לא ה-proxy.
+
+**מה שנשאר פתוח**: תוכן ההודעות והתשובות עובר דרך שרתי Meta (ראו `docs/PRIVACY.md`), ואין עדיין מגננה ייעודית ל-prompt injection על טקסט חופשי מעבר להפרדה המבנית של ה-`uid`.
 
 ## Testing
 `@firebase/rules-unit-testing` מול Firestore Emulator (דורש Java מותקן מקומית — ראה `docs/ARCHITECTURE.md`). טסטים נדרשים לפני Phase 1 sign-off:

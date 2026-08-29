@@ -11,6 +11,7 @@ import type { UsageLogEntry } from "@/types/usageLog";
 import type { Category } from "@/types/category";
 import type { ChannelLinkSummary } from "@/types/channelLink";
 import { listChannelLinksForUid } from "@/lib/services/channelLinks";
+import { listChatSessionsForUid, type ExportedChatSession } from "@/lib/services/chatSessions";
 
 function toIso(value: Timestamp | null | undefined): string | null {
   return value ? value.toDate().toISOString() : null;
@@ -100,9 +101,10 @@ export interface UserDataExport {
   // same reason functions/src/accountDeletion.ts queries it separately.
   // Unredeemed link codes are deliberately excluded: they are live bearer
   // credentials, and an export file is exactly the artifact that gets emailed
-  // around. chatSessions is excluded for now because nothing writes it until
-  // 5.5.b — it has to be added here when it does.
+  // around. chatSessions, written since Phase 5.5.b, is included — the
+  // conversation text is the user's own data.
   channelLinks: ChannelLinkSummary[];
+  chatSessions: ExportedChatSession[];
 }
 
 // Right-to-access/portability export (docs/PRIVACY.md, docs/ROADMAP.md Phase
@@ -231,6 +233,7 @@ export async function buildUserDataExport(uid: string): Promise<UserDataExport> 
 
   const categories = categoriesSnap.docs.map((doc) => doc.data() as Category);
   const channelLinks = await listChannelLinksForUid(uid);
+  const chatSessions = await listChatSessionsForUid(uid);
 
   return {
     exportedAt: new Date().toISOString(),
@@ -241,5 +244,6 @@ export async function buildUserDataExport(uid: string): Promise<UserDataExport> 
     cards,
     categories,
     channelLinks,
+    chatSessions,
   };
 }

@@ -156,15 +156,21 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 ```
 Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`src/lib/audit/log.ts`) — קרויה גם משרת ה-MCP המקומי ב-`mcp-server/` (`mcp_tool_call`, ראו `docs/ROADMAP.md` שלב 5.1) וגם מ-Server Actions ב-`src/actions/` (`export`/`deletion_request`/`deletion_cancelled`, ראו Phase 4.1/4.2). `deletion_completed` נכתב ישירות מ-`functions/src/accountDeletion.ts` (Admin SDK עצמאי, לא דרך `writeAuditLog` המשותפת — ראו `docs/DECISIONS.md` #24 לגבי הפרדת `functions/` מ-`src/`). `channel_linked`/`channel_unlinked` נכתבים מ-`src/lib/services/channelLinks.ts` (Phase 5.5) — בשירות ולא ב-Server Action, כי `redeemLinkCode` נקרא גם מה-webhook שאינו עובר דרך `src/actions/`. `paramsSummary` שם הוא ה-`channelKey`, כלומר **כולל מספר טלפון** — ראו `docs/PRIVACY.md`. `login`/`permission_change` עדיין לא נכתבים על ידי אף קוד קיים — יתווספו בשלבים העתידיים שמפיקים אותם.
 
-## `rateLimits/{uid}`
+## `rateLimits/{subjectId}`
 `src/lib/services/rateLimit.ts` (אין type ייעודי — נגיש רק דרך `checkAndConsumeRateLimit`, לא נקרא ישירות במקום אחר)
 ```ts
 {
-  windowStart: Timestamp;
-  count: number;
+  tools?: { windowStart: Timestamp; count: number };
+  turns?: { windowStart: Timestamp; count: number };
 }
 ```
-מכסת קריאות tool קבועה (`RATE_LIMIT_MAX_CALLS`/`RATE_LIMIT_WINDOW_MS`, `src/lib/mcp/config.ts`) פר-`uid`, fixed window, נאכפת בתוך `runTransaction` סביב כל קריאת tool דרך ה-wrapper `withToolExecution` ב-`mcp-server/index.ts` (ראו `docs/ROADMAP.md` שלב 5.3, `docs/DECISIONS.md` ADR #21). מסמך פנימי בלבד — נכתב ונקרא רק מ-Admin SDK, `firestore.rules` חוסם קריאה/כתיבה מ-client לגמרי (אין UI שמציג את המכסה כרגע).
+מכסות fixed-window (`RATE_LIMITS`, `src/lib/mcp/config.ts`), נאכפות בתוך `runTransaction` (ראו `docs/ROADMAP.md` שלב 5.3/5.5.b, `docs/DECISIONS.md` ADR #21/#30). שני buckets בלתי-תלויים על אותו מסמך:
+- **`tools`** (30 ל-5 דקות) — נצרך על כל קריאת tool ב-`withToolExecution` (`src/lib/mcp/mcpServer.ts`).
+- **`turns`** (12 ל-5 דקות) — נצרך על כל הודעה נכנסת בערוץ webhook (`handleInboundChannelMessage`), גם כשלא נקרא אף tool. סוגר את הפער שבו שיחת טקסט ארוכה בלי קריאות tool לא הייתה מוגבלת בכלל.
+
+**`subjectId` הוא `uid` בכל מסלול מאומת**, למעט הודעה נכנסת ממספר שעדיין לא מקושר — שם אין uid לחייב, ודווקא ההודעות האלה הן משטח הניחוש של קודי הקישור, ולכן הן מוגבלות לפי `channelKey`. מסמכים שנכתבו לפני 5.5.b (עם `windowStart`/`count` בשורש) נקראים פשוט כ"אין עדיין bucket" — לא נדרשה מיגרציה למכסה שפגה ממילא כל 5 דקות.
+
+מסמך פנימי בלבד — נכתב ונקרא רק מ-Admin SDK, `firestore.rules` חוסם קריאה/כתיבה מ-client לגמרי (אין UI שמציג את המכסה).
 
 ## `channelLinks/{channelKey}`
 `src/types/channelLink.ts`, נגיש דרך `src/lib/services/channelLinks.ts`
@@ -205,16 +211,37 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 מומלץ להגדיר **TTL policy** על `expiresAt` (Firestore → TTL) כדי שמסמכים פגי-תוקף יימחקו אוטומטית; הלוגיקה לא נשענת על זה (קוד פג נדחה בקוד גם אם המסמך עדיין קיים) — זו היגיינת אחסון בלבד.
 
 ## `chatSessions/{channelKey}`
-מוגדר כאן ובכללים כבר עכשיו; ייכתב בפועל בשלב 5.5.b (ה-webhook).
+`src/types/channelLink.ts`, נגיש דרך `src/lib/services/chatSessions.ts` (נכתב מ-5.5.b)
 ```ts
 {
   channelKey: string;
   uid: string;
-  history: unknown[];   // BetaMessageParam[] מסוריאליז (Anthropic SDK)
+  history: string;      // JSON של BetaMessageParam[] (Anthropic SDK)
   updatedAt: Timestamp;
 }
 ```
-היסטוריית שיחה בצד שרת, נדרשת רק לערוצים שאין להם לקוח שיחזיק אותה. בווב ההיסטוריה נשמרת ב-state של הדפדפן ונשלחת מלאה בכל בקשה (`docs/DECISIONS.md` ADR #22) — ב-WhatsApp אין מקבילה. מכיל טקסט הודעות מלא, כלומר PII פיננסי בפרוזה חופשית; ראו `docs/PRIVACY.md`. מיועד ל-TTL קצר (24 שעות מאי-פעילות) כדי לא לצבור PII לנצח.
+היסטוריית שיחה בצד שרת, נדרשת רק לערוצים שאין להם לקוח שיחזיק אותה. בווב ההיסטוריה נשמרת ב-state של הדפדפן ונשלחת מלאה בכל בקשה (`docs/DECISIONS.md` ADR #22) — ב-WhatsApp אין מקבילה. מכיל טקסט הודעות מלא, כלומר PII פיננסי בפרוזה חופשית; ראו `docs/PRIVACY.md`.
+
+**`history` הוא מחרוזת JSON ולא מערך** (שינוי מול הסכימה שנרשמה כאן ב-5.5.a): `BetaMessageParam[]` הוא מבנה של ה-SDK שלא נכתב על ידינו — הוא מכיל שדות `undefined` (ש-Firestore זורק עליהם) וייצוגים מקוננים שעלולים להיתקל באיסור על מערך בתוך מערך. סריאליזציה אחת ל-JSON מבטיחה round-trip זהה לביט ומנתקת את הסכימה ב-Firestore מגרסת ה-SDK.
+
+**גבולות שמירה** (`src/lib/services/chatSessions.ts`): שיחה שלא נגעו בה 24 שעות נטענת כריקה (תואם גם את חלון השירות של WhatsApp), והיסטוריה שעוברת ~200KB נגזמת מההתחלה — תמיד עד גבול של הודעת משתמש אמיתית, אף פעם לא באמצע צמד `tool_use`/`tool_result` (גזימה כזו הייתה מייצרת בקשה לא חוקית ל-API). מומלץ להגדיר **TTL policy** על `updatedAt` כדי שהמסמכים יימחקו בפועל ולא רק יתאפסו לוגית.
+
+## `channelMessages/{claimId}`
+`src/lib/services/channelMessages.ts` (אין type ייעודי — נגיש רק דרך `claimInboundMessage`)
+```ts
+{
+  channelKey: string;
+  messageId: string;    // מזהה ההודעה הגולמי של הספק (wamid), לדיבוג
+  receivedAt: Timestamp;
+}
+```
+תביעת דדופליקציה להודעה נכנסת (Phase 5.5.b). **עצם קיום המסמך** הוא המנגנון: `claimInboundMessage` משתמש ב-`create()`, שנכשל ב-`ALREADY_EXISTS` אם ההודעה כבר טופלה, ולכן retry של Meta (שקורה על כל timeout או 5xx) הופך ל-no-op במקום לחייב קריאת LLM נוספת ולהריץ פעמיים כלים כותבים.
+
+ה-doc id הוא `sha256("<channelKey> <messageId>")` ו**לא** ה-`messageId` עצמו: `wamid` הוא base64-ish ועשוי להכיל `/`, ש-`.doc()` של firebase-admin מפרש כמפריד path — בדיוק מחלקת ה-path injection שתוקנה ב-ADR #25. hash נותן מרחב תווים ואורך קבועים ונשאר דטרמיניסטי, וזה כל מה שנדרש ממפתח דדופליקציה.
+
+התביעה נעשית **לפני** העיבוד ולא אחריו: ריצה כפולה של `logUsage`/`deleteCard` גרועה יותר מתשובה שאבדה. המחיר המכוון — אם העיבוד נכשל באמצע, ה-retry לא ינסה שוב והמשתמש לא יקבל מענה להודעה הזו (ישלח שוב).
+
+מסמך פנימי בלבד: `firestore.rules` חוסם קריאה/כתיבה מ-client לחלוטין — לקוח שיכול היה ליצור מסמך כזה מראש היה משתיק את הבוט להודעה מסוימת. מומלץ TTL policy על `receivedAt` (המסמכים חסרי ערך אחרי חלון ה-retry של Meta).
 
 ## אינדקסים מרוכבים (`firestore.indexes.json`)
 - `cards`: `ownerId ASC, expiryDate ASC` — דוחות "עומד לפוג"

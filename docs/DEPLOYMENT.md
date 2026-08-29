@@ -81,7 +81,9 @@
 
 ## ערוץ WhatsApp — הקמה חד-פעמית (Phase 5.5.c) — ⏳ טרם בוצע
 
-**סטטוס: אין עדיין Meta app, אין מספר, ואין webhook בקוד.** שלב 5.5.a סיפק רק את תשתית הקישור באפליקציה (`docs/DECISIONS.md` ADR #29, `docs/CHATBOT.md`). הסעיף הזה נכתב מראש כדי שהתלויות יהיו ידועות לפני שמתחילים ב-5.5.b — **אין להתחיל בהקמה לפני שהוובהוק קיים בקוד**, אחרת יש מספר חי שאף אחד לא עונה בו.
+**סטטוס: הקוד מוכן (5.5.b הושלם 2026-08-29), ההקמה מול Meta לא בוצעה.** ה-webhook קיים ב-`src/app/api/whatsapp/webhook/route.ts` ומחזיר **503** כל עוד `WHATSAPP_APP_SECRET`/`WHATSAPP_VERIFY_TOKEN` ריקים — כלומר הוא כבר בפרודקשן ולא פתוח כמשטח תקיפה (ADR #30). התנאי שנכתב כאן מראש ("אין להתחיל בהקמה לפני שהוובהוק קיים בקוד") **מתקיים עכשיו**, ואפשר לבצע את הצעדים הבאים.
+
+**לפני שנוגעים ב-Meta**: `npm run whatsapp:sim -- code <uid>` ואז `npm run whatsapp:sim -- send <phone> <text>` מריצים את אותו קוד בדיוק מול ה-emulator, בלי ספק חיצוני — הדרך המהירה לוודא שהצד שלנו תקין לפני שמאשימים את ההקמה.
 
 ### תלויות שאתה צריך לספק (ידני, Meta for Developers)
 1. **Meta app** (סוג Business) + **WhatsApp Business Account** מקושר אליו.
@@ -101,9 +103,12 @@
 | `WHATSAPP_APP_SECRET` | `secret:` | לאימות `X-Hub-Signature-256` |
 | `WHATSAPP_ACCESS_TOKEN` | `secret:` | permanent token לשליחה דרך Graph API |
 | `WHATSAPP_VERIFY_TOKEN` | `secret:` | מחרוזת אקראית שאנחנו בוחרים, ל-handshake של ה-`GET` |
-| `WHATSAPP_PHONE_NUMBER_ID` | plain | מזהה, לא חומר סוד |
+| `WHATSAPP_PHONE_NUMBER_ID` | plain | מזהה, לא חומר סוד. גם מסנן deliveries של מספרים אחרים תחת אותו Meta app |
 
-- כולם `availability: [RUNTIME]` **בלבד** — נקראים lazily בתוך ה-handler, `next build` לא צריך אותם (בניגוד ל-`adminApp.ts`; ראו ההערה ב-`apphosting.yaml`).
+- **`apphosting.yaml` עדיין לא מכיל אף אחד מהם** — בכוונה. 5.5.b נמנע מלהוסיף רשומות `secret:` בלי להזריק את הסודות בפועל, בדיוק בגלל האזהרה שמתחת. הוספתם היא חלק מ-5.5.c, באותו PR עם `secrets:set`+`grantaccess`.
+- כולם `availability: [RUNTIME]` **בלבד** — נקראים lazily בתוך ה-handler (`src/lib/whatsapp/config.ts`), `next build` לא צריך אותם (בניגוד ל-`adminApp.ts`; ראו ההערה ב-`apphosting.yaml`).
+- אפשר גם `WHATSAPP_GRAPH_BASE_URL` (plain, אופציונלי) כדי לנעוץ גרסת Graph אחרת. ברירת המחדל בקוד היא `https://graph.facebook.com/v23.0` — **לאמת בקונסולה שהגרסה עדיין נתמכת** בזמן ההקמה.
+- ב-CI וב-`.env.local` מוגדרים `WHATSAPP_APP_SECRET`/`WHATSAPP_VERIFY_TOKEN` דמה קבועים, כדי ש-`tests/e2e/whatsapp.spec.ts` יוכל לחתום delivery כמו Meta. הסודות היוצאים (`ACCESS_TOKEN`/`PHONE_NUMBER_ID`) **לא** מוגדרים שם, ולכן שליחת התשובה מדלגת עם warning במקום לפנות ל-`graph.facebook.com` מתוך בדיקות.
 - ⚠️ **כל הוספת `secret:` חייבת להיות באותו PR עם הרצת `secrets:set`+`grantaccess` בפועל** — אחרת ה-rollout נכשל ולא מנסה שוב לבד. זו בדיוק התקלה שהפילה את הפרודקשן ליומיים ב-Phase 4.3, ראו הפוסט-מורטם למטה.
 
 ## First-deploy runbook (סדר מדויק)

@@ -12,6 +12,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import { adminDb } from "../firebase/adminApp";
 import { ActionError } from "../actions/errorsCore";
 import { writeAuditLog } from "../audit/log";
+import { deleteChannelHistory } from "./chatSessions";
 import { LINK_CODE_ALPHABET, LINK_CODE_LENGTH } from "../validation/channelLink";
 import type {
   ChannelKind,
@@ -141,6 +142,12 @@ export async function redeemLinkCode(
     return { uid: codeDoc.uid, linkedAt: now.toDate().toISOString() };
   });
 
+  // Re-linking may hand this number to a different account, so any earlier
+  // conversation on it is dropped. loadChannelHistory also refuses a session
+  // whose uid no longer matches — belt and braces, since this is a data leak
+  // if it ever goes wrong.
+  await deleteChannelHistory(channelKey);
+
   await writeAuditLog({
     uid: link.uid,
     eventType: "channel_linked",
@@ -170,6 +177,15 @@ export async function resolveUidForChannel(
   return (snap.data() as ChannelLink).uid;
 }
 
+// Best-effort activity stamp for the "last message" column in /settings
+// (Phase 5.5.b). update() rather than set(): if the link was removed between
+// the resolve and here, the message stays unanswered — it must not resurrect
+// the link document.
+export async function touchChannelLink(channel: ChannelKind, externalId: string): Promise<void> {
+  const ref = adminDb.collection(LINKS).doc(buildChannelKey(channel, externalId));
+  await ref.update({ lastMessageAt: Timestamp.now() }).catch(() => {});
+}
+
 // Sorted in memory (see docs/DATA_MODEL.md) — a user has a single-digit number
 // of channels, and orderBy would cost a composite index.
 export async function listChannelLinksForUid(uid: string): Promise<ChannelLinkSummary[]> {
@@ -191,6 +207,10 @@ export async function unlinkChannel(uid: string, channelKey: string): Promise<vo
   if (link.uid !== uid) throw new ActionError("הערוץ אינו מקושר");
 
   await ref.delete();
+  // The conversation is part of the link, not something that survives it
+  // (Phase 5.5.b) — leaving it behind would hand the next person to link this
+  // number the previous owner's transcript.
+  await deleteChannelHistory(channelKey);
   await writeAuditLog({
     uid,
     eventType: "channel_unlinked",

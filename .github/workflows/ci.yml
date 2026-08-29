@@ -27,6 +27,14 @@ jobs:
       # emulator, never a real secret (see docs/DEPLOYMENT.md for the real
       # per-environment key setup).
       CARD_FIELD_ENCRYPTION_KEY: "DzSypG4OA6dhGFcc1hhTdgZDXj6degkAJ6WO9eVuUQg="
+      # Fixed dummy values so tests/e2e/whatsapp.spec.ts can sign a webhook
+      # delivery the way Meta would (docs/ROADMAP.md Phase 5.5.b). The real
+      # ones are Secret Manager references in apphosting.yaml and never appear
+      # here. WHATSAPP_ACCESS_TOKEN/PHONE_NUMBER_ID stay unset on purpose:
+      # without outbound credentials the handler logs the reply instead of
+      # calling graph.facebook.com from CI.
+      WHATSAPP_APP_SECRET: e2e-local-app-secret
+      WHATSAPP_VERIFY_TOKEN: e2e-local-verify-token
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
