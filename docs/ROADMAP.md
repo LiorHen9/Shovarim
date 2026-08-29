@@ -102,7 +102,7 @@ Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production י
 `src/lib/firebase/appCheck.ts` (מאותחל מ-`src/lib/firebase/client.ts`) + מצב debug ל-dev/CI מול emulators (`NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG`, מוגדר כברירת מחדל ב-`.env.local`). ראו `docs/DECISIONS.md` #26. **עודכן 2026-08-29**: ה-provider הוחלף מ-reCAPTCHA v3 קלאסי ל-**reCAPTCHA Enterprise** (`ReCaptchaEnterpriseProvider`) אחרי ש-Firebase Console סימן את v3 כ-deprecated ל-App Check — ראו ADR #28.
 **בוצע (2026-08-29)**: מפתח reCAPTCHA Enterprise נוצר ב-Google Cloud Console עבור `shovarim-web--shovarim-prod.europe-west4.hosted.app`, נרשם ב-Firebase Console, ומולא ב-`apphosting.yaml` (`6LcPWZ4t...`). רישום ב-Console **לבדו לא הספיק** — הערך נצרב ל-bundle בזמן build ומגיע רק מה-YAML, וזו הסיבה ש-App Check היה כבוי בשקט עד כה.
 
-**נשאר**: (1) merge → rollout, ואז אימות ב-URL החי שאין `[app-check] ... placeholder` ב-console של הדפדפן; (2) Firebase Console → App Check → Apps → לוודא **verified requests**; (3) **רק אז** Enforce על Firestore/Storage. עד שלב (3), threat #4 ב-`docs/SECURITY.md` (כתיבות ישירות ל-REST API שעוקפות את ה-UI) נשאר פתוח — טוקן שנשלח ואיש לא אוכף אותו לא חוסם כלום.
+**הושלם במלואו (2026-08-29)**: אחרי ה-merge וה-rollout אומת ב-URL החי שאין `[app-check] ... placeholder` ב-console של הדפדפן, אומתו **verified requests** ב-Firebase Console, ורק אז הופעל **Enforce** על Firestore ו-Storage (על ידי המשתמש, ידנית). threat #4 ב-`docs/SECURITY.md` — כתיבות ישירות ל-REST API שעוקפות את ה-UI — **סגור**. שלב 4.4 סגור לחלוטין, קוד והקמה כאחד.
 
 ### שלב 4.5 — Security review מקיף ✅ הושלם (2026-08-27)
 סקירה עם ה-skill `security-review` (סוכן מבודד, מוגבל לשינויים ב-branch הזה) על שלבים 4.3/4.4 — מצאה פרצה אמיתית: `createCard`/`updateCardDetails`/`getCardSecrets` קיבלו `cardId`/`listId` ללא הגבלת תווים, ומכיוון ש-Server Actions ניתנים לקריאה ישירה עם payload שרירותי (לא רק דרך ה-UI) ו-`firebase-admin`'s `.doc()` מפרש `/` כמפריד path, `cardId` מעוצב כמו `"<victimId>/usageLog/<injected>"` יצר מסמך בתת-אוסף של כרטיס אחר בלי בדיקת בעלות — אומת בפועל מול ה-emulator לפני התיקון. **תוקן**: `firestoreIdSchema` חדש (`src/lib/validation/card.ts`) אוכף `^[A-Za-z0-9_-]+$`. ראו `docs/DECISIONS.md` #25 ו-`docs/SECURITY.md` לפירוט המלא.
@@ -118,7 +118,7 @@ Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production י
 - **Semantic cache מבודד לפי משתמש** — מפתח ה-cache חייב לכלול `uid`, לעולם לא cache משותף בין משתמשים (התשובות עשויות לכלול נתונים אישיים/פיננסיים). שאילתות שחושפות `cvv`/`barcodeOrCode` לא נשמרות ב-cache כלל.
 - **הרחבת audit log** — כל קריאת tool (מי, איזה tool, פרמטרים ללא סודות, תוצאה, ערוץ) נכתבת ל-`auditLog` (collection שכבר קיים ב-`docs/DATA_MODEL.md`, נכתב היום רק בהקשר מחיקת חשבון).
 - **Rate limiting per-uid** על שכבת הרצת ה-tools — ערוצי WhatsApp/Telegram הם משטח תקיפה חדש (spoofing של מספר טלפון) בהשוואה לאפליקציית ה-web המאומתת מול Google.
-- **קישור ערוץ→משתמש** (WhatsApp/Telegram) — collection חדש (`channelLinks/{channelId}` או שדה ב-`users/{uid}`) שידרוש עדכון `firestore.rules`+`docs/DATA_MODEL.md` בזמן המימוש בפועל (ראו כלל קבוע ב-`CLAUDE.md`). זרימת linking (קוד אימות חד-פעמי מהאפליקציה) לא מתוכננת עדיין ברמת המימוש.
+- **קישור ערוץ→משתמש** (WhatsApp/Telegram) — collection חדש (`channelLinks/{channelId}` או שדה ב-`users/{uid}`) שידרוש עדכון `firestore.rules`+`docs/DATA_MODEL.md` בזמן המימוש בפועל (ראו כלל קבוע ב-`CLAUDE.md`). ~~זרימת linking (קוד אימות חד-פעמי מהאפליקציה) לא מתוכננת עדיין ברמת המימוש.~~ **הוכרע בשלב 5.5.a (ADR #29)**: `channelLinks/{channel}:{externalId}` + `channelLinkCodes/{code}`, קוד base32 בן 8 תווים ל-10 דקות שנוצר בזמן שהמשתמש מאומת.
 - **App Check + Secret Manager** — טוקני בוט WhatsApp/Telegram ומפתח Anthropic API כ-`secret:` references, לא plaintext, באותו pattern כמו `FIREBASE_ADMIN_PRIVATE_KEY` ב-`apphosting.yaml`/Cloud Functions config.
 
 **נשאר לבדוק בזמן המימוש**: ולידציית latency של semantic cache, ו-threat-modeling ממוקד ל-prompt injection על קלט חופשי (ראו הרחבה ב-`docs/SECURITY.md`). בחירת ה-runtime ל-MCP server הוכרעה לשלב 5.1 (ראו מטה, סוגר ADR #19) — תיבחן מחדש כשמתווספים ערוצי webhook.
@@ -149,6 +149,24 @@ Route Handler ראשון באפליקציה (`src/app/api/chat/route.ts`, stream
 - אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` — 41/41 ללא שינוי (אין שינוי ב-`firestore.rules`). זרימה מלאה מול ה-emulator עם קריאות Claude אמיתיות דרך בדיוק מנגנון ה-in-process ש-Route Handler משתמש בו: `createList`→`createCard`→`logUsage`→`getCard`→`deleteCard` כולל זרימת אישור מלאה (סירוב ראשון — לא נמחק, אישור שני — נמחק). `npm run mcp:cli` נבדק בנפרד מול ה-emulator ואישר שה-CLI (stdio) עדיין עובד אחרי הפיצול ל-`mcpServer.ts`.
 
 **נשאר לבדוק ידנית**: קליק-דרך בדפדפן אמיתי על `/chat` עם כניסה אמיתית (Google/`/e2e/sign-in`) — לא בוצע בסבב הזה (אין כלי דפדפן זמין לסוכן; אומת דרך סקריפט שמחבר ל-MCP server באותו מנגנון in-process בדיוק, ולא דרך ה-HTTP+cookie+streaming המלא של ה-Route Handler עצמו). אין Playwright E2E חדש לצ'אט (streaming אמיתי + קריאות LLM אמיתיות = השקעת בדיקה אוטומטית לא טריוויאלית) — לשקול בעתיד אם ייבנה mock ל-Anthropic API.
+
+### שלב 5.5 — ערוץ WhatsApp
+מטרה: להנגיש את יכולות הצ'אט הקיימות דרך WhatsApp. סוגר את הפריט הפתוח האחרון של ADR #17. ההחלטות הארכיטקטוניות המלאות ב-`docs/DECISIONS.md` ADR #29.
+
+#### 5.5.a — מודל נתונים + זרימת קישור ✅ הושלם (2026-08-29)
+זרימת הקישור מקצה לקצה **בלי לערב ספק חיצוני בכלל** — קודם להוכיח שהקישור עובד, אחר כך לחבר את Meta.
+- **Firestore**: שלושה collections חדשים (`channelLinks/{channelKey}`, `channelLinkCodes/{code}`, `chatSessions/{channelKey}`), כולם `allow read, write: if false` — `firestore.rules` ו-`docs/DATA_MODEL.md` עודכנו קודם, לפי הכלל הקבוע ב-`CLAUDE.md`. `chatSessions` מוגדר כבר עכשיו אבל ייכתב רק ב-5.5.b.
+- **קוד**: `src/types/channelLink.ts`, `src/lib/validation/channelLink.ts` (נרמול E.164, קוד base32), `src/lib/services/channelLinks.ts` (`createLinkCodeForUid`/`redeemLinkCode`/`resolveUidForChannel`/`listChannelLinksForUid`/`unlinkChannel`), `src/actions/channelLink.ts` (עטיפות דקות, uid מ-`requireUid()` בלבד), ו-`ChannelLinksSection.tsx` ב-`/settings`. `auditLog` קיבל `channel_linked`/`channel_unlinked`, שנכתבים **בשירות** ולא ב-Server Action — כי `redeemLinkCode` ייקרא ב-5.5.b מה-webhook, שלא עובר דרך `src/actions/`.
+- **אימות**: `typecheck`/`lint`/`build` נקיים. `test:rules` — 46/46 (41 קיימים + 5 חדשים: קריאה/כתיבה לשלושת ה-collections נדחית גם לבעלים המאומת, גם בזיוף uid, וגם ללא אימות). E2E — 10/10, כולל שני טסטים חדשים ב-`tests/e2e/settings.spec.ts`: קישור מלא (יצירת קוד → פדיון כאנונימי → הופעה ב-UI → ניתוק), וקוד שכבר מומש לא נפדה שוב עם מספר אחר.
+- **stand-in ל-webhook**: `src/actions/testChannelLink.ts` + `src/app/(public)/e2e/redeem-link/page.tsx`, נעולים ל-emulator באותו pattern כמו `mintTestCustomToken` (ADR #18). הם פודים קוד **בלי** `requireUid()` — בדיוק כמו שהוובהוק יעשה — ולכן הנעילה ל-emulator שם היא חובה ולא נוחות.
+
+**נשאר לבדוק ידנית**: קליק-דרך בדפדפן על `/settings` (הזרימה אומתה ב-Playwright מול emulators, אבל לא בעין אנושית ב-RTL).
+
+#### 5.5.b — ה-webhook (טרם החל)
+`src/app/api/whatsapp/webhook/route.ts`: `GET` handshake, `POST` עם אימות `X-Hub-Signature-256` על הגוף הגולמי **לפני כל פרסור**, דדופליקציה של `messageId` ב-`channelMessages/{messageId}` (collection רביעי), `resolveUidForChannel`, rate limit, agent turn זהה ל-`/api/chat`, שמירת היסטוריה, ושליחה חזרה דרך Graph API. כולל הרחבת `checkAndConsumeRateLimit` ב-bucket `"turns"` — סוגר את הפער המתועד ב-`docs/CHATBOT.md` (rate limit חל היום רק על קריאות tool, ושיחת טקסט ארוכה בלי tools לא מוגבלת). **`src/proxy.ts` לא משתנה** — ה-matcher מונה prefixes של עמודים בלבד, ו-`/api/*` לא נכנס אליו (המלכודת מקומיט `ff99bb8`).
+
+#### 5.5.c — הקמה ופרודקשן (טרם החל)
+Meta app + מספר עסקי, סודות ב-Secret Manager (`WHATSAPP_APP_SECRET`/`WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_VERIFY_TOKEN`, כולם `[RUNTIME]` בלבד) עם סקריפט בדפוס `Set-AppHosting-CardEncryptionKey.ps1`, ותיעוד ב-`DEPLOYMENT`/`CHATBOT`/`SECURITY`/`PRIVACY`.
 
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.

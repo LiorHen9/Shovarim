@@ -55,7 +55,7 @@
 
 **App Check** (provider: reCAPTCHA **Enterprise** — לא v3 הקלאסי, ראו `docs/DECISIONS.md` ADR #28. הקונסולה מסמנת את v3 כ-deprecated עבור App Check):
 
-**סטטוס: שלבים 0–3 בוצעו ב-2026-08-29.** נשארו שלבים 4 (Enforce) ואימות הביניים שלפניו.
+**סטטוס: ✅ הושלם — כל השלבים (0–5) בוצעו ב-2026-08-29**, כולל אימות verified requests בקונסולה ו-Enforce בפועל על Firestore ו-Storage. אין כאן עבודה פתוחה; השלבים נשארים מתועדים כ-runbook להקמה מחדש / לדומיין מותאם אישית.
 
 0. לוודא שה-API מופעל בפרויקט: Google Cloud Console → APIs & Services → Enable APIs → `reCAPTCHA Enterprise API` (`recaptchaenterprise.googleapis.com`), פרויקט `shovarim-prod`. בלי זה יצירת המפתח בשלב 1 תיכשל.
 1. **יצירת המפתח** — Google Cloud Console → Security → reCAPTCHA (**לא** `google.com/recaptcha/admin`, זו הקונסולה של v3 הקלאסי):
@@ -69,7 +69,7 @@
    ⚠️ **שלבים 1–2 לבדם לא מפעילים כלום.** ה-key id הוא משתנה `NEXT_PUBLIC_*` שנצרב לתוך ה-bundle של הלקוח ב-**זמן build**, והמקור היחיד שלו ב-App Hosting הוא `apphosting.yaml`. כל עוד כתוב שם `REPLACE_ME`, `isConfiguredSiteKey` (`src/lib/firebase/appCheck.ts`) מזהה placeholder ומדלג על `initializeAppCheck` לגמרי — האפליקציה החיה לא שולחת טוקן App Check כלל, לא משנה מה מוגדר בקונסולה. הסימן בדפדפן: `[app-check] ... placeholder — App Check disabled` ב-console.
 
    ⚠️ מפתחות Enterprise ומפתחות v3 קלאסיים **שניהם** מתחילים ב-`6L`, וה-guard בקוד לא מבחין ביניהם — מפתח מהסוג הלא נכון יעבור בשקט וייכשל רק מול reCAPTCHA ב-runtime. **גם מבחוץ אי אפשר להבדיל**: `recaptcha/api2/anchor` ו-`recaptcha/enterprise/anchor` שניהם מגישים את המפתח בלי תלונה (נבדק ב-2026-08-29). הדרך היחידה לוודא היא בקונסולה שבה נוצר — Google Cloud → Security → reCAPTCHA (Enterprise) מול `google.com/recaptcha/admin` (v3). סימן עקיף: v3 מנפיק זוג site+secret, ל-Enterprise אין secret כלל.
-4. **רק אחרי** ש-rollout עם הקוד+ה-key id כבר חי בפרודקשן ומייצר טוקנים תקינים (לוודא ב-Console → App Check → Apps שיש "verified requests" מהאפליקציה) — להפעיל **Enforce** על Firestore ו-Storage (Console → App Check → APIs). לא לפני כן: enforce מוקדם מדי (לפני שלקוחות אמיתיים כבר שולחים טוקן) חוסם את כל הגישה לאפליקציה.
+4. **רק אחרי** ש-rollout עם הקוד+ה-key id כבר חי בפרודקשן ומייצר טוקנים תקינים (לוודא ב-Console → App Check → Apps שיש "verified requests" מהאפליקציה) — להפעיל **Enforce** על Firestore ו-Storage (Console → App Check → APIs). לא לפני כן: enforce מוקדם מדי (לפני שלקוחות אמיתיים כבר שולחים טוקן) חוסם את כל הגישה לאפליקציה. **בוצע 2026-08-29** (על ידי המשתמש, ידנית): ה-URL החי נבדק ללא הודעת ה-placeholder ב-console, verified requests אומתו, ורק אז הופעל Enforce על שני השירותים. סוגר את threat #4 ב-`docs/SECURITY.md`.
 5. מפתח debug (`NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG=true`, מוגדר כברירת מחדל ב-`.env.local`) משמש רק ב-dev/CI מול emulators — **לעולם לא** ב-`apphosting.yaml`/production.
 
 **הצפנת שדות רגישים** (`cvv`/`barcodeOrCode`):
@@ -78,6 +78,33 @@
    - בשאלה `Would you like to add this secret to apphosting.yaml?` לענות **n** — הרשומה כבר קיימת שם מ-PR #14, ותשובת `Y` הייתה מוסיפה כפילות עם `availability: [BUILD, RUNTIME]` במקום ה-`[RUNTIME]` המכוון (המפתח נטען lazily, `next build` לא צריך אותו — ראו ההערה ב-`apphosting.yaml` ואת הפוסט-מורטם של Phase 3.3).
    - **גיבוי**: המפתח הוא הדבר היחיד שמפענח `cvv`/`barcodeOrCode` בפרודקשן. אובדן/רוטציה שלו הופכים את הערכים המוצפנים (`v1:` prefix) לבלתי ניתנים לשחזור.
 3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב. **הורץ מול production ב-2026-08-29** (על ידי המשתמש, ידנית).
+
+## ערוץ WhatsApp — הקמה חד-פעמית (Phase 5.5.c) — ⏳ טרם בוצע
+
+**סטטוס: אין עדיין Meta app, אין מספר, ואין webhook בקוד.** שלב 5.5.a סיפק רק את תשתית הקישור באפליקציה (`docs/DECISIONS.md` ADR #29, `docs/CHATBOT.md`). הסעיף הזה נכתב מראש כדי שהתלויות יהיו ידועות לפני שמתחילים ב-5.5.b — **אין להתחיל בהקמה לפני שהוובהוק קיים בקוד**, אחרת יש מספר חי שאף אחד לא עונה בו.
+
+### תלויות שאתה צריך לספק (ידני, Meta for Developers)
+1. **Meta app** (סוג Business) + **WhatsApp Business Account** מקושר אליו.
+2. **מספר טלפון ייעודי לבוט** — שייך למערכת, לא למשתמש. שתי מלכודות:
+   - מספר שכבר רשום ב-WhatsApp רגיל או באפליקציית WhatsApp Business **אינו זמין** ל-Cloud API; צריך לנתק אותו קודם או להשתמש במספר נפרד. לא להשתמש במספר האישי.
+   - לפיתוח Meta מספקת **מספר טסט חינמי**, שיכול לשלוח רק לרשימה קטנה של נמענים מאושרים מראש (סדר גודל של 5). מספיק לאימות מלא של 5.5.b לפני רכישת מספר אמיתי.
+3. **Webhook**: `https://<app-hosting-url>/api/whatsapp/webhook` + verify token שאנחנו בוחרים, ו-subscribe לאירוע `messages` בלבד.
+4. **Permanent access token** + **app secret** של האפליקציה.
+
+**לאמת בקונסולה בזמן ההקמה** (השתנה כמה פעמים ולא לסמוך על מה שכתוב כאן): תמחור, מכסות, ומדיניות חלון השירות של 24 שעות. הבוט שלנו **רק עונה ואף פעם לא יוזם**, ולכן הוא אמור להישאר בתוך חלון השירות שבו מותר טקסט חופשי — בלי צורך ב-message templates מאושרים מראש. אם אי פעם יתווספו התראות יזומות (Phase 7), ההנחה הזו נשברת.
+
+### סודות (Secret Manager, בדפוס `FIREBASE_ADMIN_PRIVATE_KEY`)
+סקריפט `Set-AppHosting-WhatsAppSecrets.ps1` (טרם נכתב), במתכונת `Set-AppHosting-CardEncryptionKey.ps1`:
+
+| משתנה | סוג | הערה |
+|---|---|---|
+| `WHATSAPP_APP_SECRET` | `secret:` | לאימות `X-Hub-Signature-256` |
+| `WHATSAPP_ACCESS_TOKEN` | `secret:` | permanent token לשליחה דרך Graph API |
+| `WHATSAPP_VERIFY_TOKEN` | `secret:` | מחרוזת אקראית שאנחנו בוחרים, ל-handshake של ה-`GET` |
+| `WHATSAPP_PHONE_NUMBER_ID` | plain | מזהה, לא חומר סוד |
+
+- כולם `availability: [RUNTIME]` **בלבד** — נקראים lazily בתוך ה-handler, `next build` לא צריך אותם (בניגוד ל-`adminApp.ts`; ראו ההערה ב-`apphosting.yaml`).
+- ⚠️ **כל הוספת `secret:` חייבת להיות באותו PR עם הרצת `secrets:set`+`grantaccess` בפועל** — אחרת ה-rollout נכשל ולא מנסה שוב לבד. זו בדיוק התקלה שהפילה את הפרודקשן ליומיים ב-Phase 4.3, ראו הפוסט-מורטם למטה.
 
 ## First-deploy runbook (סדר מדויק)
 

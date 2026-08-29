@@ -26,17 +26,37 @@ export async function deleteUserAccount(uid: string): Promise<void> {
     createdAt: Timestamp.now(),
   });
 
-  const [ownedListsSnap, ownedCardsSnap, ownedCategoriesSnap, otherMembershipsSnap] = await Promise.all([
+  const [
+    ownedListsSnap,
+    ownedCardsSnap,
+    ownedCategoriesSnap,
+    otherMembershipsSnap,
+    channelLinksSnap,
+    channelLinkCodesSnap,
+    chatSessionsSnap,
+  ] = await Promise.all([
     db.collection("cardLists").where("ownerId", "==", uid).get(),
     db.collection("cards").where("ownerId", "==", uid).get(),
     db.collection("categories").where("ownerId", "==", uid).get(),
     db.collectionGroup("members").where("memberUid", "==", uid).get(),
+    // Phase 5.5 (docs/DECISIONS.md ADR #29). These three are keyed by
+    // channelKey, not uid, so the ownership queries above never reach them —
+    // without an explicit pass they would survive account deletion as orphaned
+    // phone numbers and message history. Queried by the `uid` *field* instead.
+    db.collection("channelLinks").where("uid", "==", uid).get(),
+    db.collection("channelLinkCodes").where("uid", "==", uid).get(),
+    db.collection("chatSessions").where("uid", "==", uid).get(),
   ]);
 
   await Promise.all(ownedListsSnap.docs.map((listDoc) => db.recursiveDelete(listDoc.ref)));
   await Promise.all(ownedCardsSnap.docs.map((cardDoc) => db.recursiveDelete(cardDoc.ref)));
   await Promise.all(ownedCategoriesSnap.docs.map((categoryDoc) => categoryDoc.ref.delete()));
   await Promise.all(otherMembershipsSnap.docs.map((memberDoc) => memberDoc.ref.delete()));
+  await Promise.all(
+    [...channelLinksSnap.docs, ...channelLinkCodesSnap.docs, ...chatSessionsSnap.docs].map((doc) =>
+      doc.ref.delete()
+    )
+  );
   await db.collection("consents").doc(uid).delete();
 
   await storage.bucket().deleteFiles({ prefix: `users/${uid}/` });

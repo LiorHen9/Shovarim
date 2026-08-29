@@ -205,3 +205,30 @@
 **מלכודת מתועדת**: מפתחות Enterprise ומפתחות v3 קלאסיים **שניהם** מתחילים ב-`6L`. האזהרה הרכה ב-`appCheck.ts` (`EXPECTED_KEY_PREFIX`) לא מבחינה ביניהם, ולכן הדבקה של מפתח מהסוג הלא נכון תעבור בשקט ותיכשל רק ב-runtime מול reCAPTCHA. תועד גם בהערה בקוד וב-`apphosting.yaml`.
 **עלות**: reCAPTCHA Enterprise דורש שה-API `recaptchaenterprise.googleapis.com` יהיה מופעל בפרויקט (Blaze כבר קיים מ-ADR #16). יש מכסה חינמית חודשית של assessments; מעבר לה יש חיוב. בסקאלה של אפליקציה אישית/משפחתית זה לא צפוי להיות גורם — אם השימוש יגדל, זו נקודה לבדוק מחדש.
 **מה לא השתנה**: כל השאר ב-ADR #26 עומד בעינו — מצב ה-debug ל-dev/CI, ההתנהגות "אין key → לא מאתחל, לא זורק" (ADR #27), העובדה ש-Admin SDK לא מושפע, והסדר המחייב: site key ב-`apphosting.yaml` → rollout → אימות verified requests → ורק אז Enforce.
+
+## 29. ערוץ WhatsApp — קישור ערוץ→משתמש, runtime, והיסטוריה בצד שרת
+**תאריך**: 2026-08-29
+**סוגר**: את הפריט הפתוח האחרון של ADR #17 ("קישור ערוץ→משתמש... זרימת linking לא מתוכננת עדיין ברמת המימוש"), `docs/ROADMAP.md` שלב 5.5.
+
+**החלטה (1) — גזירת `uid` רק מ-`channelLinks`, לעולם לא מתוכן ההודעה.** ההודעה הנכנסת מ-WhatsApp נושאת מספר טלפון, וזה **לא** credential: כל אחד יכול לשלוח payload עם מספר של מישהו אחר. ה-uid נגזר מ-lookup ישיר ב-`channelLinks/{channel}:{externalId}`, שנוצר רק דרך זרימת הקישור המתוארת למטה. ה-tools עצמם לא משתנים כלל — `createMcpServer(uid, "whatsapp")` נועל את ה-uid בסגירה בדיוק כמו ב-Route Handler של הווב, וסכימות ה-input שלהם עדיין לא מכילות שדה `uid` (ADR #17).
+
+**החלטה (2) — קוד חד-פעמי שנוצר באפליקציה בזמן שהמשתמש מאומת.** זו הנקודה היחידה בזרימה שבה יש הוכחת בעלות על החשבון: `createChannelLinkCode` קורא ל-`requireUid()`, מייצר קוד ב-`channelLinkCodes/{code}`, והמשתמש שולח אותו מהטלפון שלו. `redeemLinkCode` מחליף אותו בקישור בטרנזקציה אחת (קורא, מוודא לא-פג ולא-מומש, כותב `channelLinks` ומסמן `usedAt`). שני צדדים מוכחים: הקוד מוכיח בעלות על החשבון, והמקור של ההודעה מוכיח החזקה במספר.
+- **8 תווי base32 (Crockford, בלי I/L/O/U) ולא 6 ספרות**: המנחש כאן הוא בוט ששולח הודעות, לא טופס ווב מאחורי CAPTCHA. 10^6 ניתן לסריקה; 32^8 (~10^12) לא. נוצר מ-`crypto.randomInt`, לא `Math.random`.
+- TTL של 10 דקות, שימוש חד-פעמי, ויצירת קוד חדש מבטלת קודים קודמים שלא מומשו — כדי שלא יהיה יותר מ-credential אחד תלוי באוויר.
+- כל הודעות הכישלון בפדיון זהות ("קוד לא תקין או שפג תוקפו"): הצד השולח אנונימי מעצם הגדרתו, ואסור שיוכל להבדיל בין "אין קוד כזה" ל-"פג".
+
+**החלטה (3) — `channelLinks` ממופתח לפי `channelKey` ולא לפי `uid`.** הפוך מכל שאר ה-collections בפרויקט, שממופתחים לפי בעלות. הסיבה: ה-webhook מקבל מספר טלפון ותו לא, וחייב לגזור ממנו `get()` ישיר — query לפי uid לא אפשרי כשה-uid הוא בדיוק מה שמחפשים. המחיר הוא ש-`listChannelLinksForUid` דורש query על `where("uid","==",...)`, שזה בסדר גמור בהיקף של הפרויקט.
+
+**החלטה (4) — שלושת ה-collections הם `allow read, write: if false`**, כולל קריאה של הבעלים. באוסף שממופתח לפי מספר טלפון, קריאה מותרת היא oracle שמאשר "האם המספר הזה רשום במערכת"; ו-`channelLinkCodes` הוא bearer credential, כך שקריאה של קוד לא-מומש של מישהו אחר מספיקה כדי לחטוף את הקישור שלו. ה-UI קורא את הערוצים של המשתמש דרך Server Action (`listMyChannelLinks`), לא דרך ה-client SDK.
+
+**החלטה (5) — Route Handler ב-App Hosting, לא Cloud Function.** `src/app/api/chat/route.ts` כבר מייבא `createMcpServer`/`runAgentTurn`/`createAnthropicClient` ישירות מ-`src/lib/`; `functions/` הוא עצמאי בכוונה ולא משתף קוד עם `src/` (ADR #24), כך שוובהוק שם היה מחייב שכפול של כל שכבת ה-MCP וה-services. גם ה-WIF ל-Anthropic (ADR #20) קשור ל-service account של backend ה-App Hosting.
+
+**החלטה (6) — ספק: WhatsApp Cloud API של Meta ישירות, לא Twilio.** ללא מתווך ועלות נוספת; ה-webhook הוא HTTPS פשוט וה-URL של App Hosting כבר ציבורי.
+
+**החלטה (7) — היסטוריית שיחה ב-`chatSessions/{channelKey}` בצד שרת.** בווב ההיסטוריה נשמרת ב-state של הדפדפן ונשלחת מלאה בכל בקשה (ADR #22) — ב-WhatsApp אין לקוח שיחזיק אותה. TTL קצר (24 שעות מאי-פעילות) כדי לא לצבור PII לנצח.
+
+**החלטה (8, מוקדמת בכוונה) — v1 מעבד את ההודעה inline לפני החזרת 200, לא ב-`after()`.** `after()` מ-`next/server` יציב ב-Next 16 ונתמך על Node server, אבל App Hosting רץ על Cloud Run, שם ה-CPU עלול להיחנק אחרי שהתשובה נשלחה — מה ש**ישתיק את הבוט בשקט**, הכשל הגרוע ביותר האפשרי כאן. במקום זה: עיבוד inline + דדופליקציה של `messageId` (`channelMessages/{messageId}`, נכתב ב-5.5.b) שהופכת את ה-retries של Meta ל-no-op. **אם ה-latency יתגלה כבעייתי — למדוד קודם**, ורק אז לשקול `after()` ואחריו Cloud Tasks. לא לבחור `after()` בלי מדידה.
+
+**גבול האמון של ה-webhook** (יבוצע ב-5.5.b): `X-Hub-Signature-256` (HMAC-SHA256 עם `WHATSAPP_APP_SECRET`) על הגוף ה**גולמי**, לפני כל פרסור. זה שער האימות היחיד — מספר טלפון ניתן לזיוף, החתימה לא.
+
+**מה נדחה מ-5.5.a במכוון**: אין עדיין webhook, ספק, סודות, או `channelMessages`. שלב 5.5.a מוכיח את זרימת הקישור מקצה לקצה (כולל E2E) לפני שמערבים צד שלישי — `src/actions/testChannelLink.ts` + `/e2e/redeem-link` הם stand-in של ה-webhook, נעולים ל-emulator באותו pattern כמו `mintTestCustomToken` (ADR #18).

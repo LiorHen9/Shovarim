@@ -181,5 +181,39 @@ service cloud.firestore {
       // unlike auditLog/reminders there's no owner read either.
       allow read, write: if false;
     }
+
+    // --- Messaging channels (docs/ROADMAP.md Phase 5.5, docs/DECISIONS.md
+    // ADR #29) ---
+    // All three are Admin-SDK-only, in the same `if false` pattern as
+    // rateLimits above. The reason is stronger here than "no UI needs it":
+    // channelLinks is the *only* thing that maps an inbound phone number to a
+    // uid, so a client able to write one could bind its own phone number to
+    // someone else's account and then drive that account's data through the
+    // bot. The UI reads its own links through a Server Action
+    // (src/actions/channelLink.ts), never through the client SDK.
+
+    match /channelLinks/{channelKey} {
+      // channelKey == "<channel>:<externalId>", e.g. "whatsapp:+972501234567".
+      // Not keyed by uid on purpose: the webhook looks it up by the only thing
+      // an inbound message carries, and the doc id must therefore be derivable
+      // from that alone.
+      allow read, write: if false;
+    }
+
+    match /channelLinkCodes/{code} {
+      // Short-lived one-time linking codes. Client read would defeat the whole
+      // point — the code is the bearer credential that binds a channel to a
+      // uid, so knowing someone else's unused code is enough to hijack the
+      // link.
+      allow read, write: if false;
+    }
+
+    match /chatSessions/{channelKey} {
+      // Server-side conversation history for channels that have no client to
+      // hold it (the web chat keeps history client-side instead — ADR #22).
+      // Contains full message text, i.e. the user's own financial data in
+      // free-form prose; never client-readable.
+      allow read, write: if false;
+    }
   }
 }

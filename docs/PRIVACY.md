@@ -13,6 +13,13 @@
 | `location`, `purpose` | `usageLog` | התנהגות/הרגלי צריכה — נחשב profiling data תחת GDPR |
 | `fcmTokens` | `users` | מזהה מכשיר |
 | `ip` | `consents` | אופציונלי, לתיעוד הסכמה בלבד |
+| `externalId` (מספר טלפון E.164), `channelKey` | `channelLinks`, `channelLinkCodes` | מזהה ישיר — מספר טלפון הוא PII בפני עצמו וגם מקשר את החשבון לזהות מחוץ למערכת. נוסף ב-Phase 5.5.a |
+| `paramsSummary` של `channel_linked`/`channel_unlinked` | `auditLog` | מכיל `channelKey`, כלומר **מספר הטלפון** — לא סוד, אבל כן PII שנשאר ב-audit trail |
+| `history` (טקסט שיחה מלא) | `chatSessions` | תוכן ההודעות בפרוזה חופשית, כלומר נתונים פיננסיים והרגלי צריכה. נכתב מ-5.5.b |
+
+**מחיקה וייצוא — טופלו כבר ב-5.5.a**, למרות שהערוץ עצמו עוד לא קיים: שלושת ה-collections ממופתחים לפי `channelKey` ולא לפי `uid`, ולכן שאילתות הבעלות הקיימות **לא** מגיעות אליהם וצריך מעבר נפרד. `functions/src/accountDeletion.ts` מוחק את שלושתם דרך שדה `uid`; `buildUserDataExport` מייצא את `channelLinks`. **קודי קישור שלא מומשו לא נכללים בייצוא במכוון** — הם bearer credentials חיים, וקובץ ייצוא הוא בדיוק הדבר שנשלח הלאה במייל.
+
+**חובות פתוחות ל-5.5.b/5.5.c**: (1) `chatSessions` יתחיל להיכתב ב-5.5.b — אז יש להוסיף אותו גם לייצוא (המחיקה כבר מכסה אותו), ולהגדיר בפועל TTL של 24 שעות. (2) תוכן ההודעות יעבור דרך השרתים של Meta — **העברה לצד שלישי** — ודורש התייחסות מפורשת ב-Privacy Policy ובזרימת ה-consent, כולל העלאת גרסת המדיניות ודרישת re-consent, **לפני** הפעלה בפרודקשן.
 
 ## Consent
 `components/legal/ConsentBanner.tsx` — חוסם שימוש עד הסכמה מפורשת, כותב ל-`consents/{uid}` (גרסת מדיניות + timestamp). גרסת המדיניות הנוכחית מוגדרת קבוע ב-קוד; שינוי מדיניות מהותי = הגדלת הגרסה + דרישת re-consent.
@@ -34,7 +41,7 @@
 - `fcmTokens` נמחקים בעת sign-out/uninstall (לא נשמרים ללא צורך).
 
 ## Audit Log
-`auditLog` collection — נכתב רק מ-Cloud Functions (Admin SDK). אירועים: login, data export, deletion request/completion. משתמש רואה רק את הרשומות שלו.
+`auditLog` collection — נכתב רק מ-Admin SDK (Cloud Functions, Server Actions, שכבת השירות). אירועים: login, data export, deletion request/completion, קריאות MCP tool, וקישור/ניתוק ערוץ (Phase 5.5). משתמש רואה רק את הרשומות שלו. `paramsSummary` של `channel_linked`/`channel_unlinked` מכיל את ה-`channelKey`, כלומר מספר טלפון — ה-audit trail הוא append-only ו-`deleteUserAccount` **אינו** מוחק רשומות `auditLog` (בכוונה — התיעוד שהמחיקה בוצעה חייב לשרוד אותה), ולכן מספר הטלפון נשאר ב-audit גם אחרי ניתוק הערוץ וגם אחרי מחיקת החשבון. אם זה ייחשב מוגזם ביחס לתכלית, האיזון הנכון הוא לכתוב `channelKey` מגובב/מקוצץ ב-`paramsSummary` במקום לגעת ב-append-only — לא הוכרע.
 
 ## דרישות ישראליות ספציפיות (חוק הגנת הפרטיות, תיקון 13)
 - מאגר מידע: יש למפות אם האפליקציה (גם בשימוש אישי כרגע) עשויה להיחשב "מאגר מידע" הדורש רישום — רלוונטי בעיקר כשהיקף המשתמשים גדל. לתעד את ההחלטה ב-`docs/DECISIONS.md` כשמתקבלת.
