@@ -17,7 +17,7 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 1. **משתמש A מנסה לגשת/לשנות נתוני משתמש B** → נחסם ע"י `isOwner`/`isExistingOwner` checks בכל collection.
 2. **כתיבת שדות לא צפויים / privilege escalation דרך client** (למשל שינוי `ownerId`, כתיבה ל-`auditLog`) → נחסם ע"י immutability checks ו-`allow write: if false` על collections מנוהלות-שרת.
 3. **גישה לא מאומתת** → כל rule דורש `request.auth != null` (דרך `isSignedIn()`/`isOwner()`).
-4. **Abuse/spam על כתיבות** (יצירת אלפי כרטיסים/entries) → Firebase App Check (`src/lib/firebase/appCheck.ts`, Phase 4 — קוד הושלם, "Enforce" בקונסולה נשאר צעד ידני אחרון לפני שהוא בפועל חוסם, ראו `docs/DEPLOYMENT.md`) + GCP quotas מובנות על Cloud Functions.
+4. **Abuse/spam על כתיבות** (יצירת אלפי כרטיסים/entries) → Firebase App Check (`src/lib/firebase/appCheck.ts`, Phase 4) + GCP quotas מובנות על Cloud Functions. ⚠️ **App Check מוגדר אך טרם נאכף**: הקוד (provider: reCAPTCHA Enterprise, ADR #28) והמפתח ב-`apphosting.yaml` במקום מ-2026-08-29, אך **"Enforce" בקונסולה טרם הופעל** — כלומר הלקוח שולח טוקן ואיש לא בודק אותו, וכתיבה ישירה ל-REST API בלי טוקן עדיין מתקבלת. **עד ה-Enforce ה-threat הזה פתוח** — quotas של GCP הן ההגנה היחידה. הסדר המחייב (rollout → אימות verified requests → Enforce) ב-`docs/DEPLOYMENT.md`.
 5. **דליפת Admin credentials** → Admin SDK תמיד server-only (`import "server-only"` ב-`admin.ts`), secrets ב-Secret Manager/`.env.local` שלא מחובר לגיט.
 6. **צ'אטבוט/CLI (Phase 5) פועל בשם משתמש שגוי** — prompt injection או הזיית מודל שמנסה "לבקש" לפעול על נתוני משתמש אחר → נחסם מבנית: ה-`uid` הפועל נגזר תמיד בצד שרת (session cookie / מיפוי ערוץ מאומת) ולעולם אינו שדה בסכימת ה-tool שה-LLM יכול לספק. ראו הרחבה למטה ו-`docs/DECISIONS.md` #17.
 
