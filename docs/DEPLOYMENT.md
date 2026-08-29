@@ -79,6 +79,33 @@
    - **גיבוי**: המפתח הוא הדבר היחיד שמפענח `cvv`/`barcodeOrCode` בפרודקשן. אובדן/רוטציה שלו הופכים את הערכים המוצפנים (`v1:` prefix) לבלתי ניתנים לשחזור.
 3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב. **הורץ מול production ב-2026-08-29** (על ידי המשתמש, ידנית).
 
+## ערוץ WhatsApp — הקמה חד-פעמית (Phase 5.5.c) — ⏳ טרם בוצע
+
+**סטטוס: אין עדיין Meta app, אין מספר, ואין webhook בקוד.** שלב 5.5.a סיפק רק את תשתית הקישור באפליקציה (`docs/DECISIONS.md` ADR #29, `docs/CHATBOT.md`). הסעיף הזה נכתב מראש כדי שהתלויות יהיו ידועות לפני שמתחילים ב-5.5.b — **אין להתחיל בהקמה לפני שהוובהוק קיים בקוד**, אחרת יש מספר חי שאף אחד לא עונה בו.
+
+### תלויות שאתה צריך לספק (ידני, Meta for Developers)
+1. **Meta app** (סוג Business) + **WhatsApp Business Account** מקושר אליו.
+2. **מספר טלפון ייעודי לבוט** — שייך למערכת, לא למשתמש. שתי מלכודות:
+   - מספר שכבר רשום ב-WhatsApp רגיל או באפליקציית WhatsApp Business **אינו זמין** ל-Cloud API; צריך לנתק אותו קודם או להשתמש במספר נפרד. לא להשתמש במספר האישי.
+   - לפיתוח Meta מספקת **מספר טסט חינמי**, שיכול לשלוח רק לרשימה קטנה של נמענים מאושרים מראש (סדר גודל של 5). מספיק לאימות מלא של 5.5.b לפני רכישת מספר אמיתי.
+3. **Webhook**: `https://<app-hosting-url>/api/whatsapp/webhook` + verify token שאנחנו בוחרים, ו-subscribe לאירוע `messages` בלבד.
+4. **Permanent access token** + **app secret** של האפליקציה.
+
+**לאמת בקונסולה בזמן ההקמה** (השתנה כמה פעמים ולא לסמוך על מה שכתוב כאן): תמחור, מכסות, ומדיניות חלון השירות של 24 שעות. הבוט שלנו **רק עונה ואף פעם לא יוזם**, ולכן הוא אמור להישאר בתוך חלון השירות שבו מותר טקסט חופשי — בלי צורך ב-message templates מאושרים מראש. אם אי פעם יתווספו התראות יזומות (Phase 7), ההנחה הזו נשברת.
+
+### סודות (Secret Manager, בדפוס `FIREBASE_ADMIN_PRIVATE_KEY`)
+סקריפט `Set-AppHosting-WhatsAppSecrets.ps1` (טרם נכתב), במתכונת `Set-AppHosting-CardEncryptionKey.ps1`:
+
+| משתנה | סוג | הערה |
+|---|---|---|
+| `WHATSAPP_APP_SECRET` | `secret:` | לאימות `X-Hub-Signature-256` |
+| `WHATSAPP_ACCESS_TOKEN` | `secret:` | permanent token לשליחה דרך Graph API |
+| `WHATSAPP_VERIFY_TOKEN` | `secret:` | מחרוזת אקראית שאנחנו בוחרים, ל-handshake של ה-`GET` |
+| `WHATSAPP_PHONE_NUMBER_ID` | plain | מזהה, לא חומר סוד |
+
+- כולם `availability: [RUNTIME]` **בלבד** — נקראים lazily בתוך ה-handler, `next build` לא צריך אותם (בניגוד ל-`adminApp.ts`; ראו ההערה ב-`apphosting.yaml`).
+- ⚠️ **כל הוספת `secret:` חייבת להיות באותו PR עם הרצת `secrets:set`+`grantaccess` בפועל** — אחרת ה-rollout נכשל ולא מנסה שוב לבד. זו בדיוק התקלה שהפילה את הפרודקשן ליומיים ב-Phase 4.3, ראו הפוסט-מורטם למטה.
+
 ## First-deploy runbook (סדר מדויק)
 
 צעדים 1–5 הם חד-פעמיים, אינטראקטיביים, ולא ניתנים ל-scripting (billing/OAuth consent). מבוצעים ידנית על ידך.
