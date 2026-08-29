@@ -55,7 +55,7 @@
 
 **App Check** (provider: reCAPTCHA **Enterprise** — לא v3 הקלאסי, ראו `docs/DECISIONS.md` ADR #28. הקונסולה מסמנת את v3 כ-deprecated עבור App Check):
 
-**סטטוס: שלבים 0–3 בוצעו ב-2026-08-29.** נשארו שלבים 4 (Enforce) ואימות הביניים שלפניו.
+**סטטוס: ✅ הושלם — כל השלבים (0–5) בוצעו ב-2026-08-29**, כולל אימות verified requests בקונסולה ו-Enforce בפועל על Firestore ו-Storage. אין כאן עבודה פתוחה; השלבים נשארים מתועדים כ-runbook להקמה מחדש / לדומיין מותאם אישית.
 
 0. לוודא שה-API מופעל בפרויקט: Google Cloud Console → APIs & Services → Enable APIs → `reCAPTCHA Enterprise API` (`recaptchaenterprise.googleapis.com`), פרויקט `shovarim-prod`. בלי זה יצירת המפתח בשלב 1 תיכשל.
 1. **יצירת המפתח** — Google Cloud Console → Security → reCAPTCHA (**לא** `google.com/recaptcha/admin`, זו הקונסולה של v3 הקלאסי):
@@ -69,7 +69,7 @@
    ⚠️ **שלבים 1–2 לבדם לא מפעילים כלום.** ה-key id הוא משתנה `NEXT_PUBLIC_*` שנצרב לתוך ה-bundle של הלקוח ב-**זמן build**, והמקור היחיד שלו ב-App Hosting הוא `apphosting.yaml`. כל עוד כתוב שם `REPLACE_ME`, `isConfiguredSiteKey` (`src/lib/firebase/appCheck.ts`) מזהה placeholder ומדלג על `initializeAppCheck` לגמרי — האפליקציה החיה לא שולחת טוקן App Check כלל, לא משנה מה מוגדר בקונסולה. הסימן בדפדפן: `[app-check] ... placeholder — App Check disabled` ב-console.
 
    ⚠️ מפתחות Enterprise ומפתחות v3 קלאסיים **שניהם** מתחילים ב-`6L`, וה-guard בקוד לא מבחין ביניהם — מפתח מהסוג הלא נכון יעבור בשקט וייכשל רק מול reCAPTCHA ב-runtime. **גם מבחוץ אי אפשר להבדיל**: `recaptcha/api2/anchor` ו-`recaptcha/enterprise/anchor` שניהם מגישים את המפתח בלי תלונה (נבדק ב-2026-08-29). הדרך היחידה לוודא היא בקונסולה שבה נוצר — Google Cloud → Security → reCAPTCHA (Enterprise) מול `google.com/recaptcha/admin` (v3). סימן עקיף: v3 מנפיק זוג site+secret, ל-Enterprise אין secret כלל.
-4. **רק אחרי** ש-rollout עם הקוד+ה-key id כבר חי בפרודקשן ומייצר טוקנים תקינים (לוודא ב-Console → App Check → Apps שיש "verified requests" מהאפליקציה) — להפעיל **Enforce** על Firestore ו-Storage (Console → App Check → APIs). לא לפני כן: enforce מוקדם מדי (לפני שלקוחות אמיתיים כבר שולחים טוקן) חוסם את כל הגישה לאפליקציה.
+4. **רק אחרי** ש-rollout עם הקוד+ה-key id כבר חי בפרודקשן ומייצר טוקנים תקינים (לוודא ב-Console → App Check → Apps שיש "verified requests" מהאפליקציה) — להפעיל **Enforce** על Firestore ו-Storage (Console → App Check → APIs). לא לפני כן: enforce מוקדם מדי (לפני שלקוחות אמיתיים כבר שולחים טוקן) חוסם את כל הגישה לאפליקציה. **בוצע 2026-08-29** (על ידי המשתמש, ידנית): ה-URL החי נבדק ללא הודעת ה-placeholder ב-console, verified requests אומתו, ורק אז הופעל Enforce על שני השירותים. סוגר את threat #4 ב-`docs/SECURITY.md`.
 5. מפתח debug (`NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG=true`, מוגדר כברירת מחדל ב-`.env.local`) משמש רק ב-dev/CI מול emulators — **לעולם לא** ב-`apphosting.yaml`/production.
 
 **הצפנת שדות רגישים** (`cvv`/`barcodeOrCode`):

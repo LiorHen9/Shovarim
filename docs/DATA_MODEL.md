@@ -146,7 +146,7 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 {
   id: string;
   uid: string;                  // המשתמש שביצע את הפעולה
-  eventType: "mcp_tool_call" | "login" | "export" | "deletion_request" | "deletion_cancelled" | "deletion_completed" | "permission_change";
+  eventType: "mcp_tool_call" | "login" | "export" | "deletion_request" | "deletion_cancelled" | "deletion_completed" | "permission_change" | "channel_linked" | "channel_unlinked";
   tool: string | null;          // שם ה-MCP tool (למשל "listCards"), null לאירועים שאינם tool call
   channel: "cli" | "web" | "whatsapp" | "telegram" | null;
   paramsSummary: string | null; // תקציר פרמטרים ללא סודות (לא cvv/barcodeOrCode/tokens) — לא ה-input הגולמי
@@ -154,7 +154,7 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
   createdAt: Timestamp;
 }
 ```
-Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`src/lib/audit/log.ts`) — קרויה גם משרת ה-MCP המקומי ב-`mcp-server/` (`mcp_tool_call`, ראו `docs/ROADMAP.md` שלב 5.1) וגם מ-Server Actions ב-`src/actions/` (`export`/`deletion_request`/`deletion_cancelled`, ראו Phase 4.1/4.2). `deletion_completed` נכתב ישירות מ-`functions/src/accountDeletion.ts` (Admin SDK עצמאי, לא דרך `writeAuditLog` המשותפת — ראו `docs/DECISIONS.md` #24 לגבי הפרדת `functions/` מ-`src/`). `login`/`permission_change` עדיין לא נכתבים על ידי אף קוד קיים — יתווספו בשלבים העתידיים שמפיקים אותם.
+Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`src/lib/audit/log.ts`) — קרויה גם משרת ה-MCP המקומי ב-`mcp-server/` (`mcp_tool_call`, ראו `docs/ROADMAP.md` שלב 5.1) וגם מ-Server Actions ב-`src/actions/` (`export`/`deletion_request`/`deletion_cancelled`, ראו Phase 4.1/4.2). `deletion_completed` נכתב ישירות מ-`functions/src/accountDeletion.ts` (Admin SDK עצמאי, לא דרך `writeAuditLog` המשותפת — ראו `docs/DECISIONS.md` #24 לגבי הפרדת `functions/` מ-`src/`). `channel_linked`/`channel_unlinked` נכתבים מ-`src/lib/services/channelLinks.ts` (Phase 5.5) — בשירות ולא ב-Server Action, כי `redeemLinkCode` נקרא גם מה-webhook שאינו עובר דרך `src/actions/`. `paramsSummary` שם הוא ה-`channelKey`, כלומר **כולל מספר טלפון** — ראו `docs/PRIVACY.md`. `login`/`permission_change` עדיין לא נכתבים על ידי אף קוד קיים — יתווספו בשלבים העתידיים שמפיקים אותם.
 
 ## `rateLimits/{uid}`
 `src/lib/services/rateLimit.ts` (אין type ייעודי — נגיש רק דרך `checkAndConsumeRateLimit`, לא נקרא ישירות במקום אחר)
@@ -165,6 +165,56 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 }
 ```
 מכסת קריאות tool קבועה (`RATE_LIMIT_MAX_CALLS`/`RATE_LIMIT_WINDOW_MS`, `src/lib/mcp/config.ts`) פר-`uid`, fixed window, נאכפת בתוך `runTransaction` סביב כל קריאת tool דרך ה-wrapper `withToolExecution` ב-`mcp-server/index.ts` (ראו `docs/ROADMAP.md` שלב 5.3, `docs/DECISIONS.md` ADR #21). מסמך פנימי בלבד — נכתב ונקרא רק מ-Admin SDK, `firestore.rules` חוסם קריאה/כתיבה מ-client לגמרי (אין UI שמציג את המכסה כרגע).
+
+## `channelLinks/{channelKey}`
+`src/types/channelLink.ts`, נגיש דרך `src/lib/services/channelLinks.ts`
+```ts
+{
+  channelKey: string;   // "<channel>:<externalId>", זהה ל-doc id
+  uid: string;          // המשתמש שאליו הערוץ קשור
+  channel: "whatsapp";  // AuditLogChannel חוץ מ-"web"/"cli"; כרגע whatsapp בלבד
+  externalId: string;   // מזהה הערוץ החיצוני — E.164 מנורמל ב-WhatsApp
+  linkedAt: Timestamp;
+  lastMessageAt: Timestamp | null;
+}
+```
+המיפוי ערוץ→משתמש שעליו נשענת כל הרשאה בערוצי webhook (`docs/ROADMAP.md` שלב 5.5, `docs/DECISIONS.md` ADR #29). **ה-doc id הוא `channelKey` ולא `uid` בכוונה**: ה-webhook מקבל מספר טלפון ותו לא, וחייב להיות מסוגל לגזור ממנו lookup ישיר (`get`, לא query) — הפוך מכל שאר ה-collections כאן שממופתחים לפי בעלות. `uid` נגזר **רק** מהמסמך הזה, לעולם לא מתוכן ההודעה.
+
+מסמך פנימי בלבד: `firestore.rules` חוסם קריאה וכתיבה מ-client לגמרי. ה-UI ב-`/settings` קורא את הערוצים של המשתמש דרך Server Action (`listMyChannelLinks`), לא דרך client SDK — אחרת היה צריך `allow read: if isExistingOwner()`, ואוסף שממופתח לפי מספר טלפון עם קריאה מותרת הוא oracle שמאשר "האם המספר הזה רשום במערכת".
+
+אין אינדקס מרוכב: `listChannelLinksForUid` שולף `where("uid","==",uid)` בלבד וממיין בזיכרון (מספר ערוצים למשתמש הוא חד-ספרתי).
+
+## `channelLinkCodes/{code}`
+`src/types/channelLink.ts`, נגיש דרך `src/lib/services/channelLinks.ts`
+```ts
+{
+  code: string;         // base32 (Crockford) בן 8 תווים, זהה ל-doc id
+  uid: string;
+  channel: "whatsapp";
+  createdAt: Timestamp;
+  expiresAt: Timestamp; // createdAt + 10 דקות
+  usedAt: Timestamp | null;
+}
+```
+קוד קישור חד-פעמי שנוצר באפליקציה **בזמן שהמשתמש מאומת** — זו הנקודה היחידה בזרימה שבה יש הוכחת בעלות על החשבון. המימוש (`redeemLinkCode`) קורא, מוודא לא-פג ולא-מומש, כותב `channelLinks` ומסמן `usedAt` — הכל בטרנזקציה אחת, כדי ששני webhook events מקבילים עם אותו קוד לא יקשרו שני מספרים.
+
+**8 תווי base32 ולא 6 ספרות**: הצד המנחש כאן הוא בוט ששולח הודעות, לא טופס ווב עם CAPTCHA. 10^6 מול 32^8 (~10^12) הוא ההבדל בין מרחב שאפשר לסרוק לבין מרחב שאי אפשר. נוצר מ-`crypto.randomInt` (CSPRNG), לא מ-`Math.random`.
+
+יצירת קוד חדש מבטלת קודים קודמים שלא מומשו של אותו משתמש (`usedAt` מסומן) — כך שאף פעם לא תלוי באוויר יותר מ-credential אחד. `where("uid","==",uid)` בלבד, סינון בזיכרון, בלי אינדקס מרוכב.
+
+מומלץ להגדיר **TTL policy** על `expiresAt` (Firestore → TTL) כדי שמסמכים פגי-תוקף יימחקו אוטומטית; הלוגיקה לא נשענת על זה (קוד פג נדחה בקוד גם אם המסמך עדיין קיים) — זו היגיינת אחסון בלבד.
+
+## `chatSessions/{channelKey}`
+מוגדר כאן ובכללים כבר עכשיו; ייכתב בפועל בשלב 5.5.b (ה-webhook).
+```ts
+{
+  channelKey: string;
+  uid: string;
+  history: unknown[];   // BetaMessageParam[] מסוריאליז (Anthropic SDK)
+  updatedAt: Timestamp;
+}
+```
+היסטוריית שיחה בצד שרת, נדרשת רק לערוצים שאין להם לקוח שיחזיק אותה. בווב ההיסטוריה נשמרת ב-state של הדפדפן ונשלחת מלאה בכל בקשה (`docs/DECISIONS.md` ADR #22) — ב-WhatsApp אין מקבילה. מכיל טקסט הודעות מלא, כלומר PII פיננסי בפרוזה חופשית; ראו `docs/PRIVACY.md`. מיועד ל-TTL קצר (24 שעות מאי-פעילות) כדי לא לצבור PII לנצח.
 
 ## אינדקסים מרוכבים (`firestore.indexes.json`)
 - `cards`: `ownerId ASC, expiryDate ASC` — דוחות "עומד לפוג"

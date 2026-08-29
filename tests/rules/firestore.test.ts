@@ -637,6 +637,83 @@ describe("server-managed collections (reminders, auditLog)", () => {
   });
 });
 
+// docs/ROADMAP.md Phase 5.5, docs/DECISIONS.md ADR #29. These three are
+// Admin-SDK-only for a sharper reason than the collections above: channelLinks
+// is what maps an inbound phone number to a uid, so a client that could write
+// one would bind its own number to someone else's account. Every assertion
+// here is on the *authenticated* owner — the point is that even they are
+// denied, because the linking flow runs through Server Actions, not the client
+// SDK. Reads are asserted too: a phone-keyed collection a client can read is an
+// oracle for "is this number registered".
+describe("messaging channels (channelLinks, channelLinkCodes, chatSessions)", () => {
+  const CHANNEL_KEY = "whatsapp:+972501234567";
+
+  it("client cannot read or write a channelLink, even one pointing at their own uid", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, `channelLinks/${CHANNEL_KEY}`), {
+        channelKey: CHANNEL_KEY,
+        uid: USER_A,
+        channel: "whatsapp",
+        externalId: "+972501234567",
+        linkedAt: new Date(),
+        lastMessageAt: null,
+      })
+    );
+    await assertFails(getDoc(doc(dbA, `channelLinks/${CHANNEL_KEY}`)));
+  });
+
+  it("client cannot forge a channelLink pointing at another user's uid", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, `channelLinks/${CHANNEL_KEY}`), {
+        channelKey: CHANNEL_KEY,
+        uid: USER_B,
+        channel: "whatsapp",
+        externalId: "+972501234567",
+        linkedAt: new Date(),
+        lastMessageAt: null,
+      })
+    );
+  });
+
+  it("client cannot read or write channelLinkCodes", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, "channelLinkCodes/ABCD2345"), {
+        code: "ABCD2345",
+        uid: USER_A,
+        channel: "whatsapp",
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 600000),
+        usedAt: null,
+      })
+    );
+    // Reading someone else's unused code is enough to hijack their link.
+    await assertFails(getDoc(doc(dbA, "channelLinkCodes/ABCD2345")));
+  });
+
+  it("client cannot read or write chatSessions", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, `chatSessions/${CHANNEL_KEY}`), {
+        channelKey: CHANNEL_KEY,
+        uid: USER_A,
+        history: [],
+        updatedAt: new Date(),
+      })
+    );
+    await assertFails(getDoc(doc(dbA, `chatSessions/${CHANNEL_KEY}`)));
+  });
+
+  it("unauthenticated client cannot touch any of the three", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, `channelLinks/${CHANNEL_KEY}`)));
+    await assertFails(getDoc(doc(db, "channelLinkCodes/ABCD2345")));
+    await assertFails(getDoc(doc(db, `chatSessions/${CHANNEL_KEY}`)));
+  });
+});
+
 describe("consents", () => {
   it("owner can create their own consent record", async () => {
     const dbA = testEnv.authenticatedContext(USER_A).firestore();

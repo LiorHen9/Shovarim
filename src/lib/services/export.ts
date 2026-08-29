@@ -9,6 +9,8 @@ import type { CardListMember, ListMemberRole, ListMemberStatus } from "@/types/c
 import type { GiftCard, CardStatus } from "@/types/card";
 import type { UsageLogEntry } from "@/types/usageLog";
 import type { Category } from "@/types/category";
+import type { ChannelLinkSummary } from "@/types/channelLink";
+import { listChannelLinksForUid } from "@/lib/services/channelLinks";
 
 function toIso(value: Timestamp | null | undefined): string | null {
   return value ? value.toDate().toISOString() : null;
@@ -93,6 +95,14 @@ export interface UserDataExport {
   listMemberships: SerializedListMembership[];
   cards: SerializedCard[];
   categories: Category[];
+  // Phase 5.5 (ADR #29). Keyed by channelKey rather than uid, so it is not
+  // reachable through the ownership queries above and needs its own pass — the
+  // same reason functions/src/accountDeletion.ts queries it separately.
+  // Unredeemed link codes are deliberately excluded: they are live bearer
+  // credentials, and an export file is exactly the artifact that gets emailed
+  // around. chatSessions is excluded for now because nothing writes it until
+  // 5.5.b — it has to be added here when it does.
+  channelLinks: ChannelLinkSummary[];
 }
 
 // Right-to-access/portability export (docs/PRIVACY.md, docs/ROADMAP.md Phase
@@ -220,6 +230,7 @@ export async function buildUserDataExport(uid: string): Promise<UserDataExport> 
   );
 
   const categories = categoriesSnap.docs.map((doc) => doc.data() as Category);
+  const channelLinks = await listChannelLinksForUid(uid);
 
   return {
     exportedAt: new Date().toISOString(),
@@ -229,5 +240,6 @@ export async function buildUserDataExport(uid: string): Promise<UserDataExport> 
     listMemberships,
     cards,
     categories,
+    channelLinks,
   };
 }

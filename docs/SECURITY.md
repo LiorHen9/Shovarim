@@ -17,7 +17,8 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 1. **משתמש A מנסה לגשת/לשנות נתוני משתמש B** → נחסם ע"י `isOwner`/`isExistingOwner` checks בכל collection.
 2. **כתיבת שדות לא צפויים / privilege escalation דרך client** (למשל שינוי `ownerId`, כתיבה ל-`auditLog`) → נחסם ע"י immutability checks ו-`allow write: if false` על collections מנוהלות-שרת.
 3. **גישה לא מאומתת** → כל rule דורש `request.auth != null` (דרך `isSignedIn()`/`isOwner()`).
-4. **Abuse/spam על כתיבות** (יצירת אלפי כרטיסים/entries) → Firebase App Check (`src/lib/firebase/appCheck.ts`, Phase 4) + GCP quotas מובנות על Cloud Functions. ⚠️ **App Check מוגדר אך טרם נאכף**: הקוד (provider: reCAPTCHA Enterprise, ADR #28) והמפתח ב-`apphosting.yaml` במקום מ-2026-08-29, אך **"Enforce" בקונסולה טרם הופעל** — כלומר הלקוח שולח טוקן ואיש לא בודק אותו, וכתיבה ישירה ל-REST API בלי טוקן עדיין מתקבלת. **עד ה-Enforce ה-threat הזה פתוח** — quotas של GCP הן ההגנה היחידה. הסדר המחייב (rollout → אימות verified requests → Enforce) ב-`docs/DEPLOYMENT.md`.
+4. **Abuse/spam על כתיבות** (יצירת אלפי כרטיסים/entries) → Firebase App Check (`src/lib/firebase/appCheck.ts`, Phase 4) + GCP quotas מובנות על Cloud Functions. ✅ **נסגר 2026-08-29**: הקוד (provider: reCAPTCHA Enterprise, ADR #28) והמפתח ב-`apphosting.yaml` חיים בפרודקשן, verified requests אומתו בקונסולה, ו-**Enforce הופעל על Firestore ו-Storage**. כתיבה ישירה ל-REST API בלי טוקן App Check תקין נדחית עכשיו ברמת השירות, לפני `firestore.rules`. הסדר המחייב שהוביל לכאן (rollout → אימות verified requests → Enforce) מתועד ב-`docs/DEPLOYMENT.md`.
+   ⚠️ **מה שה-Enforce לא מכסה**: Server Actions ו-Route Handlers (`/api/chat`, ובהמשך `/api/whatsapp/webhook`) פועלים דרך Admin SDK, שעוקף גם את הכללים וגם את App Check. משטח התקיפה שם נאכף בנפרד — session cookie/חתימת webhook + rate limiting (`src/lib/services/rateLimit.ts`), ראו #6 למטה.
 5. **דליפת Admin credentials** → Admin SDK תמיד server-only (`import "server-only"` ב-`admin.ts`), secrets ב-Secret Manager/`.env.local` שלא מחובר לגיט.
 6. **צ'אטבוט/CLI (Phase 5) פועל בשם משתמש שגוי** — prompt injection או הזיית מודל שמנסה "לבקש" לפעול על נתוני משתמש אחר → נחסם מבנית: ה-`uid` הפועל נגזר תמיד בצד שרת (session cookie / מיפוי ערוץ מאומת) ולעולם אינו שדה בסכימת ה-tool שה-LLM יכול לספק. ראו הרחבה למטה ו-`docs/DECISIONS.md` #17.
 
@@ -45,6 +46,16 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 - **Semantic cache מבודד לפי `uid`**: אין שיתוף cache בין משתמשים; שאילתות שחושפות `cvv`/`barcodeOrCode` לא נשמרות ב-cache כלל, כדי לצמצם את משטח הנזק של באג cache עתידי.
 - **Audit log מורחב**: כל קריאת tool (מבצע, tool, פרמטרים ללא סודות, ערוץ, תוצאה) נכתבת ל-`auditLog` (`docs/DATA_MODEL.md`).
 - **Rate limiting per-uid**: ערוצי WhatsApp/Telegram חושפים משטח spoofing (מספר טלפון) שלא קיים באפליקציית ה-web המאומתת מול Google — מטופל ברמת הרצת ה-tools, לא ברמת Firestore Rules בלבד.
+
+### קישור ערוץ→משתמש (Phase 5.5.a, ADR #29)
+**ההנחה שכל השאר נשען עליה**: מספר טלפון ב-payload נכנס הוא **לא** credential — כל אחד יכול לשלוח payload עם מספר של מישהו אחר. לכן:
+- ה-`uid` נגזר אך ורק מ-lookup ב-`channelLinks/{channel}:{externalId}`, לעולם לא מתוכן ההודעה. משם הוא נכנס ל-`createMcpServer(uid, "whatsapp")` ונעול בסגירה, בדיוק כמו בנתיב הווב.
+- **הקישור עצמו** נוצר רק דרך קוד חד-פעמי שהופק בזמן שהמשתמש מאומת (`requireUid()`), בן 8 תווי base32, TTL 10 דקות, שימוש יחיד, ופדיון בטרנזקציה אחת. 6 ספרות היו מרחב סריקה סביר לבוט ששולח הודעות; 32^8 אינו.
+- **שלושת ה-collections חסומים לחלוטין ל-client** (`allow read, write: if false`), כולל קריאה של הבעלים: אוסף שממופתח לפי מספר טלפון עם קריאה מותרת הוא oracle ל-"האם המספר רשום", וקוד לא-מומש שניתן לקריאה הוא credential גנוב. ה-UI קורא דרך Server Action.
+- **הודעות כישלון אחידות בפדיון** — הצד השולח אנונימי, ואסור שיבחין בין "אין קוד" ל-"פג תוקף".
+- **נעילת ה-stand-in לאמולטור**: `src/actions/testChannelLink.ts` פודה קוד **בלי** `requireUid()` — כמו שהוובהוק יעשה — ולכן `FIREBASE_USE_EMULATOR !== "true"` שם הוא חסם אבטחה, לא נוחות בדיקה (אותו pattern כמו `mintTestCustomToken`).
+
+**מה עוד לא קיים ולכן עוד לא מאובטח**: אין webhook. גבול האמון שלו (`X-Hub-Signature-256` על הגוף הגולמי לפני כל פרסור, דדופליקציה של `messageId`, rate limit על turns ולא רק על tool calls) מתוכנן ל-5.5.b ומתועד ב-ADR #29 — עד אז אין נקודת כניסה חיצונית כלל.
 
 ## Testing
 `@firebase/rules-unit-testing` מול Firestore Emulator (דורש Java מותקן מקומית — ראה `docs/ARCHITECTURE.md`). טסטים נדרשים לפני Phase 1 sign-off:

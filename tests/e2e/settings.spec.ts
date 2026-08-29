@@ -16,6 +16,11 @@ test("user can export their data as JSON", async ({ page }) => {
   await page.waitForURL(/\/cards\/(?!new$)[^/]+$/, { timeout: 15000 });
 
   await page.goto("/settings");
+  // Proof that /settings hydrated: this text only renders once
+  // ChannelLinksSection's effect has run and its Server Action resolved.
+  // Clicking before that lands on a button with no handler attached yet, which
+  // fails as a silent timeout further down.
+  await expect(page.getByText("אין ערוצים מקושרים")).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "ייצוא כל הנתונים שלי (JSON)" }).click();
   const download = await downloadPromise;
@@ -29,11 +34,73 @@ test("user can export their data as JSON", async ({ page }) => {
   expect(exported.cards[0].currentBalance).toBe(80);
 });
 
+// docs/ROADMAP.md Phase 5.5.a. Proves the linking flow end to end with no
+// messaging provider in the picture: the app issues the code, an
+// unauthenticated inbound caller redeems it (/e2e/redeem-link stands in for the
+// webhook that arrives in 5.5.b), and the link then shows up — and can be
+// removed — in the authenticated UI.
+test("user can link a WhatsApp channel with a one-time code and unlink it", async ({ page }) => {
+  const uid = `e2e-${randomUUID()}`;
+  // A distinct number per run: the channelKey is the doc id, so a shared number
+  // would make parallel runs fight over the same channelLinks document.
+  const phone = `+9725${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
+  await signInAsTestUser(page, { uid, email: `${uid}@example.com`, name: "בודק אוטומטי" });
+
+  await page.goto("/settings");
+  await expect(page.getByText("אין ערוצים מקושרים")).toBeVisible();
+
+  await page.getByRole("button", { name: "חיבור WhatsApp" }).click();
+  const codeRegion = page.getByRole("region", { name: "קוד קישור WhatsApp" });
+  await expect(codeRegion).toBeVisible();
+  const code = (await codeRegion.locator("code").innerText()).trim();
+  expect(code).toMatch(/^[0-9A-HJKMNP-TV-Z]{8}$/);
+
+  // Redeemed without a session, the way the webhook will: the code is the only
+  // credential in play.
+  await page.goto(`/e2e/redeem-link?externalId=${encodeURIComponent(phone)}&code=${code}`);
+  await expect(page.getByRole("status")).toHaveText("redeemed");
+
+  await page.goto("/settings");
+  await expect(page.getByText(phone)).toBeVisible();
+
+  await page.getByRole("button", { name: "ניתוק", exact: true }).click();
+  await page.getByRole("button", { name: "ניתוק הערוץ" }).click();
+  await expect(page.getByText("אין ערוצים מקושרים")).toBeVisible();
+  await expect(page.getByText(phone)).not.toBeVisible();
+});
+
+test("a link code cannot be redeemed twice", async ({ page }) => {
+  const uid = `e2e-${randomUUID()}`;
+  const phone = `+9725${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
+  const otherPhone = `+9725${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
+  await signInAsTestUser(page, { uid, email: `${uid}@example.com`, name: "בודק אוטומטי" });
+
+  await page.goto("/settings");
+  await expect(page.getByText("אין ערוצים מקושרים")).toBeVisible(); // hydration gate, see above
+  await page.getByRole("button", { name: "חיבור WhatsApp" }).click();
+  const codeRegion = page.getByRole("region", { name: "קוד קישור WhatsApp" });
+  await expect(codeRegion).toBeVisible();
+  const code = (await codeRegion.locator("code").innerText()).trim();
+
+  await page.goto(`/e2e/redeem-link?externalId=${encodeURIComponent(phone)}&code=${code}`);
+  await expect(page.getByRole("status")).toHaveText("redeemed");
+
+  // Same code, different number: a used code must not bind a second channel,
+  // or anyone who saw it once could attach their own phone later.
+  await page.goto(`/e2e/redeem-link?externalId=${encodeURIComponent(otherPhone)}&code=${code}`);
+  await expect(page.getByRole("status")).toContainText("failed:");
+
+  await page.goto("/settings");
+  await expect(page.getByText(phone)).toBeVisible();
+  await expect(page.getByText(otherPhone)).not.toBeVisible();
+});
+
 test("user can request and cancel account deletion", async ({ page }) => {
   const uid = `e2e-${randomUUID()}`;
   await signInAsTestUser(page, { uid, email: `${uid}@example.com`, name: "בודק אוטומטי" });
 
   await page.goto("/settings");
+  await expect(page.getByText("אין ערוצים מקושרים")).toBeVisible(); // hydration gate, see above
   await page.getByRole("button", { name: "מחיקת החשבון" }).click();
   await page.getByRole("button", { name: "תזמון מחיקת החשבון" }).click();
 
