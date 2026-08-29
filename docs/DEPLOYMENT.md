@@ -141,11 +141,75 @@
    ```
    `backendId` הוא ארגומנט **פוזיציוני**, לא `--backend` (הגרסה הקודמת של השורה הזו כאן הייתה שגויה ונכשלה עם `error: unknown option '--backend'`). אפשר `--git-commit <sha>` במקום `--git-branch`, ו-`-f` לדילוג על אישור.
 
+## CI (GitHub Actions) — `.github/workflows/ci.yml`
+
+workflow אחד בשם `CI`, שלוש jobs, שני טריגרים:
+
+```
+on: pull_request        →  quality ‖ functions                      (deploy מדולג)
+on: push [branches:main] →  quality ‖ functions  →  deploy-rules-and-functions
+```
+
+### למה `quality` ו-`functions` מופרדים
+
+הם רצים **במקביל, בלי תלות ביניהם**. הפיצול הוא לפי **עץ תלויות**, לא לפי גרסת node (שניהם node 22 — `.nvmrc` מול `engines.node` ב-`functions/package.json`): השורש ו-`functions/` הם שני פרויקטי npm עם `package-lock.json` ו-`tsconfig` נפרדים.
+
+- **cache נפרד** לכל אחד (`cache-dependency-path: functions/package-lock.json` ב-job השני).
+- **feedback מהיר יותר** — `functions` הוא job קליל (`npm ci` → `typecheck` → `build`, כדקה), בזמן ש-`quality` כבד: מתקין Java 21 ל-emulators, Chromium ל-Playwright, ומריץ build מלא. שגיאת טיפוס ב-Cloud Functions צפה מיד במקום להיקבר מתחת ל-build של Next.
+- אם/כשיתווסף deploy נפרד ל-Functions, הגבול כבר קיים.
+
+### סדר הצעדים ב-`quality` — fail-fast מהזול ליקר
+
+`npm ci` → `typecheck` → `lint` → `build` → `playwright install chromium` → `emulators:exec` (rules tests + E2E באותה הרצת emulator אחת). שגיאת טיפוס נופלת תוך שניות ולא אחרי שהותקן דפדפן והורמו emulators. `playwright-report/` נשמר כ-artifact **רק על כישלון** (`if: failure()`, 7 ימים).
+
+ה-job כולו רץ ב-**emulator mode עם ערכי Firebase דמה** ומפתח `CARD_FIELD_ENCRYPTION_KEY` קבוע (ראו טבלת ה-secrets למעלה ואת מיפוי ה-emulator למטה). זו לא רק נוחות — **ל-CI על PR אין שום גישה ל-production**, וזה חשוב במיוחד כי PR יכול להגיע מ-fork.
+
+### למה ה-deploy job לא רץ על PR
+
+הוא לא "אופציונלי" — הוא **מדולג בתנאי**, ומופיע אפור (skipped) בבדיקות ה-PR:
+
+```yaml
+needs: [quality, functions]
+if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+```
+
+שני מנעולים נפרדים:
+1. **`needs`** — לא נפרס כלום אם אחד משני ה-gates נכשל.
+2. **`if`** — push ל-`main` בלבד.
+
+הרציונל: Firestore rules, indexes, Storage rules ו-Functions הם משאבים **גלובליים בפרויקט אחד**, ואין staging (ADR #16). branch שהיה יכול לפרוס rules היה דורס את ה-rules של production. `permissions: id-token: write` ב-job הזה נדרש ל-Workload Identity Federation — הוא ה-job היחיד שמקבל credentials אמיתיים.
+
+ה-job בונה מחדש את `functions/` במקום לצרוך artifact מה-job `functions` — כפילות מכוונת, פשוטה יותר מהעברת artifacts בין jobs עבור build בן דקה.
+
+### למה `quality` רץ שוב אחרי merge
+
+ריצת ה-PR בדקה את **מיזוג ה-PR head לתוך main כפי שהיה אז**. `main` יכול היה לזוז מאז (שינוי שמתנגש סמנטית, לא טקסטואלית). הריצה על `main` היא ה-gate שקודם ל-deploy בפועל, על העץ שבאמת ייפרס.
+
+### מגבלה קיימת: `main` לא מוגן
+
+נכון ל-2026-08-29 אין branch protection על `main` (`GET /branches/main/protection` → 404). כלומר ה-CI הוא **ייעוץ, לא שער**: אפשר למזג PR עם checks אדומים, ואפשר לדחוף ישירות ל-`main` ולעקוף PR לגמרי. שיפור מתבקש: להפוך את `quality` ו-`functions` ל-required status checks.
+
 ## זרימת deploy שוטפת
 
 Push ל-`main` מפעיל **שני צינורות עצמאיים** באותו רגע:
 1. App Hosting (Cloud Build, לא GitHub Actions) בונה ופורס את אפליקציית ה-Next.js.
 2. GitHub Actions מריץ quality gate, ואם עובר — פורס Firestore rules/indexes, Storage rules, ו-Functions.
+
+| | מי מריץ | מה נפרס | טריגר | מדווח כ-check? |
+|---|---|---|---|---|
+| צינור א' | GitHub Actions (`deploy-rules-and-functions`, WIF ל-GCP) | Firestore rules + indexes, Storage rules, Cloud Functions | push ל-`main`, אחרי quality+functions | ✅ תמיד |
+| צינור ב' | Firebase App Hosting → Cloud Build | אפליקציית ה-Next.js עצמה | push ל-`main` (ה-backend מחובר ישירות ל-repo) | ⚠️ לא אמין — ראו אזהרה |
+
+**אין ביניהם סנכרון או סדר מובטח** — הם מתחילים יחד ומסתיימים בזמנים שונים. שינוי שדורש שה-rules יהיו במקום לפני שהקוד החדש עולה (או להפך) יעבור חלון קצר של חוסר עקביות. במקרה כזה לפצל לשני merges: קודם השינוי המתירני, ואחריו זה שנשען עליו.
+
+### האם צריך להריץ rollout ידנית?
+
+**לא, לא בזרימה הרגילה.** ה-backend `shovarim-web` מחובר ישירות ל-repo ול-branch `main`, וכל push ל-`main` מייצר rollout אוטומטי דרך Cloud Build. אין צורך לגעת ב-`apphosting:rollouts:create` אחרי merge רגיל.
+
+rollout ידני (שלב 9 ב-runbook למעלה) נדרש רק ב-שלושה מקרים:
+1. **rollback / roll-forward** ל-commit ספציפי — `--git-commit <sha>` (ראו סעיף Rollback).
+2. **תיקון שלא ייצר commit** — למשל secret שנוצר/עודכן ב-Secret Manager, או הרשאה שתוקנה בקונסולה. ה-rollout הכושל **לא מנסה שוב לבד** ואין commit חדש שיפעיל אותו.
+3. ה-deploy הראשון סביב יצירת ה-backend.
 
 > **אזהרה — שני הצינורות נכשלים בנפרד, ורק אחד מהם מדווח.** GitHub Actions מציג ✅/❌ על ה-PR; כישלון של App Hosting **לא** מופיע שם בכלל. אפשר לראות "כל ה-checks ירוקים" בזמן שהאפליקציה החיה תקועה על build ישן. ראו הפוסט-מורטם למטה (2026-08-29).
 
