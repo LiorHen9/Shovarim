@@ -175,10 +175,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    match /rateLimits/{uid} {
-      // Internal MCP tool-execution quota (docs/ROADMAP.md Phase 5.3), read
-      // and written only via the Admin SDK. No UI surfaces this doc, so
-      // unlike auditLog/reminders there's no owner read either.
+    match /rateLimits/{subjectId} {
+      // Internal tool-call and conversation-turn quotas (docs/ROADMAP.md
+      // Phase 5.3/5.5.b), read and written only via the Admin SDK. No UI
+      // surfaces this doc, so unlike auditLog/reminders there's no owner read
+      // either. The id is a uid on every authenticated path, and a channelKey
+      // for inbound messages from a number that isn't linked yet.
       allow read, write: if false;
     }
 
@@ -213,6 +215,14 @@ service cloud.firestore {
       // hold it (the web chat keeps history client-side instead — ADR #22).
       // Contains full message text, i.e. the user's own financial data in
       // free-form prose; never client-readable.
+      allow read, write: if false;
+    }
+
+    match /channelMessages/{messageId} {
+      // Inbound-message dedup claims (Phase 5.5.b). The doc id is the
+      // provider's message id, and its *existence* is what makes a Meta retry
+      // a no-op — a client able to create one could pre-empt a real inbound
+      // message and silence the bot for that message.
       allow read, write: if false;
     }
   }

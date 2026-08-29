@@ -706,11 +706,27 @@ describe("messaging channels (channelLinks, channelLinkCodes, chatSessions)", ()
     await assertFails(getDoc(doc(dbA, `chatSessions/${CHANNEL_KEY}`)));
   });
 
-  it("unauthenticated client cannot touch any of the three", async () => {
+  // Phase 5.5.b: a client able to create a dedup claim ahead of a real inbound
+  // message would make the webhook drop it — a silent denial of service on one
+  // message, by design impossible to distinguish from a provider retry.
+  it("client cannot read or write channelMessages", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, "channelMessages/abc123"), {
+        channelKey: CHANNEL_KEY,
+        messageId: "wamid.abc",
+        receivedAt: new Date(),
+      })
+    );
+    await assertFails(getDoc(doc(dbA, "channelMessages/abc123")));
+  });
+
+  it("unauthenticated client cannot touch any of the four", async () => {
     const db = testEnv.unauthenticatedContext().firestore();
     await assertFails(getDoc(doc(db, `channelLinks/${CHANNEL_KEY}`)));
     await assertFails(getDoc(doc(db, "channelLinkCodes/ABCD2345")));
     await assertFails(getDoc(doc(db, `chatSessions/${CHANNEL_KEY}`)));
+    await assertFails(getDoc(doc(db, "channelMessages/abc123")));
   });
 });
 

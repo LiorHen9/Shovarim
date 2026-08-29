@@ -1,14 +1,14 @@
 # CHATBOT — סטטוס הסוכן (MCP + Claude)
 
-מצב נכון ל-2026-08-29 (סוף שלב 5.5.a). עדכן מסמך זה עם כל שינוי משמעותי בארכיטקטורת הצ'אטבוט/MCP — ראה גם `docs/ROADMAP.md` Phase 5 (השלבים המלאים) ו-`docs/DECISIONS.md` ADR #17/#19/#20/#21/#22/#29 (הרציונל המלא).
+מצב נכון ל-2026-08-29 (סוף שלב 5.5.b). עדכן מסמך זה עם כל שינוי משמעותי בארכיטקטורת הצ'אטבוט/MCP — ראה גם `docs/ROADMAP.md` Phase 5 (השלבים המלאים) ו-`docs/DECISIONS.md` ADR #17/#19/#20/#21/#22/#29/#30 (הרציונל המלא).
 
 ## תמונת מצב כללית
 
 **יש UI צ'אטבוט בווב** (שלב 5.4): עמוד `/chat` (`src/components/chat/ChatPanel.tsx`) מול `POST /api/chat` — ה-Route Handler הראשון באפליקציה — שמזרים NDJSON חזרה לדפדפן. לצדו ממשיך להתקיים ה-CLI (`npm run mcp:cli`) כערוץ שני. אין endpoint ב-Cloud Functions.
 
-**ערוץ WhatsApp: תשתית הקישור קיימת, הבוט עצמו לא** (שלב 5.5.a). ראה הסעיף הייעודי למטה — נכון לעכשיו **אין מספר, אין webhook, ואין דרך למשתמש אמיתי לדבר עם הבוט**.
+**ערוץ WhatsApp: הקוד שלם, ההקמה מול Meta לא** (שלב 5.5.b). ה-webhook, הקישור, ההיסטוריה בצד שרת וה-rate limit קיימים ונבדקו; מה שחסר הוא Meta app, מספר וסודות (5.5.c). עד אז ה-endpoint מחזיר 503 ו**אין דרך למשתמש אמיתי לדבר עם הבוט** — אבל `npm run whatsapp:sim` מריץ את אותו קוד בדיוק בלי Meta.
 
-**שני ה-transports, אותם tools**: ה-CLI מריץ את `mcp-server/index.ts` כ-subprocess דרך stdio; ה-Route Handler מחבר את אותו שרת **in-process** דרך `InMemoryTransport.createLinkedPair()`, בלי spawn של תהליך לכל בקשת HTTP. רישום ה-tools עצמו משותף לחלוטין — `createMcpServer(uid, channel)` ב-`src/lib/mcp/mcpServer.ts` (ADR #22).
+**שלושה transports, אותם tools**: ה-CLI מריץ את `mcp-server/index.ts` כ-subprocess דרך stdio; ה-Route Handler של הווב ו-`handleInboundChannelMessage` של הערוצים מחברים את אותו שרת **in-process** דרך `InMemoryTransport.createLinkedPair()`, בלי spawn של תהליך לכל בקשה. רישום ה-tools עצמו משותף לחלוטין — `createMcpServer(uid, channel)` ב-`src/lib/mcp/mcpServer.ts` (ADR #22).
 
 זהו "סוכן" במובן המצומצם — LLM + tools + לולאה שבה המודל מחליט מתי לקרוא לכלים — אך לא מסגרת אורקסטרציה (לא LangChain, לא Claude Agent SDK).
 
@@ -29,9 +29,16 @@
 | `src/lib/services/{cards,usage,balance,cardLists}.ts` | שכבת השירות (Admin SDK, uid כפרמטר) — משותפת בין MCP tools ל-Server Actions |
 | `src/lib/services/rateLimit.ts` | `checkAndConsumeRateLimit` — fixed-window rate limit פר-uid (`rateLimits/{uid}`) |
 | `src/types/auditLog.ts` | טיפוס רשומת audit log לקריאות tool |
-| `src/lib/services/channelLinks.ts` | **הערוץ→uid** — יצירה/פדיון של קוד קישור, `resolveUidForChannel`. הפונקציה שהוובהוק יישען עליה (5.5.a) |
+| `src/lib/services/channelLinks.ts` | **הערוץ→uid** — יצירה/פדיון של קוד קישור, `resolveUidForChannel`, `touchChannelLink` |
 | `src/lib/validation/channelLink.ts` | נרמול E.164, פורמט קוד ה-base32, `channelKey` |
 | `src/actions/channelLink.ts` + `src/components/settings/ChannelLinksSection.tsx` | הצד המאומת: הפקת קוד ב-`/settings`, רשימת ערוצים, ניתוק |
+| `src/app/api/whatsapp/webhook/route.ts` | ה-webhook (5.5.b) — handshake, חתימה, דדופליקציה, שליחת התשובה |
+| `src/lib/services/channelChat.ts` | **`handleInboundChannelMessage`** — הודעה נכנסת מקצה לקצה, ניטרלי לספק |
+| `src/lib/whatsapp/{config,signature,graph}.ts` | הצד הספציפי ל-WhatsApp: env lazily, אימות HMAC, שליחה דרך Graph API |
+| `src/lib/validation/whatsapp.ts` | פרסור סלחני של ה-payload של Meta → הודעות נכנסות מנורמלות |
+| `src/lib/services/{chatSessions,channelMessages}.ts` | היסטוריה בצד שרת (24 שעות, גזימה בטוחה) ותביעת דדופליקציה |
+| `src/lib/mcp/historyLimits.ts` | `trimHistory` — טהור וניתן לבדיקת יחידה, בלי Admin SDK |
+| `scripts/whatsapp-sim.ts` | `npm run whatsapp:sim` — הרצת הזרימה האמיתית בלי Meta |
 
 ## האם יש System Prompt?
 
@@ -43,7 +50,7 @@
 
 ## Context
 
-- **היסטוריית שיחה**: מערך `BetaMessageParam[]` מלא. ב-CLI מוזרם בין תורות ב-REPL; בווב נשמר **בצד הלקוח בלבד** (state ב-`ChatPanel`) ונשלח במלואו בכל בקשה, כי אין session שרתי — ריענון דף מאבד את השיחה. אין persistence ואין sync בין מכשירים (ADR #22, היקף שנדחה במפורש).
+- **היסטוריית שיחה**: מערך `BetaMessageParam[]` מלא. ב-CLI מוזרם בין תורות ב-REPL; בווב נשמר **בצד הלקוח בלבד** (state ב-`ChatPanel`) ונשלח במלואו בכל בקשה, כי אין session שרתי — ריענון דף מאבד את השיחה. אין persistence ואין sync בין מכשירים (ADR #22, היקף שנדחה במפורש). **ב-WhatsApp** אין לקוח שיחזיק אותה, ולכן היא נשמרת ב-`chatSessions/{channelKey}` כמחרוזת JSON (ADR #30): מתאפסת אחרי 24 שעות אי-פעילות, נגזמת בגבול ~200KB רק על גבול של הודעת משתמש אמיתית, ונמחקת בניתוק/קישור-מחדש של הערוץ.
 - **RAG**: אין (ללא embeddings/vector store).
 - **נתוני אפליקציה**: לא מוזרקים מראש — המודל חייב לקרוא ל-tool כדי לקבל אותם (tool-use ולא context stuffing).
 - **Prompt caching**: `cache_control: ephemeral` על בלוק ה-system, מכסה גם את סכימות ה-tools (סדר render קבוע).
@@ -77,10 +84,10 @@
 - **Audit log** — כל קריאת tool נכתבת ל-`auditLog/{entryId}` (`writeAuditLog`), טיפוס `mcp_tool_call`.
 - **הפרדת קרדנציאלים DEV/PROD** — `ANTHROPIC_API_KEY` חייב להיות unset ב-prod (עוקף WIF בשקט אם קיים) — ADR #20.
 - **הנחיה ברמת system prompt נגד הזיה** — לא מנגנון אכיפה, רק הנחיה טקסטואלית.
-- **Rate limiting per-uid** — `rateLimits/{uid}` (fixed window, 30 קריאות/5 דקות), נאכף בתוך `withToolExecution` לפני כל handler; חריגה חוזרת כ-tool error (`isError: true`), לא כשגיאת פרוטוקול. ADR #21 ב-`docs/DECISIONS.md`.
+- **Rate limiting per-uid, שני buckets** — `rateLimits/{subjectId}` (fixed window). `tools`: 30 קריאות/5 דקות, נאכף בתוך `withToolExecution` לפני כל handler; חריגה חוזרת כ-tool error (`isError: true`), לא כשגיאת פרוטוקול. `turns`: 12 הודעות/5 דקות, נאכף פעם אחת בראש כל הודעה נכנסת בערוץ webhook — כולל שיחה בלי שום קריאת tool. מספר שאינו מקושר נמדד לפי `channelKey` (אין uid, וזה משטח ניחוש קודי הקישור). ADR #21/#30.
 - **אישור מפורש לפעולות הרסניות** (שלב 5.4) — `deleteCard`/`deleteUsageEntry` דורשים `confirmed: true` בסכימה, וה-system prompt מנחה לשאול בטקסט חופשי ולחכות לתשובה חיובית מפורשת לפני הקריאה. אם `confirmed` הוא `false`, ה-handler מחזיר tool error שמסביר למודל לשאול קודם. **זו לא אכיפה קשיחה** — המודל הוא זה שממלא את השדה; אין code-level gate בלולאת ה-tool-use (ADR #22, כולל האלטרנטיבה שנדחתה).
 - **`ActionError` מוחזר כ-tool error, לא כקריסה** — שגיאות צפויות (לא נמצא/אין הרשאה/יתרה לא מספיקה) חוזרות למודל כ-`isError: true` והוא מסביר למשתמש; רק באגים אמיתיים נזרקים הלאה. אותה הבחנה כמו ADR #18 ל-Server Actions.
-- **חסר עדיין**: אין content moderation, אין stop sequences, אין allow/deny lists. ה-rate limit חל רק על קריאות tool — שיחת טקסט ארוכה בלי tools לא מוגבלת. אין semantic cache (מתוכנן, ADR #17).
+- **חסר עדיין**: אין content moderation, אין stop sequences, אין allow/deny lists. אין semantic cache (מתוכנן, ADR #17). ב-`/chat` ו-`mcp:cli` עדיין אין מגבלת turns — ה-bucket הזה נאכף רק בערוצי webhook, שם כל הודעה מגיעה מגורם לא-מאומת; בווב ה-session cookie הוא כבר חסם כניסה.
 
 ## ערוץ WhatsApp — הערוץ השלישי (שלב 5.5)
 
@@ -92,19 +99,20 @@
 
 צעד 1 הוא היחיד שקורה באפליקציה. זו גם הנקודה היחידה בזרימה שבה יש הוכחת בעלות על החשבון — ולכן היא מעוגנת ב-`requireUid()` (ADR #29).
 
-### מה קיים בפועל (5.5.a) ומה לא
+### מה קיים בפועל (5.5.b) ומה לא
 | | סטטוס |
 |---|---|
-| מודל הנתונים (`channelLinks`/`channelLinkCodes`/`chatSessions`) + Rules | ✅ |
+| מודל הנתונים (`channelLinks`/`channelLinkCodes`/`chatSessions`/`channelMessages`) + Rules | ✅ |
 | הפקת קוד, פדיון, רשימת ערוצים, ניתוק, audit log | ✅ |
 | UI ב-`/settings` | ✅ |
-| מחיקת חשבון + ייצוא מכסים את הערוצים | ✅ |
-| **webhook** (`/api/whatsapp/webhook`) | ❌ 5.5.b |
-| **היסטוריית שיחה בצד שרת** (`chatSessions` נכתב בפועל) | ❌ 5.5.b |
-| **rate limit על turns** (לא רק על tool calls) | ❌ 5.5.b |
+| מחיקת חשבון + ייצוא מכסים את הערוצים ואת השיחות | ✅ |
+| **webhook** (`/api/whatsapp/webhook`) — handshake, חתימה, דדופליקציה | ✅ 5.5.b |
+| **היסטוריית שיחה בצד שרת** (`chatSessions` נכתב בפועל) | ✅ 5.5.b |
+| **rate limit על turns** (לא רק על tool calls) | ✅ 5.5.b |
 | **מספר טלפון / Meta app / סודות** | ❌ 5.5.c |
+| **שליחה אמיתית דרך Graph API** | ❌ 5.5.c (הקוד קיים, אף פעם לא רץ מול Meta) |
 
-כלומר: משתמש שישלח היום קוד לאיזשהו מספר — לא יקרה כלום, כי אף אחד לא מקשיב. הפדיון נבדק ב-E2E דרך stand-in נעול-אמולטור (`src/actions/testChannelLink.ts`) שמדמה בדיוק את מה שהוובהוק יעשה.
+כלומר: משתמש שישלח היום קוד לאיזשהו מספר — עדיין לא יקרה כלום, כי אין מספר ואין סודות, וה-endpoint מחזיר 503. אבל כל השרשרת שאחרי ה-payload נבדקה: unit tests לחתימה/פרסור, E2E שמגיש delivery חתום מקומית, ו-`npm run whatsapp:sim` שמריץ שיחה אמיתית מול Claude וה-emulator.
 
 ### למה הסדר הזה
 זרימת הקישור נושאת את **כל** מודל ההרשאות של הערוץ: מספר טלפון ב-payload נכנס אינו הוכחת זהות, וה-`uid` נגזר אך ורק מ-`channelLinks`. עדיף להוכיח את זה ב-E2E לפני שמכניסים צד שלישי לתמונה.
@@ -129,7 +137,7 @@
 ## מסמכים קשורים
 
 - `docs/ROADMAP.md` Phase 5 — כל השלבים (5.1 עד 5.4) כולל מה נדחה במפורש ומה מתוכנן.
-- `docs/DECISIONS.md` ADR #17 (MCP + uid בצד שרת), #19 (walking skeleton, runtime), #20 (מודל/caching/WIF), #21 (rate limiting), #22 (UI + סט tools מלא, שכבת שירות משותפת, transport in-process), **#29 (ערוץ WhatsApp — קישור, runtime, היסטוריה בצד שרת)**.
+- `docs/DECISIONS.md` ADR #17 (MCP + uid בצד שרת), #19 (walking skeleton, runtime), #20 (מודל/caching/WIF), #21 (rate limiting), #22 (UI + סט tools מלא, שכבת שירות משותפת, transport in-process), **#29 (ערוץ WhatsApp — קישור, runtime, היסטוריה בצד שרת)**, **#30 (ה-webhook — שכבה ניטרלית לספק, buckets, דדופליקציה, 503 עד ההקמה)**.
 - `docs/SECURITY.md` — threat #6 (prompt injection / פעולה בשם משתמש אחר), וסעיף "קישור ערוץ→משתמש".
 - `docs/DATA_MODEL.md` — collections `auditLog`, `channelLinks`, `channelLinkCodes`, `chatSessions`.
 - `docs/DEPLOYMENT.md` — הקמת WIF ל-PROD, והקמת WhatsApp (Meta app, מספר, סודות).

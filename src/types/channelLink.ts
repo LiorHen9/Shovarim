@@ -33,6 +33,19 @@ export interface ChannelLinkCode {
   usedAt: Timestamp | null;
 }
 
+// chatSessions/{channelKey} — server-side conversation history, needed only by
+// channels with no client to hold it (the web chat keeps its own, ADR #22).
+// `history` is a JSON string, not an array: it holds the Anthropic SDK's
+// BetaMessageParam[], a shape we don't own — undefined fields in it would make
+// Firestore throw, and one serialize/parse pair round-trips it exactly
+// regardless of SDK version. See docs/DATA_MODEL.md.
+export interface ChatSession {
+  channelKey: string;
+  uid: string;
+  history: string;
+  updatedAt: Timestamp;
+}
+
 // What crosses the Server Action boundary to the client. Firestore Timestamp
 // instances are not serializable across that boundary (same reason
 // requestAccountDeletion returns an ISO string), so dates are ISO strings and
