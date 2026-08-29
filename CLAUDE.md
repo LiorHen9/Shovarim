@@ -24,6 +24,8 @@ Next.js 16 (App Router, React 19, TypeScript strict) + Firebase (Firestore, Auth
 - `docs/ARCHITECTURE.md` — data flow, client vs Admin SDK, מבנה תיקיות. טען לשינויים מבניים.
 - `docs/DATA_MODEL.md` — schema מלא של Firestore collections, אינדקסים. טען לעבודה על queries/schema.
 - `docs/SECURITY.md` — Security Rules, threat model, secrets. טען לעבודה על Rules/הרשאות.
+- `docs/DEPLOYMENT.md` — CI/CD (מבנה ה-jobs ב-`ci.yml`, PR מול main), שני צינורות ה-deploy, secrets, rollout/rollback, runbook. טען לעבודה על workflows/`apphosting.yaml`/secrets.
+- `docs/CHATBOT.md` — ארכיטקטורת הצ'אטבוט וה-MCP tools. טען לעבודה על הצ'אט.
 - `docs/PRIVACY.md` — GDPR/פרטיות, PII mapping, consent/export/deletion flows. טען לעבודה על legal/privacy features.
 - `docs/FEATURES.md` — סטטוס פיצ'רים (ממומש/מתוכנן).
 - `docs/ROADMAP.md` — שלבי עבודה, מה הושלם. טען בתחילת session כדי לדעת "איפה אנחנו".
