@@ -181,6 +181,7 @@
 **Admin SDK לא מושפע**: App Check חל רק על client SDK מול Firestore/Storage ישירות. Server Actions ו-Cloud Functions (Admin SDK) ממשיכים לעקוף אותו לגמרי כמו שהם עוקפים Security Rules — זה כבר האמון שניתן לקוד server-side בארכיטקטורה הקיימת.
 **אלטרנטיבה שנדחתה**: reCAPTCHA Enterprise במקום v3 — נדחה כרגע, v3 מספיק לסקאלה של אפליקציה אישית/משפחתית ופשוט יותר להקמה; ניתן לשדרג בעתיד (App Check תומך בהחלפת provider בלי לשנות קוד קורא).
 **עדכון (2026-08-29)**: השומר "אם אין site key אל תאתחל" היה שגוי בפועל — ראו ADR #27.
+**עדכון (2026-08-29) — ההחלטה על v3 התהפכה**: ראו ADR #28. גם ההנחה בסוגריים למעלה ("בלי לשנות קוד קורא") התבררה כשגויה — ה-provider הוא class שנבחר בקוד.
 
 ## 27. site key placeholder נחשב כ"מוגדר" → נפילת Google Sign-In בספארי נייד; דיווח שגיאות התחברות לשרת
 **תאריך**: 2026-08-29
@@ -193,3 +194,14 @@
 **אבטחה**: הנקודה **לא מאומתת** בהכרח — היא מדווחת על כשלים שקורים לפני שקיים session cookie, אז אין uid לייחס אליו. תקרת ההתעללות נשמרת נמוכה דרך הצורה בלבד: כל שדה הוא enum חסום או קוד שעובר `AUTH_ERROR_CODE_PATTERN`, כך ששום טקסט חופשי בשליטת תוקף לא מגיע ל-Cloud Logging (מונע גם log injection דרך `\n`). **אין להוסיף שם שדה טקסט חופשי בלי לחזור לשיקול הזה.** ללא rate limiting: ה-limiter ב-`src/lib/services/rateLimit.ts` הוא per-uid, וכתיבת Firestore לכל POST אנונימי הייתה עסקה גרועה יותר מרעש הלוגים החסום שהנקודה יכולה לייצר.
 **מה זה לא פותר**: `signInWithPopup` נשאר שביר בנייד. גם עם site key תקין, `_getAppCheckToken` שוב יכניס המתנה לפני `window.open` — הפעם מוצלחת, אבל עדיין סיבוב רשת. מעבר ל-`signInWithRedirect` בנייד נשאר פתוח ולא נכלל כאן.
 **אלטרנטיבה שנדחתה**: rollback ל-`f94bc5f` (ה-build שעבד) — היה מחזיר את ההתחברות מיד אבל גם מחזיר את פרצת ה-path injection של ADR #25 לפרודקשן.
+
+## 28. App Check עובר ל-reCAPTCHA Enterprise (מהפך על ADR #26)
+**תאריך**: 2026-08-29
+**החלטה**: `src/lib/firebase/appCheck.ts` משתמש ב-`ReCaptchaEnterpriseProvider` במקום `ReCaptchaV3Provider`. `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` נשאר אותו שם משתנה, אבל מחזיק מעתה **key id של reCAPTCHA Enterprise** ולא site key של v3 קלאסי.
+**נימוק**: ADR #26 בחר ב-v3 הקלאסי מתוך שיקול פשטות. בפועל, בזמן ההקמה בקונסולה (2026-08-29) Firebase Console מציג `reCAPTCHA is deprecated, please use reCAPTCHA Enterprise instead` ומכוון את הרישום ל-Enterprise. בנייה על provider שהפלטפורמה מסמנת כ-deprecated עוד לפני שהוא הופעל אפילו פעם אחת היא חוב מיותר — עדיף לשלם את המעבר עכשיו, כשאין עדיין אף לקוח בפרודקשן ששולח טוקנים ואין מה לשבור.
+**מה זה עלה בקוד**: החלפת ה-class ותו לא — הן `initializeAppCheck` והן שאר הקוד (`isConfiguredSiteKey`, ה-guard של debug mode, `client.ts`) לא השתנו. `firebase@12.18.0` מייצא את שני ה-providers.
+**תיקון להנחה שגויה ב-ADR #26**: שם נכתב ש-"App Check תומך בהחלפת provider בלי לשנות קוד קורא". זה לא נכון — ה-provider הוא class שמועבר ל-`initializeAppCheck`, כלומר החלפה מחייבת שינוי קוד ו-rollout. ההערה נשארה שם עם הפניה לכאן, כדי שההנחה לא תשוכפל בהחלטה עתידית.
+**הבדל תפעולי מרכזי**: v3 קלאסי מנפיק זוג site key + **secret key**, כשה-secret מודבק בקונסולת Firebase. ל-Enterprise **אין secret key בכלל** — המפתח נוצר ב-Google Cloud Console (Security → reCAPTCHA), האימות בצד השרת נעשה דרך IAM של הפרויקט, ולקונסולת Firebase מודבק רק ה-key id. משמעות: אין סוד חדש להכניס ל-Secret Manager, ו-`apphosting.yaml` ממשיך להחזיק את הערך כ-plain value.
+**מלכודת מתועדת**: מפתחות Enterprise ומפתחות v3 קלאסיים **שניהם** מתחילים ב-`6L`. האזהרה הרכה ב-`appCheck.ts` (`EXPECTED_KEY_PREFIX`) לא מבחינה ביניהם, ולכן הדבקה של מפתח מהסוג הלא נכון תעבור בשקט ותיכשל רק ב-runtime מול reCAPTCHA. תועד גם בהערה בקוד וב-`apphosting.yaml`.
+**עלות**: reCAPTCHA Enterprise דורש שה-API `recaptchaenterprise.googleapis.com` יהיה מופעל בפרויקט (Blaze כבר קיים מ-ADR #16). יש מכסה חינמית חודשית של assessments; מעבר לה יש חיוב. בסקאלה של אפליקציה אישית/משפחתית זה לא צפוי להיות גורם — אם השימוש יגדל, זו נקודה לבדוק מחדש.
+**מה לא השתנה**: כל השאר ב-ADR #26 עומד בעינו — מצב ה-debug ל-dev/CI, ההתנהגות "אין key → לא מאתחל, לא זורק" (ADR #27), העובדה ש-Admin SDK לא מושפע, והסדר המחייב: site key ב-`apphosting.yaml` → rollout → אימות verified requests → ורק אז Enforce.

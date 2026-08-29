@@ -53,18 +53,31 @@
 
 קוד שני הפיצ'רים הושלם (`src/lib/firebase/appCheck.ts`, `src/lib/crypto/fieldEncryption.ts`) — הצעדים הבאים הם הקמת Console/secret שנשארה ידנית, באותו pattern כמו הקמת ה-WIF ל-Anthropic למעלה.
 
-**App Check**:
-1. Firebase Console → App Check → Apps → לבחור את אפליקציית ה-web → Register → provider `reCAPTCHA v3` → ליצור site key חדש ב-[Google reCAPTCHA admin console](https://www.google.com/recaptcha/admin) (v3, לא v2) עבור הדומיין של App Hosting.
-2. להחליף את ה-`REPLACE_ME` של `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` ב-`apphosting.yaml` בערך האמיתי.
-3. **רק אחרי** ש-rollout עם הקוד+ה-site key כבר חי בפרודקשן ומייצר טוקנים תקינים (לוודא ב-Console → App Check → Apps שיש "verified requests" מהאפליקציה) — להפעיל **Enforce** על Firestore ו-Storage (Console → App Check → APIs). לא לפני כן: enforce מוקדם מדי (לפני שלקוחות אמיתיים כבר שולחים טוקן) חוסם את כל הגישה לאפליקציה.
-4. מפתח debug (`NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG=true`, מוגדר כברירת מחדל ב-`.env.local`) משמש רק ב-dev/CI מול emulators — **לעולם לא** ב-`apphosting.yaml`/production.
+**App Check** (provider: reCAPTCHA **Enterprise** — לא v3 הקלאסי, ראו `docs/DECISIONS.md` ADR #28. הקונסולה מסמנת את v3 כ-deprecated עבור App Check):
+
+**סטטוס: שלבים 0–3 בוצעו ב-2026-08-29.** נשארו שלבים 4 (Enforce) ואימות הביניים שלפניו.
+
+0. לוודא שה-API מופעל בפרויקט: Google Cloud Console → APIs & Services → Enable APIs → `reCAPTCHA Enterprise API` (`recaptchaenterprise.googleapis.com`), פרויקט `shovarim-prod`. בלי זה יצירת המפתח בשלב 1 תיכשל.
+1. **יצירת המפתח** — Google Cloud Console → Security → reCAPTCHA (**לא** `google.com/recaptcha/admin`, זו הקונסולה של v3 הקלאסי):
+   - Key type: **Website**
+   - Domains: `shovarim-web--shovarim-prod.europe-west4.hosted.app` — hostname בלבד, בלי `https://` ובלי `/` בסוף. אין לרשום `hosted.app` לבדו (דומיין ציבורי משותף). דומיין מותאם אישית עתידי יידרש להתווסף כאן.
+   - Use checkbox challenge: **כבוי** (score-based) — App Check מצפה ל-invisible/score-based, לא ל-challenge.
+   - התוצאה היא **key id** יחיד. ל-Enterprise **אין secret key** — אם קיבלת זוג site+secret, יצרת מפתח v3 קלאסי בקונסולה הלא נכונה.
+2. **רישום ב-Firebase** — Firebase Console → App Check → לשונית Apps → אפליקציית ה-web → Register → provider **reCAPTCHA Enterprise** → להדביק את ה-key id משלב 1.
+3. להחליף את ה-`REPLACE_ME` של `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` ב-`apphosting.yaml` באותו key id. **בוצע** — המפתח `6LcPWZ4t...` נכנס ב-branch `chore/app-check-and-docs`. הדומיין שעליו נרשם אומת חיצונית: קריאה ל-`recaptcha/enterprise/anchor` עם ה-origin של App Hosting לא מחזירה שגיאה, ובלעדיו מחזירה `Invalid domain for site key`.
+
+   ⚠️ **שלבים 1–2 לבדם לא מפעילים כלום.** ה-key id הוא משתנה `NEXT_PUBLIC_*` שנצרב לתוך ה-bundle של הלקוח ב-**זמן build**, והמקור היחיד שלו ב-App Hosting הוא `apphosting.yaml`. כל עוד כתוב שם `REPLACE_ME`, `isConfiguredSiteKey` (`src/lib/firebase/appCheck.ts`) מזהה placeholder ומדלג על `initializeAppCheck` לגמרי — האפליקציה החיה לא שולחת טוקן App Check כלל, לא משנה מה מוגדר בקונסולה. הסימן בדפדפן: `[app-check] ... placeholder — App Check disabled` ב-console.
+
+   ⚠️ מפתחות Enterprise ומפתחות v3 קלאסיים **שניהם** מתחילים ב-`6L`, וה-guard בקוד לא מבחין ביניהם — מפתח מהסוג הלא נכון יעבור בשקט וייכשל רק מול reCAPTCHA ב-runtime. **גם מבחוץ אי אפשר להבדיל**: `recaptcha/api2/anchor` ו-`recaptcha/enterprise/anchor` שניהם מגישים את המפתח בלי תלונה (נבדק ב-2026-08-29). הדרך היחידה לוודא היא בקונסולה שבה נוצר — Google Cloud → Security → reCAPTCHA (Enterprise) מול `google.com/recaptcha/admin` (v3). סימן עקיף: v3 מנפיק זוג site+secret, ל-Enterprise אין secret כלל.
+4. **רק אחרי** ש-rollout עם הקוד+ה-key id כבר חי בפרודקשן ומייצר טוקנים תקינים (לוודא ב-Console → App Check → Apps שיש "verified requests" מהאפליקציה) — להפעיל **Enforce** על Firestore ו-Storage (Console → App Check → APIs). לא לפני כן: enforce מוקדם מדי (לפני שלקוחות אמיתיים כבר שולחים טוקן) חוסם את כל הגישה לאפליקציה.
+5. מפתח debug (`NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG=true`, מוגדר כברירת מחדל ב-`.env.local`) משמש רק ב-dev/CI מול emulators — **לעולם לא** ב-`apphosting.yaml`/production.
 
 **הצפנת שדות רגישים** (`cvv`/`barcodeOrCode`):
 1. ליצור מפתח: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — **שונה** מהמפתח שב-`.env.local` (זה ל-dev/emulator בלבד, לא לשימוש בפרודקשן).
 2. `.\Set-AppHosting-CardEncryptionKey.ps1` (אחרי שה-backend כבר קיים, כמו שלב 8 ב-runbook למטה) — ירוץ `apphosting:secrets:set` (יבקש להדביק את המפתח) ואז `grantaccess`. **בוצע בפועל: 2026-08-29** (version 1) — עד אז ה-secret לא היה קיים כלל וכל rollout נכשל, ראו הפוסט-מורטם למטה.
    - בשאלה `Would you like to add this secret to apphosting.yaml?` לענות **n** — הרשומה כבר קיימת שם מ-PR #14, ותשובת `Y` הייתה מוסיפה כפילות עם `availability: [BUILD, RUNTIME]` במקום ה-`[RUNTIME]` המכוון (המפתח נטען lazily, `next build` לא צריך אותו — ראו ההערה ב-`apphosting.yaml` ואת הפוסט-מורטם של Phase 3.3).
    - **גיבוי**: המפתח הוא הדבר היחיד שמפענח `cvv`/`barcodeOrCode` בפרודקשן. אובדן/רוטציה שלו הופכים את הערכים המוצפנים (`v1:` prefix) לבלתי ניתנים לשחזור.
-3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב. **טרם הורץ מול production.**
+3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב. **הורץ מול production ב-2026-08-29** (על ידי המשתמש, ידנית).
 
 ## First-deploy runbook (סדר מדויק)
 

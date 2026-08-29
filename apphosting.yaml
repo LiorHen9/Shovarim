@@ -37,12 +37,21 @@ env:
 
   # Firebase App Check (docs/SECURITY.md threat #4). Not a secret — identifies
   # the site to reCAPTCHA, same trust model as the other NEXT_PUBLIC_* config
-  # above. REPLACE_ME until the one-time Console registration in
-  # docs/DEPLOYMENT.md happens (Firebase Console -> App Check -> Apps ->
-  # register web app -> reCAPTCHA v3 provider); src/lib/firebase/appCheck.ts
-  # skips initialization rather than throwing while this is empty.
+  # above. This is a reCAPTCHA *Enterprise* key id (docs/DECISIONS.md ADR #28);
+  # a classic v3 key also starts with "6L" but will not validate against an
+  # Enterprise-registered app, and nothing in the code can tell the two apart.
+  # Created 2026-08-29 in Google Cloud Console -> Security -> reCAPTCHA
+  # (website key, score-based) for the App Hosting hostname, and registered
+  # under Firebase Console -> App Check -> Apps -> reCAPTCHA Enterprise.
+  #
+  # This value is inlined into the client bundle at BUILD time and comes from
+  # nowhere else — registering in the Console alone does NOT enable App Check,
+  # which is why it sat as "REPLACE_ME" here while App Check was silently off
+  # (src/lib/firebase/appCheck.ts skips init on a placeholder, ADR #27).
+  # Changing the hostname (custom domain) means adding it to the key's domain
+  # list too, or every client fails with "Invalid domain for site key".
   - variable: NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY
-    value: "REPLACE_ME"
+    value: "6LcPWZ4tAAAAACiJlP9uCXFcvFS-VOA1URY-DUfz"
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG
     value: "false"

@@ -1,14 +1,20 @@
 import type { FirebaseApp } from "firebase/app";
-import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
 // Abuse/spam protection (docs/SECURITY.md threat #4): attaches an App Check
 // token to every Firestore/Storage request so only this actual app instance
 // (not a scripted client hitting the REST API directly) can write. Enforcing
 // it is a Firebase Console per-service toggle, not something expressed in
 // firestore.rules/storage.rules — see docs/DEPLOYMENT.md for the one-time
-// Console setup (register the web app with reCAPTCHA v3, flip "Enforce")
-// that has to happen before this actually blocks anything; until then the
-// SDK just attaches a token that nothing checks yet.
+// Console setup (register the web app with reCAPTCHA Enterprise, flip
+// "Enforce") that has to happen before this actually blocks anything; until
+// then the SDK just attaches a token that nothing checks yet.
+//
+// Provider is reCAPTCHA *Enterprise*, not the classic v3 originally chosen in
+// docs/DECISIONS.md ADR #26 — the Firebase Console now marks classic
+// reCAPTCHA as deprecated for App Check and steers registration to
+// Enterprise. See ADR #28: this swap is a real code change, contrary to what
+// ADR #26 assumed when it deferred the upgrade.
 
 // `apphosting.yaml` ships the site key as the literal string "REPLACE_ME"
 // until that Console registration happens. The original guard here tested
@@ -18,10 +24,12 @@ import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 // Treat any obvious placeholder as "not configured yet".
 const PLACEHOLDER_PATTERN = /replace|change[_-]?me|^todo$|^your[_-]/i;
 
-// Real reCAPTCHA site keys (v3 and Enterprise web keys alike) start with
-// "6L". This is only a warning, never a gate: a key we fail to recognize is
-// still passed through, because silently disabling App Check on a legitimate
-// key would be a worse failure than a noisy log line.
+// Real reCAPTCHA site keys (Enterprise web keys and classic v3 alike) start
+// with "6L" — so this prefix does NOT distinguish the two provider types and
+// will not catch a classic key pasted into an Enterprise-configured app.
+// This is only a warning, never a gate: a key we fail to recognize is still
+// passed through, because silently disabling App Check on a legitimate key
+// would be a worse failure than a noisy log line.
 const EXPECTED_KEY_PREFIX = "6L";
 
 // Exported for tests/unit/appCheckSiteKey.test.ts — this predicate is the
@@ -49,7 +57,7 @@ export function initAppCheck(app: FirebaseApp): void {
       true;
 
     initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(configured ? siteKey : "debug-mode-placeholder"),
+      provider: new ReCaptchaEnterpriseProvider(configured ? siteKey : "debug-mode-placeholder"),
       isTokenAutoRefreshEnabled: true,
     });
     return;
@@ -71,12 +79,12 @@ export function initAppCheck(app: FirebaseApp): void {
 
   if (!siteKey.startsWith(EXPECTED_KEY_PREFIX)) {
     console.warn(
-      `[app-check] site key does not start with "${EXPECTED_KEY_PREFIX}" — initializing anyway, but verify it against the reCAPTCHA admin console.`
+      `[app-check] site key does not start with "${EXPECTED_KEY_PREFIX}" — initializing anyway, but verify it against the reCAPTCHA Enterprise key list in Google Cloud Console.`
     );
   }
 
   initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider(siteKey),
+    provider: new ReCaptchaEnterpriseProvider(siteKey),
     isTokenAutoRefreshEnabled: true,
   });
 }

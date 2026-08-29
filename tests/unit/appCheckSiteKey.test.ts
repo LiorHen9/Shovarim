@@ -18,7 +18,9 @@ describe("isConfiguredSiteKey", () => {
     }
   );
 
-  it("accepts a real-shaped reCAPTCHA v3 site key", () => {
+  // "6L" is shared by Enterprise key ids and classic v3 site keys, so this
+  // predicate deliberately does not tell the two apart — see ADR #28.
+  it("accepts a real-shaped reCAPTCHA site key", () => {
     expect(isConfiguredSiteKey("6LcAbCdEfGhIjKlMnOpQrStUvWxYz0123456789A")).toBe(true);
   });
 

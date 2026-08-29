@@ -94,11 +94,15 @@ Firebase App Hosting (Next.js SSR) + Cloud Functions, פרויקט production י
 `src/lib/crypto/{fieldEncryptionCore,fieldEncryption}.ts` (AES-256-GCM, מפתח `CARD_FIELD_ENCRYPTION_KEY`) — `cvv`/`barcodeOrCode` מוצפנים לפני כתיבה ל-Firestore ומפוענחים רק על-פי דרישה. יצירה/עריכה של כרטיס (רק שני השדות הרגישים, לא שאר ה-CRUD) עברו מ-client SDK ישיר ל-Server Actions חדשים (`createCard`/`updateCardDetails`/`getCardSecrets` ב-`src/actions/card.ts`) כדי שהמפתח לעולם לא יגיע ל-client — ראו `docs/DECISIONS.md` #25 לפירוט המלא כולל השלכות על `EditCardDialog`/`buildUserDataExport`. סקריפט מיגרציה חד-פעמי אידמפוטנטי: `scripts/migrate-encrypt-sensitive-fields.ts` (`npm run migrate:encrypt-fields`).
 - אימות: `typecheck`/`lint`/`build` נקיים, `test:rules` — 40/40 עוברים ללא שינוי (לא נדרש שינוי ב-`firestore.rules`, תוכן השדה לא נבדק שם).
 
-**נשאר לבדוק ידנית**: הרצת `npm run migrate:encrypt-fields` מול production אמיתי (יש רק דאטה ב-emulator כרגע) + קליק-דרך בדפדפן על יצירת/עריכת כרטיס עם CVV/מספר כרטיס, לאימות שהערך חוזר נכון בעריכה ובייצוא נתונים.
+**בוצע (2026-08-29)**: `npm run migrate:encrypt-fields` הורץ מול production על ידי המשתמש.
+
+**נשאר לבדוק ידנית**: קליק-דרך בדפדפן על יצירת/עריכת כרטיס עם CVV/מספר כרטיס, לאימות שהערך חוזר נכון בעריכה ובייצוא נתונים.
 
 ### שלב 4.4 — Firebase App Check ✅ קוד הושלם (2026-08-27), הקמת Console נשארה ידנית
-`src/lib/firebase/appCheck.ts` (reCAPTCHA v3, מאותחל מ-`src/lib/firebase/client.ts`) + מצב debug ל-dev/CI מול emulators (`NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG`, מוגדר כברירת מחדל ב-`.env.local`). ראו `docs/DECISIONS.md` #26.
-**נשאר (Console, ידני)**: רישום site key אמיתי + מילוי `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` ב-`apphosting.yaml` + הפעלת "Enforce" על Firestore/Storage אחרי שיש טוקנים תקינים מפרודקשן — סדר מדויק מתועד ב-`docs/DEPLOYMENT.md`.
+`src/lib/firebase/appCheck.ts` (מאותחל מ-`src/lib/firebase/client.ts`) + מצב debug ל-dev/CI מול emulators (`NEXT_PUBLIC_FIREBASE_APPCHECK_DEBUG`, מוגדר כברירת מחדל ב-`.env.local`). ראו `docs/DECISIONS.md` #26. **עודכן 2026-08-29**: ה-provider הוחלף מ-reCAPTCHA v3 קלאסי ל-**reCAPTCHA Enterprise** (`ReCaptchaEnterpriseProvider`) אחרי ש-Firebase Console סימן את v3 כ-deprecated ל-App Check — ראו ADR #28.
+**בוצע (2026-08-29)**: מפתח reCAPTCHA Enterprise נוצר ב-Google Cloud Console עבור `shovarim-web--shovarim-prod.europe-west4.hosted.app`, נרשם ב-Firebase Console, ומולא ב-`apphosting.yaml` (`6LcPWZ4t...`). רישום ב-Console **לבדו לא הספיק** — הערך נצרב ל-bundle בזמן build ומגיע רק מה-YAML, וזו הסיבה ש-App Check היה כבוי בשקט עד כה.
+
+**נשאר**: (1) merge → rollout, ואז אימות ב-URL החי שאין `[app-check] ... placeholder` ב-console של הדפדפן; (2) Firebase Console → App Check → Apps → לוודא **verified requests**; (3) **רק אז** Enforce על Firestore/Storage. עד שלב (3), threat #4 ב-`docs/SECURITY.md` (כתיבות ישירות ל-REST API שעוקפות את ה-UI) נשאר פתוח — טוקן שנשלח ואיש לא אוכף אותו לא חוסם כלום.
 
 ### שלב 4.5 — Security review מקיף ✅ הושלם (2026-08-27)
 סקירה עם ה-skill `security-review` (סוכן מבודד, מוגבל לשינויים ב-branch הזה) על שלבים 4.3/4.4 — מצאה פרצה אמיתית: `createCard`/`updateCardDetails`/`getCardSecrets` קיבלו `cardId`/`listId` ללא הגבלת תווים, ומכיוון ש-Server Actions ניתנים לקריאה ישירה עם payload שרירותי (לא רק דרך ה-UI) ו-`firebase-admin`'s `.doc()` מפרש `/` כמפריד path, `cardId` מעוצב כמו `"<victimId>/usageLog/<injected>"` יצר מסמך בתת-אוסף של כרטיס אחר בלי בדיקת בעלות — אומת בפועל מול ה-emulator לפני התיקון. **תוקן**: `firestoreIdSchema` חדש (`src/lib/validation/card.ts`) אוכף `^[A-Za-z0-9_-]+$`. ראו `docs/DECISIONS.md` #25 ו-`docs/SECURITY.md` לפירוט המלא.
