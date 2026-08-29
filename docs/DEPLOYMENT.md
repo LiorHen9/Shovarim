@@ -232,6 +232,21 @@ npx firebase apphosting:secrets:describe <secret-name> --project shovarim-prod
 - אחרי כל merge ל-`main` שמשנה `apphosting.yaml` או מוסיף route חדש — לוודא בפועל מול ה-URL החי (למשל `curl -o /dev/null -w '%{http_code}' <url>/<route-חדש>`; 404 על route שאמור להתקיים = ה-rollout לא עבר).
 - כשמתקנים secret חסר, ה-rollout הכושל **לא מנסה שוב לבד** ואין commit חדש שיפעיל אותו — חייבים `apphosting:rollouts:create` ידני (שלב 9 למעלה).
 
+**זנב של התקלה הזו (2026-08-29)**: ברגע שהרולאאוט תוקן, ארבעה PR-ים נחתו באוויר בבת אחת — וביניהם באג ש**נכתב** ב-#14 אבל **התפוצץ** רק ביום שהדeploy עבר: `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` עם הערך `REPLACE_ME` הפיל את Google Sign-In בספארי נייד (ADR #27). לקח: אחרי חלון של rollouts כושלים, ה-deploy הראשון שמצליח הוא **לא** deploy רגיל — הוא שחרור מצטבר של כל מה שהצטבר, וצריך לבדוק אותו ככזה. `curl` על route חדש מוודא שהרולאאוט עבר; הוא לא מוודא שהאפליקציה עובדת. לפחות smoke test ידני אחד של התחברות, בנייד ובדסקטופ.
+
+### איפה רואים כשלי התחברות בלוגים
+
+מאז ADR #27 כשל התחברות בצד הלקוח מדווח ל-`POST /api/auth-errors` ונרשם ל-Cloud Logging. שאילתה:
+
+```
+resource.type="cloud_run_revision"
+jsonPayload.event="auth_sign_in_failed"
+```
+
+השדות: `stage` (`provider-sign-in` = הפופאפ של גוגל נכשל / `create-session` = מינטינג ה-session cookie נכשל), `code` (קוד Firebase, למשל `auth/popup-blocked`), `providerId`.
+
+**מה עדיין לא נרשם**: כשלי התחברות בצד Firebase Auth עצמו. הקונסולה מציגה רק התחברויות מוצלחות; לרישום ניסיונות כושלים ברמת השירות צריך להפעיל Cloud Audit Logs (Data Access) ל-Identity Toolkit API ב-GCP — opt-in, עולה כסף, ובעל השלכות PII שצריך להצליב מול `docs/PRIVACY.md` לפני שמפעילים.
+
 ## Rollback
 
 - **אפליקציה**: `firebase apphosting:rollouts:create shovarim-web --project shovarim-prod --git-commit <sha-קודם>` (backendId פוזיציוני). שימו לב: ל-CLI המותקן **אין** `apphosting:rollouts:list` — רשימת ה-rollouts הקודמים זמינה רק ב-Firebase Console → App Hosting → Rollouts, או ב-Cloud Build history.

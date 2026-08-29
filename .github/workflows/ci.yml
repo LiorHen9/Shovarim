@@ -40,6 +40,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      # Pure-logic tests — no emulator needed, so they run before the slow
+      # build rather than inside the emulators:exec block below.
+      - run: npm run test:unit
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - name: Rules + E2E tests (emulator)
