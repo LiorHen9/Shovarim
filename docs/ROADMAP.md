@@ -175,8 +175,23 @@ Route Handler ראשון באפליקציה (`src/app/api/chat/route.ts`, stream
 
 **נשאר לבדוק ידנית**: אין דרך לבדוק את החיבור האמיתי ל-Meta לפני 5.5.c (אין app, אין מספר, ואין סודות) — ה-handshake, החתימה והדדופליקציה נבדקו מול payload-ים שנבנו ונחתמו מקומית, לא מול Meta עצמה. שליחת התשובה דרך Graph API (`sendWhatsAppText`) היא **הנתיב היחיד שלא הורץ מעולם** — בכל הבדיקות אין credentials יוצאים והוא מדלג עם warning.
 
-#### 5.5.c — הקמה ופרודקשן (טרם החל)
+#### 5.5.c — הקמה ופרודקשן (בביצוע)
 Meta app + מספר עסקי, סודות ב-Secret Manager (`WHATSAPP_APP_SECRET`/`WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_VERIFY_TOKEN`, כולם `[RUNTIME]` בלבד) עם סקריפט בדפוס `Set-AppHosting-CardEncryptionKey.ps1`, ותיעוד ב-`DEPLOYMENT`/`CHATBOT`/`SECURITY`/`PRIVACY`.
+
+**סדר הפעולות** — הרישום של ה-webhook מול Meta **חייב** לבוא אחרי rollout שכולל את הסודות: Meta עושה `GET` עם `hub.verify_token`, ו-`getInboundConfig()` מחזיר `null` כל עוד הסודות ריקים, כלומר 503 והרישום נכשל. לכן: לאסוף את כל הערכים מ-Meta → PR הסודות + rollout → ורק אז לרשום webhook.
+
+**הושלם (2026-08-29)**: Meta app (Business) + WABA, מספר טסט של Meta, ו-**אימות מלא של נתיב השליחה** — ראו למטה. הערכים הלא-סודיים: `WHATSAPP_PHONE_NUMBER_ID=963623680178719`, WABA ID `952548457144312` (האחרון לא בשימוש בקוד — נחוץ רק לשיוך assets ל-System User).
+
+**✅ `sendWhatsAppText` הורץ מול Meta בפעם הראשונה (2026-08-29)** — הנתיב היחיד בשרשרת שמעולם לא רץ, וש-5.5.b סימן במפורש כלא-מאומת. אומת דרך סקריפט חד-פעמי שייבא את `src/lib/whatsapp/graph.ts` האמיתי (לא חיקוי), עם ה-temp token של Meta. שלוש תוצאות:
+1. `GET /v23.0/{phoneNumberId}` החזיר `verified_name:"Test Number"`, `platform_type:"CLOUD_API"`, `quality_rating:"GREEN"` — כלומר **Graph `v23.0` המקובע ב-`src/lib/whatsapp/config.ts` עדיין נתמך**, ולא נדרש `WHATSAPP_GRAPH_BASE_URL`.
+2. שליחה ראשונה **נכשלה** ב-`131047 Re-engagement message` — ראו הממצא למטה.
+3. אחרי שהמשתמש השיב מהטלפון, שליחה חוזרת נמסרה בפועל למכשיר.
+
+**ממצא: חלון 24 השעות נאכף בפועל** — שגיאה `131047` הפכה את ההנחה ש"הבוט רק עונה ואף פעם לא יוזם" (`docs/CHATBOT.md`) מהחלטת עיצוב לאילוץ מאומת של הספק. שתי השלכות:
+- **Phase 7 (התראות יזומות)** — תזכורות תפוגה ב-WhatsApp ייחסמו בדיוק ככה. הן דורשות **message templates מאושרים מראש** מ-Meta, תהליך אישור נפרד לגמרי. לא הרחבה של מה שקיים.
+- **מקרה קצה ידוע ב-webhook** — אם עיבוד הודעה מתארך מעבר לחלון (או ב-retry מאוחר של Meta), `sendWhatsAppText` ייכשל ב-`131047` ו-`route.ts` יבלע את זה ללוג בלבד, אחרי שהפעולה **כבר בוצעה** (כרטיס נוצר, יתרה עודכנה). מהצד של המשתמש זה נראה כמו בוט שותק. נדיר בפרודקשן (הבוט עונה בשניות), לא נחסם, ומתועד כאן כדי שלא יאובחן שוב מאפס.
+
+**נשאר**: permanent access token (System User עם האפליקציה **וגם** ה-WABA כ-assets, הרשאות `whatsapp_business_messaging`+`whatsapp_business_management`, expiration `Never`), verify token, `Set-AppHosting-WhatsAppSecrets.ps1`, `apphosting.yaml`, רישום ה-webhook + subscribe ל-`messages` בלבד, ואז inbound אמיתי מקצה לקצה.
 
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.

@@ -79,24 +79,59 @@
    - **גיבוי**: המפתח הוא הדבר היחיד שמפענח `cvv`/`barcodeOrCode` בפרודקשן. אובדן/רוטציה שלו הופכים את הערכים המוצפנים (`v1:` prefix) לבלתי ניתנים לשחזור.
 3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב. **הורץ מול production ב-2026-08-29** (על ידי המשתמש, ידנית).
 
-## ערוץ WhatsApp — הקמה חד-פעמית (Phase 5.5.c) — ⏳ טרם בוצע
+## ערוץ WhatsApp — הקמה חד-פעמית (Phase 5.5.c) — 🔄 בביצוע
 
-**סטטוס: הקוד מוכן (5.5.b הושלם 2026-08-29), ההקמה מול Meta לא בוצעה.** ה-webhook קיים ב-`src/app/api/whatsapp/webhook/route.ts` ומחזיר **503** כל עוד `WHATSAPP_APP_SECRET`/`WHATSAPP_VERIFY_TOKEN` ריקים — כלומר הוא כבר בפרודקשן ולא פתוח כמשטח תקיפה (ADR #30). התנאי שנכתב כאן מראש ("אין להתחיל בהקמה לפני שהוובהוק קיים בקוד") **מתקיים עכשיו**, ואפשר לבצע את הצעדים הבאים.
+**עודכן 2026-08-29**: Meta app + WABA + מספר טסט קיימים, ו**נתיב השליחה אומת מול Meta בפועל** (ראו "אימות נתיב השליחה" למטה). נשאר: permanent token, verify token, PR הסודות, ורישום ה-webhook.
 
-**לפני שנוגעים ב-Meta**: `npm run whatsapp:sim -- code <uid>` ואז `npm run whatsapp:sim -- send <phone> <text>` מריצים את אותו קוד בדיוק מול ה-emulator, בלי ספק חיצוני — הדרך המהירה לוודא שהצד שלנו תקין לפני שמאשימים את ההקמה.
+⚠️ **סדר הפעולות — הרישום של ה-webhook אחרון.** התיעוד למטה ממוספר 1–4, אבל צעד 3 (רישום ה-webhook) **חייב** לבוא אחרי rollout שכולל את הסודות: Meta מאמתת בעזרת `GET` שנושא `hub.verify_token`, ו-`getInboundConfig()` מחזיר `null` כל עוד `WHATSAPP_APP_SECRET`/`WHATSAPP_VERIFY_TOKEN` ריקים — כלומר 503 והרישום נכשל. הסדר הנכון: לאסוף את כל 4 הערכים → PR הסודות + `secrets:set` + rollout → ורק אז לרשום.
+
+**סטטוס: הקוד מוכן (5.5.b הושלם 2026-08-29), ההקמה מול Meta לא הושלמה.** ה-webhook קיים ב-`src/app/api/whatsapp/webhook/route.ts` ומחזיר **503** כל עוד `WHATSAPP_APP_SECRET`/`WHATSAPP_VERIFY_TOKEN` ריקים — כלומר הוא כבר בפרודקשן ולא פתוח כמשטח תקיפה (ADR #30). התנאי שנכתב כאן מראש ("אין להתחיל בהקמה לפני שהוובהוק קיים בקוד") **מתקיים עכשיו**, ואפשר לבצע את הצעדים הבאים.
+
+**לפני שנוגעים ב-Meta**: `npm run whatsapp:sim -- code <uid>` ואז `npm run whatsapp:sim -- send <phone> <text>` מריצים את אותו קוד בדיוק מול ה-emulator, בלי ספק חיצוני — הדרך המהירה לוודא שהצד שלנו תקין לפני שמאשימים את ההקמה. שים לב שהסימולטור מכסה רק מ-`handleInboundChannelMessage` והלאה; את **השליחה** הוא לא מכסה, ראו למטה.
+
+### אימות נתיב השליחה בלי deploy (2026-08-29 — בוצע ועבר)
+`sendWhatsAppText` היה עד 2026-08-29 הנתיב היחיד בשרשרת שמעולם לא הורץ מול Meta — לא ב-unit, לא ב-E2E ולא בסימולטור, שכולם מדלגים עליו עם warning כשאין credentials יוצאים. אפשר לאמת אותו **לפני** רישום webhook ולפני כל deploy, כי הכיוון היוצא צריך רק `WHATSAPP_ACCESS_TOKEN`+`WHATSAPP_PHONE_NUMBER_ID` — ה-app secret וה-verify token נוגעים רק לכיוון הנכנס.
+
+איך זה נעשה, אם צריך לחזור על זה (למשל אחרי החלפת מספר):
+- סקריפט חד-פעמי **מחוץ לריפו** שמייבא את `src/lib/whatsapp/graph.ts` האמיתי, כדי שמה שנבדק יהיה קוד הפרודקשן ולא חיקוי של ה-`fetch`.
+- מריצים עם **`tsx --conditions=react-server`**. בלי זה `import "server-only"` בראש `graph.ts`/`config.ts` **זורק לפני שהקוד שלנו רץ בכלל** — `node_modules/server-only` ממפה את התנאי `react-server` ל-stub ריק, וכל שאר התנאים ל-`index.js` שכל תוכנו `throw`. זו הסיבה ש-`channelChat.ts` נמנע מ-`server-only` בכוונה.
+- את הסודות מחזיקים בקובץ env נפרד, **לא ב-`.env.local`**: הכנסת ה-`WHATSAPP_PHONE_NUMBER_ID` האמיתי לשם תגרום ל-`route.ts` לסנן את payloads ה-E2E (שנושאים `phone_number_id: "E2E_PHONE_ID"`) ו-`tests/e2e/whatsapp.spec.ts` ייפול.
+
+בדיקת שפיות זולה לפני שליחה בכלל, שמאמתת טוקן + phone number ID + הרשאות בלי לגעת באף נמען:
+```bash
+curl -s "https://graph.facebook.com/v23.0/<PHONE_NUMBER_ID>?fields=display_phone_number,verified_name,quality_rating,platform_type" \
+  -H "Authorization: Bearer <ACCESS_TOKEN>"
+```
+
+**תוצאות בפועל**: הקריאה החזירה `verified_name:"Test Number"`, `platform_type:"CLOUD_API"`, `quality_rating:"GREEN"` — כלומר **Graph `v23.0` המקובע ב-`src/lib/whatsapp/config.ts` עדיין נתמך**. השליחה עצמה נמסרה למכשיר בפועל, אחרי כישלון ראשון שמתועד מיד למטה.
+
+### ⚠️ חלון 24 השעות — `131047 Re-engagement message`
+השליחה הראשונה **נכשלה** ב-`131047` ("more than 24 hours have passed since the customer last replied"). זו לא תקלת הקמה: WhatsApp מתיר טקסט חופשי רק בתוך חלון שירות של 24 שעות מההודעה האחרונה של הלקוח. אחרי שהנמען שלח הודעה למספר הבוט, אותה שליחה בדיוק עברה.
+
+המשמעות המעשית:
+- **בדיקת שליחה ידנית דורשת שהנמען ישלח קודם הודעה למספר הבוט.** אחרת תקבל `131047` ותחשוב שההקמה שבורה.
+- `131030` (recipient not in allowed list) היא שגיאה **אחרת** — היא אומרת שהמספר לא נוסף לרשימת הנמענים של מספר הטסט. אל תבלבל ביניהן: `131047` דווקא מוכיחה שהנמען מאושר.
+- ההנחה בכל התכנון ש**הבוט רק עונה ואף פעם לא יוזם** אינה העדפה אלא אילוץ אכיף של הספק. Phase 7 (תזכורות תפוגה יזומות) ידרוש **message templates מאושרים מראש**, תהליך אישור נפרד מול Meta.
+- **מקרה קצה ידוע**: אם עיבוד הודעה חורג מהחלון (או ב-retry מאוחר של Meta), `sendWhatsAppText` ייכשל ב-`131047` ו-`route.ts` יבלע את זה ללוג בלבד — אחרי שהפעולה כבר בוצעה בפועל. מהצד של המשתמש: בוט שותק שכן שינה נתונים. נדיר, לא נחסם, מתועד כדי שלא יאובחן מאפס.
 
 ### תלויות שאתה צריך לספק (ידני, Meta for Developers)
-1. **Meta app** (סוג Business) + **WhatsApp Business Account** מקושר אליו.
-2. **מספר טלפון ייעודי לבוט** — שייך למערכת, לא למשתמש. שתי מלכודות:
+1. ✅ **Meta app** (סוג Business) + **WhatsApp Business Account** מקושר אליו. בטופס יצירת האפליקציה חובה לבחור **Business portfolio** — בלעדיו אי אפשר ליצור System User בצעד 4, וצריך לחזור אחורה.
+2. ✅ **מספר טלפון ייעודי לבוט** — שייך למערכת, לא למשתמש. שתי מלכודות:
    - מספר שכבר רשום ב-WhatsApp רגיל או באפליקציית WhatsApp Business **אינו זמין** ל-Cloud API; צריך לנתק אותו קודם או להשתמש במספר נפרד. לא להשתמש במספר האישי.
    - לפיתוח Meta מספקת **מספר טסט חינמי**, שיכול לשלוח רק לרשימה קטנה של נמענים מאושרים מראש (סדר גודל של 5). מספיק לאימות מלא של 5.5.b לפני רכישת מספר אמיתי.
-3. **Webhook**: `https://<app-hosting-url>/api/whatsapp/webhook` + verify token שאנחנו בוחרים, ו-subscribe לאירוע `messages` בלבד.
-4. **Permanent access token** + **app secret** של האפליקציה.
+   - **ה-`Phone number ID` הוא לא מספר הטלפון** — זה מזהה בן 15–16 ספרות שמופיע מתחת למספר במסך API Setup. הקוד שלנו משתמש **רק** בו (`{graphBaseUrl}/{phoneNumberId}/messages`) ולעולם לא במספר עצמו.
+3. ⏳ **Webhook**: `https://<app-hosting-url>/api/whatsapp/webhook` + verify token שאנחנו בוחרים, ו-subscribe לאירוע `messages` בלבד. **אחרון בסדר** (ראו האזהרה בראש הסעיף), ו-**חובה לסמן `messages` במפורש** תחת Webhook fields — בלי זה ה-URL רשום אבל לא נשלחות אליו הודעות כלל.
+4. ⏳ **Permanent access token** + **app secret** של האפליקציה.
+   - ה-app secret: App settings → Basic → Show.
+   - הטוקן הקבוע **לא** נוצר במסך WhatsApp אלא ב-Business Portfolio → Users → **System users** → Generate new token: לשייך ל-System User גם את **האפליקציה** וגם את **ה-WABA** כ-assets, לסמן `whatsapp_business_messaging` + `whatsapp_business_management`, ו-expiration **Never**. הטוקן מוצג פעם אחת בלבד.
+   - ה-**temporary token** שבמסך API Setup תקף 24 שעות. מצוין לאימות ידני, **אסור** להזרקה ל-Secret Manager: כשהוא יפוג הבוט ימשיך לקבל הודעות ולהריץ tools, אבל כל תשובה תיזרק ב-`route.ts` עם לוג בלבד — מבחוץ זה נראה כמו בוט מת.
+
+**ערכים לא-סודיים של ההקמה הנוכחית** (2026-08-29): `WHATSAPP_PHONE_NUMBER_ID=963623680178719`, WABA ID `952548457144312`, מספר טסט `+1 555-184-5212`. ה-WABA ID **לא בשימוש בקוד** — הוא נחוץ רק לשיוך assets ל-System User בצעד 4.
 
 **לאמת בקונסולה בזמן ההקמה** (השתנה כמה פעמים ולא לסמוך על מה שכתוב כאן): תמחור, מכסות, ומדיניות חלון השירות של 24 שעות. הבוט שלנו **רק עונה ואף פעם לא יוזם**, ולכן הוא אמור להישאר בתוך חלון השירות שבו מותר טקסט חופשי — בלי צורך ב-message templates מאושרים מראש. אם אי פעם יתווספו התראות יזומות (Phase 7), ההנחה הזו נשברת.
 
 ### סודות (Secret Manager, בדפוס `FIREBASE_ADMIN_PRIVATE_KEY`)
-סקריפט `Set-AppHosting-WhatsAppSecrets.ps1` (טרם נכתב), במתכונת `Set-AppHosting-CardEncryptionKey.ps1`:
+סקריפט `Set-AppHosting-WhatsAppSecrets.ps1` (נכתב 2026-08-29), במתכונת `Set-AppHosting-CardEncryptionKey.ps1`. כל `secrets:set` מבקש את הערך ב-prompt — מדביקים שם, כך שהסוד לא נוגע בקובץ, ב-git ולא ב-shell history:
 
 | משתנה | סוג | הערה |
 |---|---|---|
@@ -105,10 +140,13 @@
 | `WHATSAPP_VERIFY_TOKEN` | `secret:` | מחרוזת אקראית שאנחנו בוחרים, ל-handshake של ה-`GET` |
 | `WHATSAPP_PHONE_NUMBER_ID` | plain | מזהה, לא חומר סוד. גם מסנן deliveries של מספרים אחרים תחת אותו Meta app |
 
-- **`apphosting.yaml` עדיין לא מכיל אף אחד מהם** — בכוונה. 5.5.b נמנע מלהוסיף רשומות `secret:` בלי להזריק את הסודות בפועל, בדיוק בגלל האזהרה שמתחת. הוספתם היא חלק מ-5.5.c, באותו PR עם `secrets:set`+`grantaccess`.
+- **`apphosting.yaml` מכיל את ארבעתם מ-5.5.c** (שם הסוד ב-Secret Manager: `whatsapp-app-secret` / `whatsapp-access-token` / `whatsapp-verify-token`). 5.5.b נמנע מזה בכוונה עד שהסודות יוזרקו בפועל — ולכן **חובה להריץ את הסקריפט לפני שה-PR מגיע ל-`main`**, ראו האזהרה למטה.
 - כולם `availability: [RUNTIME]` **בלבד** — נקראים lazily בתוך ה-handler (`src/lib/whatsapp/config.ts`), `next build` לא צריך אותם (בניגוד ל-`adminApp.ts`; ראו ההערה ב-`apphosting.yaml`).
 - אפשר גם `WHATSAPP_GRAPH_BASE_URL` (plain, אופציונלי) כדי לנעוץ גרסת Graph אחרת. ברירת המחדל בקוד היא `https://graph.facebook.com/v23.0` — **לאמת בקונסולה שהגרסה עדיין נתמכת** בזמן ההקמה.
 - ב-CI וב-`.env.local` מוגדרים `WHATSAPP_APP_SECRET`/`WHATSAPP_VERIFY_TOKEN` דמה קבועים, כדי ש-`tests/e2e/whatsapp.spec.ts` יוכל לחתום delivery כמו Meta. הסודות היוצאים (`ACCESS_TOKEN`/`PHONE_NUMBER_ID`) **לא** מוגדרים שם, ולכן שליחת התשובה מדלגת עם warning במקום לפנות ל-`graph.facebook.com` מתוך בדיקות.
+- **הרצה בפועל (2026-08-29)**: שלושת הסודות נוצרו (`whatsapp-app-secret`, `whatsapp-access-token`, `whatsapp-verify-token`), גרסה 1 `ENABLED`, וההרשאה ניתנה ל-backend `shovarim-web`. אימות: `npx firebase apphosting:secrets:describe <name> --project shovarim-prod`.
+- ⚠️ **מלכודת CLI**: `apphosting:secrets:grantaccess` דורש היום `--backend <id>` (או `--emails`) ובלעדיו נכשל ב-`Error: Missing required flag --backend or --emails`. **הצורה החשופה ב-`Set-AppHosting-AdminKey.ps1` וב-`Set-AppHosting-CardEncryptionKey.ps1` מיושנת ותיכשל אם יריצו אותם היום** — הן נכתבו מול גרסת CLI מוקדמת יותר. הכישלון הזה **אינו** מסוכן: ה-prompt האינטראקטיבי בתוך `secrets:set` כבר שואל "grant access now?" ומבצע את ההרשאה, כך שהפקודה הנפרדת היא רק גיבוי. עדיין — שווה לתקן לפני ההרצה הבאה.
+- שני ה-prompts של `secrets:set`: "grant access now?" → **Yes**; "add this secret to apphosting.yaml?" → **No**, כי הרשומות כבר בקובץ ידנית עם `[RUNTIME]` וההערות; הוספה אוטומטית תיצור משתנה כפול.
 - ⚠️ **כל הוספת `secret:` חייבת להיות באותו PR עם הרצת `secrets:set`+`grantaccess` בפועל** — אחרת ה-rollout נכשל ולא מנסה שוב לבד. זו בדיוק התקלה שהפילה את הפרודקשן ליומיים ב-Phase 4.3, ראו הפוסט-מורטם למטה.
 
 ## First-deploy runbook (סדר מדויק)

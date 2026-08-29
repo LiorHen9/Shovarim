@@ -112,3 +112,38 @@ env:
   - variable: ANTHROPIC_WORKSPACE_ID
     value: "wrkspc_01NNmbmN2Yi3LBEaEzYm8bEr"
     availability: [RUNTIME]
+
+  # WhatsApp Cloud API (docs/ROADMAP.md Phase 5.5.c, docs/DECISIONS.md ADR #30).
+  # RUNTIME only: src/lib/whatsapp/config.ts reads these lazily inside the
+  # request handler, so next build never needs them — the opposite of the eager
+  # FIREBASE_ADMIN_* reads above. Until all of them are populated the webhook
+  # answers 503 rather than crashing, which is the state the code shipped in.
+  #
+  # Populate with Set-AppHosting-WhatsAppSecrets.ps1 BEFORE this file reaches
+  # main — a rollout referencing a secret that does not exist fails and does not
+  # retry (the Phase 4.3 outage, see the postmortem in docs/DEPLOYMENT.md).
+  #
+  # An identifier, not a secret. Also filters out deliveries for other business
+  # numbers under the same Meta app. Keep the real value out of .env.local:
+  # tests/e2e/whatsapp.spec.ts signs payloads carrying "E2E_PHONE_ID", and a
+  # real id there makes the route skip every one of them.
+  - variable: WHATSAPP_PHONE_NUMBER_ID
+    value: "963623680178719"
+    availability: [RUNTIME]
+  # Verifies X-Hub-Signature-256 over the raw body of every inbound delivery.
+  - variable: WHATSAPP_APP_SECRET
+    secret: whatsapp-app-secret
+    availability: [RUNTIME]
+  # Permanent System User token used to send replies through the Graph API.
+  # Never the 24-hour temporary token: when it expires, inbound messages still
+  # run tools and mutate data while every reply is dropped with a log line —
+  # indistinguishable from a dead bot.
+  - variable: WHATSAPP_ACCESS_TOKEN
+    secret: whatsapp-access-token
+    availability: [RUNTIME]
+  # Ours to choose, but it must match the value entered in Meta -> WhatsApp ->
+  # Configuration -> Webhook exactly, or the GET handshake returns 403 and the
+  # webhook cannot be registered at all.
+  - variable: WHATSAPP_VERIFY_TOKEN
+    secret: whatsapp-verify-token
+    availability: [RUNTIME]
