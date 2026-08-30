@@ -121,10 +121,18 @@ test("user can link a WhatsApp channel with a one-time code and unlink it", asyn
   await page.goto("/settings");
   await expect(page.getByText(phone)).toBeVisible();
 
+  // issue #26: with the channel linked there is nothing left to issue — a
+  // second code would be a live bearer credential for an account that already
+  // has its link, so the button gives way to the instruction to unlink first.
+  await expect(page.getByRole("button", { name: "חיבור WhatsApp" })).not.toBeVisible();
+  await expect(page.getByText("חשבון WhatsApp כבר מקושר", { exact: false })).toBeVisible();
+
   await page.getByRole("button", { name: "ניתוק", exact: true }).click();
   await page.getByRole("button", { name: "ניתוק הערוץ" }).click();
   await expect(page.getByText("אין ערוצים מקושרים")).toBeVisible();
   await expect(page.getByText(phone)).not.toBeVisible();
+  // ...and comes back once the link is gone, so unlinking is a real way out.
+  await expect(page.getByRole("button", { name: "חיבור WhatsApp" })).toBeVisible();
 });
 
 test("a link code cannot be redeemed twice", async ({ page }) => {

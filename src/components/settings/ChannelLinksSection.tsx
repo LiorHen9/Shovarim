@@ -131,17 +131,34 @@ export function ChannelLinksSection() {
     }
   }
 
+  // Issuing a code while the channel is already linked would hand the user a
+  // live bearer credential they have no use for (issue #26) — the way to swap
+  // numbers is to unlink first. Rendered only once the list has loaded, so the
+  // button does not flash in before a known link arrives; the server rejects
+  // the same case anyway (createLinkCodeForUid).
+  const hasWhatsAppLink = links.some((link) => link.channel === "whatsapp");
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Button variant="outline" onClick={() => void handleCreateCode()} disabled={pending}>
-          <Link2 className="size-4" />
-          חיבור WhatsApp
-        </Button>
+        {!loading &&
+          (hasWhatsAppLink ? (
+            <p className="text-sm text-muted-foreground">
+              חשבון WhatsApp כבר מקושר. כדי לקשר מספר אחר, נתקו תחילה את הקישור הקיים.
+            </p>
+          ) : (
+            <Button variant="outline" onClick={() => void handleCreateCode()} disabled={pending}>
+              <Link2 className="size-4" />
+              חיבור WhatsApp
+            </Button>
+          ))}
 
-        {issued && (
+        {issued && !hasWhatsAppLink && (
           // The block appears in response to a click, so it is announced
           // (aria-live) and named (region) rather than dropped in silently.
+          // It also disappears once a refresh shows the link landed — a
+          // redeemed code is spent, and leaving it on screen invites a retry
+          // that can only fail.
           <div
             className="space-y-2 rounded-lg border p-4"
             role="region"

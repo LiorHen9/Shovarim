@@ -36,16 +36,22 @@ https://github.com/LiorHen9/Shovarim/issues/43
 
 ---
 
-## 3. ☐ #26 — הסתרת/חסימת קישור-מחדש כשכבר מקושר ל-WhatsApp
+## 3. ✅ #26 — הסתרת/חסימת קישור-מחדש כשכבר מקושר ל-WhatsApp
 https://github.com/LiorHen9/Shovarim/issues/26
 
-**קבצים**: `src/components/settings/ChannelLinksSection.tsx:137-140`, `src/lib/services/channelLinks.ts` (`createLinkCodeForUid`, שורות 65-95).
+**קבצים**: `src/components/settings/ChannelLinksSection.tsx`, `src/lib/services/channelLinks.ts` (`createLinkCodeForUid`), `tests/e2e/settings.spec.ts`, `docs/DATA_MODEL.md`.
 
-**ממצא**: כפתור "חיבור WhatsApp" מוצג ללא תנאי גם כשכבר יש קישור פעיל — להסתיר כש-`links.length > 0`. בצד השרת, `createLinkCodeForUid` לא בודק קישור פעיל קיים לפני הנפקת קוד חדש — להוסיף בדיקה שדוחה/מזהירה.
+**ממצא**: כפתור "חיבור WhatsApp" הוצג ללא תנאי גם כשכבר היה קישור פעיל, ו-`createLinkCodeForUid` לא בדק קישור קיים לפני הנפקת קוד.
 
-**⚠️ לשים לב**: `redeemLinkCode` (שורות 129-143) דורס במכוון קישור קיים כשמספר אחר נפדה (ADR #29 — מעבר מספר בין חשבונות) — **זו התנהגות מכוונת, לא לשנות אותה**. התיקון הוא רק בהנפקת קוד חדש מתוך `/settings` כשכבר יש קישור פעיל לאותו ערוץ.
+**תיקון (חסימה מלאה — החלטת המשתמש)**:
+- **שרת**: `createLinkCodeForUid` קורא `listChannelLinksForUid` ודוחה עם `ActionError` אם כבר יש קישור לאותו ערוץ. הבדיקה לפני כל כתיבה, כך שבקשה דחויה לא מבטלת קודים קיימים.
+- **UI**: הכפתור מוחלף בהסבר "חשבון WhatsApp כבר מקושר…" כשיש קישור, ומוצג רק אחרי שהרשימה נטענה (`!loading`) כדי שלא יהבהב. בלוק הקישור שהונפק (`issued`) נעלם גם הוא ברגע שרענון מראה שהקישור נקלט — קוד שמומש הוא שרוף.
 
-**Effort**: קטן-בינוני. **Risk**: נמוך (לוודא שלא פוגעים בזרימת "העברת מספר" המכוונת).
+**⚠️ נשמר במכוון**: `redeemLinkCode` ממשיך לדרוס קישור קיים (ADR #29, מעבר מספר בין חשבונות) — לא נגענו. הזרימה לא נשברת כי שם הקוד מונפק ע"י החשבון האחר, שאין לו קישור.
+
+**תוצאת לוואי מקובלת**: אין כיום דרך לקשר שני מספרי WhatsApp לאותו חשבון. תועד ב-`docs/DATA_MODEL.md` תחת `channelLinkCodes`.
+
+**Effort**: קטן-בינוני. **Risk**: נמוך. **אימות**: `typecheck`/`lint`/`build` עברו; `tests/e2e/settings.spec.ts` + `whatsapp.spec.ts` — 9/9 עברו (`--workers=1`; במקביליות מלאה יש כשלים סביבתיים שקיימים גם ב-`main`). הבדיקה בצד השרת אומתה בנפרד מול ה-emulator בסקריפט חד-פעמי: הנפקה → פדיון → הנפקה שנייה נדחתה → ניתוק → הנפקה עובדת שוב.
 
 ---
 
