@@ -16,8 +16,23 @@ env:
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
     value: "AIzaSyBTX7UVWoOf6-_UGZZTahB47khE9c8bmFs"
     availability: [BUILD, RUNTIME]
+  # Points at this app's own domain, NOT the default *.firebaseapp.com —
+  # required for signInWithRedirect/signInWithPopup to survive Safari's
+  # third-party storage blocking (docs/DECISIONS.md ADR #35). The actual
+  # Firebase Auth sign-in handler is reverse-proxied here via next.config.ts
+  # rewrites, so this domain must serve /__/auth/** itself.
+  #
+  # ⚠️ Before this value reaches main: add
+  # https://shovarim-web--shovarim-prod.europe-west4.hosted.app/__/auth/handler
+  # as an authorized redirect URI on the Google OAuth client Firebase Auth
+  # uses (Google Cloud Console → APIs & Services → Credentials → the
+  # auto-created "Web client" for this project). Skipping this breaks Google
+  # sign-in for every browser, not just Safari, the moment this deploys — see
+  # docs/DEPLOYMENT.md runbook. The domain itself is already in Firebase
+  # Console → Authentication → Settings → Authorized domains (added earlier
+  # for the auth/unauthorized-domain incident, docs/DEPLOYMENT.md).
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-    value: "shovarim-prod.firebaseapp.com"
+    value: "shovarim-web--shovarim-prod.europe-west4.hosted.app"
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
     value: "shovarim-prod"

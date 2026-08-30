@@ -80,6 +80,24 @@
    - **גיבוי**: המפתח הוא הדבר היחיד שמפענח `cvv`/`barcodeOrCode` בפרודקשן. אובדן/רוטציה שלו הופכים את הערכים המוצפנים (`v1:` prefix) לבלתי ניתנים לשחזור.
 3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב. **הורץ מול production ב-2026-08-29** (על ידי המשתמש, ידנית).
 
+## `authDomain` עובר לדומיין של האפליקציה עצמה — הקמה חד-פעמית (ADR #35)
+
+קוד הפיצ'ר הושלם (`next.config.ts` rewrites + `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` ב-`apphosting.yaml`) — הצעד היחיד שנשאר ידני הוא ב-Google Cloud Console, **וחייב לקרות לפני** שה-rollout עם ה-`apphosting.yaml` המעודכן יוצא לפרודקשן. סדר הפוך שובר Google Sign-In לגמרי, בכל דפדפן, לא רק Safari.
+
+**סטטוס: ⚠️ ממתין לביצוע ידני** — הקוד מוכן על ה-branch, טרם מוזג ל-`main`.
+
+1. **לפני המיזוג ל-main**: Google Cloud Console → APIs & Services → Credentials → פרויקט `shovarim-prod` → תחת "OAuth 2.0 Client IDs" ה-client שנוצר אוטומטית עבור Firebase Auth (בדרך כלל בשם דומה ל-"Web client (auto created by Google Service)") → Authorized redirect URIs → להוסיף:
+   ```
+   https://shovarim-web--shovarim-prod.europe-west4.hosted.app/__/auth/handler
+   ```
+   **לא למחוק** את ה-URI הקיים של `shovarim-prod.firebaseapp.com/__/auth/handler` — הוא עדיין נחוץ כי ה-reverse proxy (`next.config.ts`) עצמו קורא לאותו handler מתחת למכסה.
+2. הדומיין `shovarim-web--shovarim-prod.europe-west4.hosted.app` **כבר** ברשימת Firebase Console → Authentication → Settings → Authorized domains (נוסף קודם עבור תקלת `auth/unauthorized-domain`, ראו "Smoke test ראשון" למטה) — אין צעד נוסף שם.
+3. רק אחרי ששלב 1 בוצע: למזג את ה-PR ל-`main` ולתת ל-rollout לצאת כרגיל.
+4. **אימות אחרי ה-rollout**: להתחבר עם Google בדפדפן שחסם את הזרימה קודם (Safari, בעיקר בנייד) ולוודא שהחזרה מ-Google בפועל יוצרת session — לא רק שהניווט חוזר לעמוד הבית. `GET /__/auth/handler` דרך ה-domain של האפליקציה עצמה אמור להחזיר תוכן (לא 404) — סימן שה-rewrite פעיל.
+5. **Rollback**: אם הצעד הידני (1) לא בוצע ו-Google Sign-In שבר לגמרי — `firebase apphosting:rollouts:create shovarim-web --project shovarim-prod --git-commit <sha-קודם-ל-authDomain>` (ראו "Rollback" למטה) חוזר מיד ל-`authDomain` הישן שעדיין עובד.
+
+**נימוק מלא, כולל האבחון של הכשל השקט ב-Safari, ב-`docs/DECISIONS.md` ADR #35.**
+
 ## מפתח ה-Server Actions — למה כל deploy שבר טאבים פתוחים (ADR #32)
 
 **התסמין**: אחרי כל rollout, כל טאב שכבר היה פתוח מקבל **404** על `POST` לעמוד הנוכחי (למשל `/settings`) ברגע שלוחצים על משהו. גוף התשובה `Server action not found`, כותרת `x-nextjs-action-not-found: 1`. רענון קשיח פותר — וזה בדיוק מה שמסווה את הבעיה כתקלה נקודתית.
