@@ -1,6 +1,6 @@
 # CHATBOT — סטטוס הסוכן (MCP + Claude)
 
-מצב נכון ל-2026-08-29 (שלב 5.5.c, באמצע ההקמה מול Meta). עדכן מסמך זה עם כל שינוי משמעותי בארכיטקטורת הצ'אטבוט/MCP — ראה גם `docs/ROADMAP.md` Phase 5 (השלבים המלאים) ו-`docs/DECISIONS.md` ADR #17/#19/#20/#21/#22/#29/#30 (הרציונל המלא).
+מצב נכון ל-2026-08-30. עדכן מסמך זה עם כל שינוי משמעותי בארכיטקטורת הצ'אטבוט/MCP — ראה גם `docs/ROADMAP.md` Phase 5 (השלבים המלאים) ו-`docs/DECISIONS.md` ADR #17/#19/#20/#21/#22/#29/#30/#36 (הרציונל המלא).
 
 ## תמונת מצב כללית
 
@@ -21,7 +21,7 @@
 | `scripts/mcp-cli.ts` | נקודת כניסה — CLI אינטראקטיבי, מנפיק custom token, מתחבר, מריץ REPL |
 | `src/lib/mcp/mcpServer.ts` | **רישום כל ה-tools** (`createMcpServer`) + `withToolExecution` — טהור, בלי transport/side effects |
 | `mcp-server/index.ts` | עטיפת CLI דקה בלבד: מאמת ID token, קורא ל-`createMcpServer(uid, "cli")`, מחבר stdio |
-| `src/lib/mcp/toolSchemas.ts` | סכימות ה-input של ה-tools הכותבים (בלי `cvv`/`barcodeOrCode`/תמונות) |
+| `src/lib/mcp/toolSchemas.ts` | סכימות ה-input של ה-tools הכותבים — `cvv`/`barcodeOrCode` כן נכללים ב-`createCard`/`updateCard` (ADR #36); תמונות (`cardImageUrl`/`receiptImageUrl`) לא, ואף פעם לא נחשפות בקריאה |
 | `src/lib/mcp/systemPrompt.ts` | ה-system prompt המשותף ל-CLI ולווב |
 | `src/lib/mcp/agentLoop.ts` | לולאת tool-use משותפת של Claude (`runAgentTurn`, `toAnthropicTools`, callbacks `onText`/`onToolCall`) |
 | `src/lib/mcp/anthropicClient.ts` | בניית ה-client; DEV=`ANTHROPIC_API_KEY`, PROD=Workload Identity Federation |
@@ -44,7 +44,7 @@
 
 כן — `SYSTEM_PROMPT` ב-`src/lib/mcp/systemPrompt.ts` (עברית). עד שלב 5.4 היה inline ב-`scripts/mcp-cli.ts`; חולץ לקובץ משותף כדי ששני הערוצים (CLI, web) יקבלו בדיוק אותן הנחיות.
 
-מכסה: מענה בעברית, שימוש ב-tools בלבד ואיסור המצאת מידע, איסור להמציא `listId`/`categoryId` (לברר קודם דרך `listCardLists`/`listCards`), **כלל האישור לפני פעולות הרסניות** (ראה Guardrails למטה), ואיסור לבקש/לקבל CVV/קוד/ברקוד בצ'אט.
+מכסה: מענה בעברית, שימוש ב-tools בלבד ואיסור המצאת מידע, איסור להמציא `listId`/`categoryId` (לברר קודם דרך `listCardLists`/`listCards`), **כלל האישור לפני פעולות הרסניות** (ראה Guardrails למטה), ואיסור להמציא/לבקש ביוזמת הבוט ערכי CVV/קוד/ברקוד (מותר לקבל ולעדכן אותם דרך `createCard`/`updateCard` כשהמשתמש/ת יוזם/ת זאת — ADR #36).
 
 מועבר ל-`runAgentTurn` כבלוק טקסט יחיד עם `cache_control: { type: "ephemeral" }` (`agentLoop.ts`).
 
@@ -65,22 +65,22 @@
 | `listCards` | קריאה | ללא input schema כלל — אוכף מבנית שאין דרך למודל "להעביר" `uid` |
 | `getCard` | קריאה | כרטיס יחיד, בלי שדות רגישים |
 | `listCardLists` | קריאה | כולל ה-role של המשתמש בכל רשימה |
-| `createCard` | כתיבה | נוצר תמיד עם `cvv:null, barcodeOrCode:null, cardImageUrl:null` |
-| `updateCard` | כתיבה | שולף את הסודות המוצפנים הקיימים ומעביר ללא שינוי, כדי לא למחוק אותם |
+| `createCard` | כתיבה | `cvv`/`barcodeOrCode` ניתנים ליצירה (מוצפנים מיד, ADR #36); `cardImageUrl` תמיד `null` — אין תמיכת תמונה בצ'אט |
+| `updateCard` | כתיבה | `cvv`/`barcodeOrCode` הם שדות **אופציונליים** בסכימה — השמטה = ללא שינוי (השרת ממשיך להשתמש בסוד המוצפן הקיים), `null` = מחיקה, ערך = עדכון (ADR #36) |
 | `logUsage` | כתיבה | טרנזקציה, מונע overdraft |
 | `updateBalance` | כתיבה | עדכון ידני, בלי רשומת `usageLog` |
 | `createList` | כתיבה | |
 | `deleteCard` | **הרסני** | דורש `confirmed: true` |
 | `deleteUsageEntry` | **הרסני** | דורש `confirmed: true` + `restoreBalance` |
 
-כל ה-handlers קוראים לשכבת השירות (`src/lib/services/`) — אותה לוגיקה בדיוק שה-Server Actions של ה-UI מריצים, כולל `assertCanManageCard`/`assertCanManageListAndGetOwner`. הפלט עובר `serializeCardForLlm` שמסיר `cvv`/`barcodeOrCode` לפני שהמידע מגיע ל-LLM בכלל.
+כל ה-handlers קוראים לשכבת השירות (`src/lib/services/`) — אותה לוגיקה בדיוק שה-Server Actions של ה-UI מריצים, כולל `assertCanManageCard`/`assertCanManageListAndGetOwner`. הפלט עובר `serializeCardForLlm` שמסיר `cvv`/`barcodeOrCode` לפני שהמידע מגיע ל-LLM בכלל — זה עדיין נכון לכל כלי **קריאה** (`getCard`/`listCards`) גם אחרי ADR #36.
 
-**סכימות ה-input צרות מכוונת**: `cvv`/`barcodeOrCode`/`cardImageUrl`/`receiptImageUrl` אינם שדות בשום tool — המודל לא רואה ולא קובע אותם, והם לא עוברים ב-conversation history בכלל.
+**סכימות ה-input**: `cardImageUrl`/`receiptImageUrl` אינם שדות בשום tool — אין תמיכת תמונה בצ'אט (`agentLoop.ts` לא מחבר Claude vision), והם לא עוברים ב-conversation history בכלל. `cvv`/`barcodeOrCode` **כן** שדות tool מ-ADR #36 (2026-08-30) — חריגה מפורשת ומצומצמת מהעיצוב המקורי, ראו שם לרציונל המלא ולהשלכות האבטחה (הערך עצמו כן עובר בקונטקסט המודל ובהיסטוריית השיחה מרגע שהמשתמש/ת מקליד/ה אותו).
 
 ## Guardrails
 
 - **`uid` אף פעם לא פרמטר של tool** — נגזר בצד שרת מ-ID token מאומת, ננעל בסגירה. זו החלטה מבנית (לא רק ולידציה) נגד prompt injection — ADR #17 ב-`docs/DECISIONS.md`.
-- **הסרת שדות רגישים** — `cvv`/`barcodeOrCode` מוסרים לפני serialization ל-LLM.
+- **הסרת שדות רגישים מכלי קריאה** — `cvv`/`barcodeOrCode` מוסרים לפני serialization ל-LLM ב-`getCard`/`listCards`. **בכתיבה** (`createCard`/`updateCard`) המודל כן מקבל ומעביר אותם הלאה מ-ADR #36 — ראו שם.
 - **Audit log** — כל קריאת tool נכתבת ל-`auditLog/{entryId}` (`writeAuditLog`), טיפוס `mcp_tool_call`.
 - **הפרדת קרדנציאלים DEV/PROD** — `ANTHROPIC_API_KEY` חייב להיות unset ב-prod (עוקף WIF בשקט אם קיים) — ADR #20.
 - **הנחיה ברמת system prompt נגד הזיה** — לא מנגנון אכיפה, רק הנחיה טקסטואלית.
@@ -130,7 +130,7 @@
 | סטרימינג | NDJSON per-turn | אין — הודעה אחת שלמה חזרה |
 
 ### נקודות שדורשות תשומת לב לפני פרודקשן
-- **תוכן ההודעות עובר דרך השרתים של Meta**, כולל תשובות הבוט (יתרות, שמות כרטיסים). האיסור על CVV/ברקוד ב-`systemPrompt.ts` קריטי כאן שבעתיים. `docs/PRIVACY.md` מסמן את זה כהעברה לצד שלישי שדורשת עדכון מדיניות ו-re-consent.
+- **תוכן ההודעות עובר דרך השרתים של Meta**, כולל תשובות הבוט (יתרות, שמות כרטיסים) — **וכעת גם `cvv`/`barcodeOrCode` עצמם**, אם המשתמש/ת בוחר/ת להזין אותם דרך הצ'אט (ADR #36 הפך את זה מבלתי-אפשרי מבנית להחלטת מוצר מכוונת). `docs/PRIVACY.md` מסמן את העברת התוכן לצד שלישי כדורשת עדכון מדיניות ו-re-consent לפני פרודקשן — סעיף שהיה פתוח עוד לפני ADR #36 ונעשה דחוף יותר עכשיו שהוא כולל גם את שני השדות הרגישים ביותר במפורש, לא רק יתרות/שמות.
 - **הבוט רק עונה, לעולם לא יוזם** — מה שמשאיר אותנו בתוך חלון השירות של 24 שעות של WhatsApp, שבו מותר טקסט חופשי, בלי צורך ב-message templates מאושרים מראש. **אומת אמפירית ב-2026-08-29**: שליחה יזומה מחוץ לחלון נדחתה על ידי Meta בשגיאה `131047 Re-engagement message`, ואותה שליחה בדיוק עברה אחרי שהנמען שלח הודעה למספר הבוט. כלומר זו לא העדפת עיצוב אלא אילוץ אכיף של הספק. אם אי פעם ירצו התראות יזומות (למשל תזכורת תפוגה ב-Phase 7), זו החלטה חדשה לגמרי עם דרישות templates משלה — **ADR #31** קובע שהתראות Phase 7 מתוכננות סביב FCM ואימייל, ו-WhatsApp נשאר ערוץ שיחה. ראו `docs/DEPLOYMENT.md` לפירוט השגיאות והבחנתן מ-`131030`.
 - **מקרה קצה ידוע — תשובה שנופלת מחוץ לחלון**: אם עיבוד הודעה מתארך מעבר לחלון (או ב-retry מאוחר של Meta), `sendWhatsAppText` ייכשל ב-`131047`, ו-`route.ts` יבלע את זה ללוג בלבד — **אחרי** שה-tools כבר רצו ושינו נתונים. מהצד של המשתמש זה נראה כמו בוט שותק שבכל זאת יצר כרטיס/עדכן יתרה. נדיר בפרודקשן (הבוט עונה בשניות) ולא נחסם ב-5.5.c, אבל זה המקום להתחיל לחפש אם מדווח "עשה את הפעולה ולא ענה".
 - הקמת Meta (app, מספר, טוקנים) מתועדת ב-`docs/DEPLOYMENT.md`.
@@ -142,7 +142,7 @@
 ## מסמכים קשורים
 
 - `docs/ROADMAP.md` Phase 5 — כל השלבים (5.1 עד 5.4) כולל מה נדחה במפורש ומה מתוכנן.
-- `docs/DECISIONS.md` ADR #17 (MCP + uid בצד שרת), #19 (walking skeleton, runtime), #20 (מודל/caching/WIF), #21 (rate limiting), #22 (UI + סט tools מלא, שכבת שירות משותפת, transport in-process), **#29 (ערוץ WhatsApp — קישור, runtime, היסטוריה בצד שרת)**, **#30 (ה-webhook — שכבה ניטרלית לספק, buckets, דדופליקציה, 503 עד ההקמה)**.
+- `docs/DECISIONS.md` ADR #17 (MCP + uid בצד שרת), #19 (walking skeleton, runtime), #20 (מודל/caching/WIF), #21 (rate limiting), #22 (UI + סט tools מלא, שכבת שירות משותפת, transport in-process), **#29 (ערוץ WhatsApp — קישור, runtime, היסטוריה בצד שרת)**, **#30 (ה-webhook — שכבה ניטרלית לספק, buckets, דדופליקציה, 503 עד ההקמה)**, **#36 (`cvv`/`barcodeOrCode` הופכים לשדות tool — חריגה מ-#17/#22)**.
 - `docs/SECURITY.md` — threat #6 (prompt injection / פעולה בשם משתמש אחר), וסעיף "קישור ערוץ→משתמש".
 - `docs/DATA_MODEL.md` — collections `auditLog`, `channelLinks`, `channelLinkCodes`, `chatSessions`.
 - `docs/DEPLOYMENT.md` — הקמת WIF ל-PROD, והקמת WhatsApp (Meta app, מספר, סודות).

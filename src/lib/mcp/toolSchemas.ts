@@ -1,14 +1,21 @@
 // LLM-facing input shapes for the write/destructive MCP tools (docs/ROADMAP.md
-// Phase 5.4, docs/DECISIONS.md ADR #22). Deliberately narrower than the
-// matching form schemas in src/lib/validation/ — cvv/barcodeOrCode/
-// cardImageUrl/entryId/receiptImageUrl are never tool-schema fields, so the
-// model never sees or sets them (see docs/DECISIONS.md ADR #17). Dates are
-// ISO strings here (tool args are plain JSON), converted to Date in
-// src/lib/mcp/mcpServer.ts before calling the shared service layer. Relative
-// imports so this resolves under both tsx (mcp-server/) and Next's bundler.
+// Phase 5.4, docs/DECISIONS.md ADR #22/#36). Deliberately narrower than the
+// matching form schemas in src/lib/validation/ — cardImageUrl/entryId/
+// receiptImageUrl are still never tool-schema fields (no image support in
+// the chat channel at all, see src/lib/mcp/agentLoop.ts). cvv/barcodeOrCode
+// *are* tool-schema fields as of ADR #36 (explicit product decision to let
+// the chat create/update them) — createCard requires them (nullable, same
+// as the other optional card fields); updateCard makes them schema-optional
+// so omitting the key means "leave unchanged" (see mcpServer.ts updateCard).
+// Dates are ISO strings here (tool args are plain JSON), converted to Date
+// in src/lib/mcp/mcpServer.ts before calling the shared service layer.
+// Relative imports so this resolves under both tsx (mcp-server/) and Next's
+// bundler.
 import { z } from "zod";
 
-import { acceptingRetailersUrlSchema, firestoreIdSchema, notesSchema } from "../validation/card";
+import { acceptingRetailersUrlSchema, cvvSchema, firestoreIdSchema, notesSchema } from "../validation/card";
+
+const barcodeOrCodeToolSchema = z.string().trim().max(100).nullable();
 
 const isoDateSchema = z
   .string()
@@ -27,6 +34,8 @@ export const createCardToolShape = {
   currency: z.string().trim().length(3, "קוד מטבע בן 3 תווים, לדוגמה ILS"),
   expiryDate: isoDateSchema.nullable(),
   purchaseDate: isoDateSchema.nullable(),
+  barcodeOrCode: barcodeOrCodeToolSchema,
+  cvv: cvvSchema,
   acceptingRetailersUrl: acceptingRetailersUrlSchema,
   notes: notesSchema,
 };
@@ -39,6 +48,12 @@ export const updateCardToolShape = {
   expiryDate: isoDateSchema.nullable(),
   acceptingRetailersUrl: acceptingRetailersUrlSchema,
   notes: notesSchema,
+  barcodeOrCode: barcodeOrCodeToolSchema
+    .optional()
+    .describe("קוד/ברקוד הכרטיס. השמט/ה שדה זה כדי לא לשנות את הערך הקיים; שלח/י null כדי למחוק אותו, או ערך חדש כדי לעדכן."),
+  cvv: cvvSchema
+    .optional()
+    .describe("CVV בן 3–4 ספרות. השמט/ה שדה זה כדי לא לשנות את הערך הקיים; שלח/י null כדי למחוק אותו, או ערך חדש כדי לעדכן."),
 };
 
 export const deleteCardToolShape = {

@@ -7,21 +7,21 @@
 | שדה | Collection | רגישות |
 |---|---|---|
 | `email`, `displayName`, `photoURL` | `users` | זהות בסיסית, מגיע מ-Google/Apple auth |
-| `barcodeOrCode` | `cards` | פוטנציאלית רגיש — מספר כרטיס אמיתי, ראה `docs/SECURITY.md` |
-| `cvv` | `cards` | רגיש מאוד — יחד עם `barcodeOrCode` מאפשר שימוש בכרטיס, ראה `docs/SECURITY.md` |
+| `barcodeOrCode` | `cards` | פוטנציאלית רגיש — מספר כרטיס אמיתי, ראה `docs/SECURITY.md`. מ-2026-08-30 (`docs/DECISIONS.md` ADR #36) ניתן להזין/לעדכן גם דרך הצ'אט (web+WhatsApp) — ראה השורה על `history` למטה |
+| `cvv` | `cards` | רגיש מאוד — יחד עם `barcodeOrCode` מאפשר שימוש בכרטיס, ראה `docs/SECURITY.md`. אותה הערה: ניתן להזין/לעדכן דרך הצ'אט מ-ADR #36 |
 | `cardImageUrl`, `receiptImageUrl` | `cards`, `usageLog` | תמונות עשויות להכיל מידע מזהה נוסף (למשל בקבלה) |
 | `location`, `purpose` | `usageLog` | התנהגות/הרגלי צריכה — נחשב profiling data תחת GDPR |
 | `fcmTokens` | `users` | מזהה מכשיר |
 | `ip` | `consents` | אופציונלי, לתיעוד הסכמה בלבד |
 | `externalId` (מספר טלפון E.164), `channelKey` | `channelLinks`, `channelLinkCodes` | מזהה ישיר — מספר טלפון הוא PII בפני עצמו וגם מקשר את החשבון לזהות מחוץ למערכת. נוסף ב-Phase 5.5.a |
 | `paramsSummary` של `channel_linked`/`channel_unlinked` | `auditLog` | מכיל `channelKey`, כלומר **מספר הטלפון** — לא סוד, אבל כן PII שנשאר ב-audit trail |
-| `history` (טקסט שיחה מלא) | `chatSessions` | תוכן ההודעות בפרוזה חופשית, כלומר נתונים פיננסיים והרגלי צריכה. נכתב מ-5.5.b |
+| `history` (טקסט שיחה מלא) | `chatSessions` | תוכן ההודעות בפרוזה חופשית, כלומר נתונים פיננסיים והרגלי צריכה — **ומ-ADR #36 גם `cvv`/`barcodeOrCode` בטקסט גלוי**, אם המשתמש/ת בחר/ה להזין אותם דרך הצ'אט. נכתב מ-5.5.b |
 
 **מחיקה וייצוא**: ה-collections של הערוצים ממופתחים לפי `channelKey` ולא לפי `uid`, ולכן שאילתות הבעלות הקיימות **לא** מגיעות אליהם וצריך מעבר נפרד. `functions/src/accountDeletion.ts` מוחק את כולם דרך שדה `uid`; `buildUserDataExport` מייצא את `channelLinks` ואת `chatSessions` (נוסף ב-5.5.b, `listChatSessionsForUid`). **קודי קישור שלא מומשו לא נכללים בייצוא במכוון** — הם bearer credentials חיים, וקובץ ייצוא הוא בדיוק הדבר שנשלח הלאה במייל.
 
 **מזעור נתונים בשיחות (5.5.b)**: שיחה שלא נגעו בה 24 שעות נטענת כריקה ונדרסת בתור הבא, והיסטוריה נגזמת בגבול ~200KB; ניתוק ערוץ או קישורו מחדש לחשבון אחר מוחקים את השיחה מיד. `channelMessages` שומר מזהי הודעות (לא תוכן) לצורך דדופליקציה.
 
-**חובות פתוחות**: (1) להגדיר בקונסולה **TTL policies** בפועל — `chatSessions.updatedAt`, `channelMessages.receivedAt`, `channelLinkCodes.expiresAt`. הלוגיקה לא נשענת עליהן (שיחה ישנה נזרקת בקוד גם אם המסמך קיים), אבל בלעדיהן המסמכים נשארים מאוחסנים. (2) תוכן ההודעות **והתשובות** עובר דרך השרתים של Meta — **העברה לצד שלישי** — ודורש התייחסות מפורשת ב-Privacy Policy ובזרימת ה-consent, כולל העלאת גרסת המדיניות ודרישת re-consent, **לפני** הפעלה בפרודקשן (5.5.c). כרגע אין מספר ואין טוקן יוצא, ולכן שום הודעה עוד לא נשלחה לשם.
+**חובות פתוחות**: (1) להגדיר בקונסולה **TTL policies** בפועל — `chatSessions.updatedAt`, `channelMessages.receivedAt`, `channelLinkCodes.expiresAt`. הלוגיקה לא נשענת עליהן (שיחה ישנה נזרקת בקוד גם אם המסמך קיים), אבל בלעדיהן המסמכים נשארים מאוחסנים. (2) תוכן ההודעות **והתשובות** עובר דרך השרתים של Meta — **העברה לצד שלישי** — ודורש התייחסות מפורשת ב-Privacy Policy ובזרימת ה-consent, כולל העלאת גרסת המדיניות ודרישת re-consent, **לפני** הפעלה בפרודקשן. **סעיף זה דחוף כעת**: WhatsApp חי מקצה לקצה מ-2026-08-30 (`docs/CHATBOT.md`), ומאותו תאריך (ADR #36) התוכן שעובר דרך Meta עשוי לכלול גם `cvv`/`barcodeOrCode` בטקסט גלוי, לא רק יתרות/שמות כרטיסים — כלומר החוב הזה גדל מ"נדרש לפני production" ל"פעיל בפרודקשן בלי שהוסדר".
 
 ## Consent
 `components/legal/ConsentBanner.tsx` — חוסם שימוש עד הסכמה מפורשת, כותב ל-`consents/{uid}` (גרסת מדיניות + timestamp). גרסת המדיניות הנוכחית מוגדרת קבוע ב-קוד; שינוי מדיניות מהותי = הגדלת הגרסה + דרישת re-consent.

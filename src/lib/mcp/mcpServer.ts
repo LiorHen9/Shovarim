@@ -76,7 +76,10 @@ async function withToolExecution(
 
 // cvv/barcodeOrCode are the two most sensitive fields on a card (see
 // docs/SECURITY.md) and aren't useful for a chat answer — dropped here
-// rather than sent to the LLM at all.
+// rather than sent to the LLM at all. This still holds for every *read* tool
+// even though createCard/updateCard can now *write* these fields (ADR #36):
+// letting the model set a value the user just typed is a one-way door, not
+// a reason to also echo stored secrets back into read results.
 function serializeCardForLlm(card: GiftCard) {
   return {
     id: card.id,
@@ -126,12 +129,17 @@ export function createMcpServer(uid: string, channel: AuditLogChannel): McpServe
     "createCard",
     {
       description:
-        "יצירת כרטיס מתנה חדש ברשימה קיימת. לא כולל CVV/ברקוד/תמונה — אלה מתווספים דרך האתר בלבד.",
+        "יצירת כרטיס מתנה חדש ברשימה קיימת, כולל אפשרות להזין קוד/ברקוד ו-CVV (שני השדות מוצפנים בצד שרת מיד עם השמירה — ראו docs/DECISIONS.md ADR #36). לא כולל תמונה — זו מתווספת דרך האתר בלבד.",
       inputSchema: createCardToolShape,
     },
     async (args) =>
       withToolExecution(
-        { uid, tool: "createCard", channel, paramsSummary: `listId=${args.listId}, name=${args.name}` },
+        {
+          uid,
+          tool: "createCard",
+          channel,
+          paramsSummary: `listId=${args.listId}, name=${args.name}, hasSecrets=${args.cvv !== null || args.barcodeOrCode !== null}`,
+        },
         async () => {
           const cardId = adminDb.collection("cards").doc().id;
           const result = await createCardForUid(uid, {
@@ -145,8 +153,8 @@ export function createMcpServer(uid: string, channel: AuditLogChannel): McpServe
             expiryDate: args.expiryDate ? new Date(args.expiryDate) : null,
             purchaseDate: args.purchaseDate ? new Date(args.purchaseDate) : null,
             cardImageUrl: null,
-            barcodeOrCode: null,
-            cvv: null,
+            barcodeOrCode: args.barcodeOrCode,
+            cvv: args.cvv,
             acceptingRetailersUrl: args.acceptingRetailersUrl,
             notes: args.notes,
           });
@@ -159,12 +167,17 @@ export function createMcpServer(uid: string, channel: AuditLogChannel): McpServe
     "updateCard",
     {
       description:
-        "עדכון פרטי כרטיס קיימים (שם, קטגוריה, תגיות, תוקף, הערות, קישור לרשתות מכבדות). לא משנה יתרה/מטבע/CVV/ברקוד. יש לשלוח את כל השדות (כמו בטופס העריכה באתר) — אפשר לקרוא קודם ל-getCard כדי לראות את הערכים הנוכחיים.",
+        "עדכון פרטי כרטיס קיימים (שם, קטגוריה, תגיות, תוקף, הערות, קישור לרשתות מכבדות, ואופציונלית קוד/ברקוד ו-CVV — ADR #36). לא משנה יתרה/מטבע. יש לשלוח את שאר השדות הרגילים (כמו בטופס העריכה באתר) — אפשר לקרוא קודם ל-getCard כדי לראות את הערכים הנוכחיים (לא כולל CVV/ברקוד, שאינם נחשפים בקריאה בכלל). כדי לא לשנות CVV/ברקוד קיימים אל תכלול/י את השדות האלה בקריאה; כדי למחוק אותם שלח/י null; כדי לעדכן שלח/י ערך חדש.",
       inputSchema: updateCardToolShape,
     },
     async (args) =>
       withToolExecution(
-        { uid, tool: "updateCard", channel, paramsSummary: `cardId=${args.cardId}` },
+        {
+          uid,
+          tool: "updateCard",
+          channel,
+          paramsSummary: `cardId=${args.cardId}, secretsTouched=${args.cvv !== undefined || args.barcodeOrCode !== undefined}`,
+        },
         async () => {
           const secrets = await getCardSecretsForUid(uid, { cardId: args.cardId });
           const result = await updateCardDetailsForUid(uid, {
@@ -175,8 +188,8 @@ export function createMcpServer(uid: string, channel: AuditLogChannel): McpServe
             expiryDate: args.expiryDate ? new Date(args.expiryDate) : null,
             acceptingRetailersUrl: args.acceptingRetailersUrl,
             notes: args.notes,
-            barcodeOrCode: secrets.barcodeOrCode,
-            cvv: secrets.cvv,
+            barcodeOrCode: args.barcodeOrCode !== undefined ? args.barcodeOrCode : secrets.barcodeOrCode,
+            cvv: args.cvv !== undefined ? args.cvv : secrets.cvv,
           });
           return JSON.stringify(result);
         }
