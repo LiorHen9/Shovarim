@@ -79,9 +79,11 @@
    - **גיבוי**: המפתח הוא הדבר היחיד שמפענח `cvv`/`barcodeOrCode` בפרודקשן. אובדן/רוטציה שלו הופכים את הערכים המוצפנים (`v1:` prefix) לבלתי ניתנים לשחזור.
 3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב. **הורץ מול production ב-2026-08-29** (על ידי המשתמש, ידנית).
 
-## ערוץ WhatsApp — הקמה חד-פעמית (Phase 5.5.c) — 🔄 בביצוע
+## ערוץ WhatsApp — הקמה חד-פעמית (Phase 5.5.c) — ✅ הושלם (2026-08-30)
 
-**עודכן 2026-08-29**: Meta app + WABA + מספר טסט קיימים, ו**נתיב השליחה אומת מול Meta בפועל** (ראו "אימות נתיב השליחה" למטה). נשאר: permanent token, verify token, PR הסודות, ורישום ה-webhook.
+**עודכן 2026-08-30**: ההקמה הושלמה ואומתה מקצה לקצה — הודעה חתומה מ-Meta נכנסה, הקישור נפדה, והתשובה נמסרה למכשיר. הסעיף נשאר כאן כ-runbook להקמה חוזרת (מספר חדש, אפליקציה חדשה, פרויקט אחר).
+
+**מה שעיכב בפועל לא היה בקוד** אלא שני המנויים בצד Meta — ראו "שני המנויים" למטה. זו הקריאה הראשונה המומלצת אם משהו שקט.
 
 ⚠️ **סדר הפעולות — הרישום של ה-webhook אחרון.** התיעוד למטה ממוספר 1–4, אבל צעד 3 (רישום ה-webhook) **חייב** לבוא אחרי rollout שכולל את הסודות: Meta מאמתת בעזרת `GET` שנושא `hub.verify_token`, ו-`getInboundConfig()` מחזיר `null` כל עוד `WHATSAPP_APP_SECRET`/`WHATSAPP_VERIFY_TOKEN` ריקים — כלומר 503 והרישום נכשל. הסדר הנכון: לאסוף את כל 4 הערכים → PR הסודות + `secrets:set` + rollout → ורק אז לרשום.
 
@@ -120,15 +122,51 @@ curl -s "https://graph.facebook.com/v23.0/<PHONE_NUMBER_ID>?fields=display_phone
    - מספר שכבר רשום ב-WhatsApp רגיל או באפליקציית WhatsApp Business **אינו זמין** ל-Cloud API; צריך לנתק אותו קודם או להשתמש במספר נפרד. לא להשתמש במספר האישי.
    - לפיתוח Meta מספקת **מספר טסט חינמי**, שיכול לשלוח רק לרשימה קטנה של נמענים מאושרים מראש (סדר גודל של 5). מספיק לאימות מלא של 5.5.b לפני רכישת מספר אמיתי.
    - **ה-`Phone number ID` הוא לא מספר הטלפון** — זה מזהה בן 15–16 ספרות שמופיע מתחת למספר במסך API Setup. הקוד שלנו משתמש **רק** בו (`{graphBaseUrl}/{phoneNumberId}/messages`) ולעולם לא במספר עצמו.
-3. ⏳ **Webhook**: `https://<app-hosting-url>/api/whatsapp/webhook` + verify token שאנחנו בוחרים, ו-subscribe לאירוע `messages` בלבד. **אחרון בסדר** (ראו האזהרה בראש הסעיף), ו-**חובה לסמן `messages` במפורש** תחת Webhook fields — בלי זה ה-URL רשום אבל לא נשלחות אליו הודעות כלל.
-4. ⏳ **Permanent access token** + **app secret** של האפליקציה.
+3. ✅ **Webhook**: `https://<app-hosting-url>/api/whatsapp/webhook` + verify token שאנחנו בוחרים, ו-subscribe לאירוע `messages` בלבד. **אחרון בסדר** (ראו האזהרה בראש הסעיף), ו-**חובה לסמן `messages` במפורש** תחת Webhook fields — בלי זה ה-URL רשום אבל לא נשלחות אליו הודעות כלל. את **Attach a client certificate** להשאיר **לא מסומן**: זה mTLS שדורש proxy שמאמת תעודות לקוח, App Hosting לא מספק שכבה כזו, והאימות שלנו הוא ה-HMAC בגוף הבקשה.
+4. ✅ **Permanent access token** + **app secret** של האפליקציה.
    - ה-app secret: App settings → Basic → Show.
    - הטוקן הקבוע **לא** נוצר במסך WhatsApp אלא ב-Business Portfolio → Users → **System users** → Generate new token: לשייך ל-System User גם את **האפליקציה** וגם את **ה-WABA** כ-assets, לסמן `whatsapp_business_messaging` + `whatsapp_business_management`, ו-expiration **Never**. הטוקן מוצג פעם אחת בלבד.
+   - **תסמין של שיוך assets חסר**: מסך ההנפקה מציג `No permissions available — Assign an app role to the system user or select another app to continue`, בלי רשימת הרשאות לסמן. התיקון: Add Assets → לשונית **Apps** → האפליקציה → הרשאת **Develop app**; ובנפרד Add Assets → **WhatsApp accounts** → ה-WABA → Full control. רק אז ההרשאות מופיעות.
    - ה-**temporary token** שבמסך API Setup תקף 24 שעות. מצוין לאימות ידני, **אסור** להזרקה ל-Secret Manager: כשהוא יפוג הבוט ימשיך לקבל הודעות ולהריץ tools, אבל כל תשובה תיזרק ב-`route.ts` עם לוג בלבד — מבחוץ זה נראה כמו בוט מת.
 
 **ערכים לא-סודיים של ההקמה הנוכחית** (2026-08-29): `WHATSAPP_PHONE_NUMBER_ID=963623680178719`, WABA ID `952548457144312`, מספר טסט `+1 555-184-5212`. ה-WABA ID **לא בשימוש בקוד** — הוא נחוץ רק לשיוך assets ל-System User בצעד 4.
 
 **לאמת בקונסולה בזמן ההקמה** (השתנה כמה פעמים ולא לסמוך על מה שכתוב כאן): תמחור, מכסות, ומדיניות חלון השירות של 24 שעות. הבוט שלנו **רק עונה ואף פעם לא יוזם**, ולכן הוא אמור להישאר בתוך חלון השירות שבו מותר טקסט חופשי — בלי צורך ב-message templates מאושרים מראש. אם אי פעם יתווספו התראות יזומות (Phase 7), ההנחה הזו נשברת.
+
+### ⚠️ שני המנויים — למה הכל שקט (2026-08-30)
+כדי ש-Meta תשלח delivery בכלל צריך **שני** מנויים נפרדים. אף אחד מהם לא מדווח על כישלון, ושניהם נראים תקינים במסך שבו מגדירים את השני:
+
+1. **Webhook field** — סימון `messages` תחת Webhook fields. ה-handshake עובר גם בלעדיו (הוא בודק רק URL + verify token), כך שה-webhook מוצג כמאומת ופשוט לא מקבל כלום.
+2. **מנוי האפליקציה ל-WABA** — רשומה נפרדת ב-`{WABA_ID}/subscribed_apps`, שקובעת **איזו אפליקציה** מקבלת את ההודעות של המספר. **היא לא עוברת לאפליקציה חדשה.**
+
+**מה שקרה אצלנו**: אחרי מעבר לאפליקציה חדשה, המנוי נשאר רשום על הישנה. ההודעות נמסרו אליה, והחדשה לא קיבלה דבר — בלי שגיאה, בלי לוג, ובלי סימן בשום מסך של Meta.
+
+אבחון ותיקון ב-[Graph API Explorer](https://developers.facebook.com/tools/explorer) (בוחרים את האפליקציה בתפריט Meta App, מנפיקים User Token עם `whatsapp_business_management`):
+```
+GET    <WABA_ID>/subscribed_apps    # מי רשום כרגע
+DELETE <WABA_ID>/subscribed_apps    # הסרה — אחרי בחירת האפליקציה הישנה ב-Meta App
+POST   <WABA_ID>/subscribed_apps    # רישום האפליקציה שנבחרה כרגע
+```
+
+**הסחת דעת מתועדת**: הבאנר `Apps will only be able to receive test webhooks... unless the app has been published` הוא גנרי לכל פלטפורמת Meta, וזרימת ה-Quickstart של WhatsApp כן מוסרת הודעות ממספר טסט לנמען מאושר במצב Development. **לא להיכנס ל-App Review / Business Verification** (תהליך של ימים שדורש עסק רשום) לפני שמיצו את `subscribed_apps` ואת לוג הבקשות — אצלנו זו הייתה התשובה.
+
+### אבחון: מה לבדוק כשאין תשובה בווטסאפ
+מתחילים תמיד מ**לוג הבקשות של Cloud Run**, לא מלוג האפליקציה: מסלול ההצלחה ומסלול הדילוג לא כותבים כלום, ולכן היעדר שורות `[whatsapp]` אינו ראיה. השאלה הראשונה היא תמיד "האם הגיע POST בכלל":
+
+```
+https://console.cloud.google.com/logs/query;query=httpRequest.requestUrl%3A%22whatsapp%22;duration=P1D?project=shovarim-prod
+```
+
+| מה רואים | המשמעות | התיקון |
+|---|---|---|
+| אין `POST` כלל | Meta לא שולחת | שני המנויים למעלה |
+| `POST` → 401 | ה-app secret בשרת שונה מזה של האפליקציה ששלחה | `secrets:set` **+ rollout**. חשוד ראשון אחרי החלפת אפליקציה |
+| `GET` → 403 | verify token לא תואם | להשוות תו-בתו (רווח נגרר מספיק) |
+| 503 | סוד חסר ב-runtime | לוודא שכל הסודות קיימים ושבוצע rollout |
+| `POST` → 200 בלי תשובה | הגיע ונזרק בשקט | `phone_number_id` לא תואם, dedup של retry, או כשל שליחה (`[whatsapp] failed to send reply`) |
+| `131047` / `131030` | חלון 24 השעות / נמען לא מאושר | ראו הסעיף על חלון 24 השעות |
+
+**בקרת ביקורת חיובית**: `curl` ידני ל-webhook עם ערכים שגויים בכוונה משאיר בלוג `403`/`401` בזמן ידוע. אם הם מופיעים ובקשות מ-Meta לא — הצינור עובד ופשוט לא נשלח אליו כלום. בקשות אמיתיות מ-Meta נושאות User-Agent שמכיל `facebookexternalua`.
 
 ### סודות (Secret Manager, בדפוס `FIREBASE_ADMIN_PRIVATE_KEY`)
 סקריפט `Set-AppHosting-WhatsAppSecrets.ps1` (נכתב 2026-08-29), במתכונת `Set-AppHosting-CardEncryptionKey.ps1`. כל `secrets:set` מבקש את הערך ב-prompt — מדביקים שם, כך שהסוד לא נוגע בקובץ, ב-git ולא ב-shell history:
@@ -147,6 +185,11 @@ curl -s "https://graph.facebook.com/v23.0/<PHONE_NUMBER_ID>?fields=display_phone
 - **הרצה בפועל (2026-08-29)**: שלושת הסודות נוצרו (`whatsapp-app-secret`, `whatsapp-access-token`, `whatsapp-verify-token`), גרסה 1 `ENABLED`, וההרשאה ניתנה ל-backend `shovarim-web`. אימות: `npx firebase apphosting:secrets:describe <name> --project shovarim-prod`.
 - ⚠️ **מלכודת CLI**: `apphosting:secrets:grantaccess` דורש היום `--backend <id>` (או `--emails`) ובלעדיו נכשל ב-`Error: Missing required flag --backend or --emails`. **הצורה החשופה ב-`Set-AppHosting-AdminKey.ps1` וב-`Set-AppHosting-CardEncryptionKey.ps1` מיושנת ותיכשל אם יריצו אותם היום** — הן נכתבו מול גרסת CLI מוקדמת יותר. הכישלון הזה **אינו** מסוכן: ה-prompt האינטראקטיבי בתוך `secrets:set` כבר שואל "grant access now?" ומבצע את ההרשאה, כך שהפקודה הנפרדת היא רק גיבוי. עדיין — שווה לתקן לפני ההרצה הבאה.
 - שני ה-prompts של `secrets:set`: "grant access now?" → **Yes**; "add this secret to apphosting.yaml?" → **No**, כי הרשומות כבר בקובץ ידנית עם `[RUNTIME]` וההערות; הוספה אוטומטית תיצור משתנה כפול.
+- ⚠️ **עדכון סוד קיים לא נכנס לתוקף בלי rollout.** `secrets:set` יוצר גרסה חדשה ב-Secret Manager, אבל ה-instance שרץ קיבל את משתני הסביבה שלו בעלייה וימשיך עם הערך הישן. אחרי כל החלפת סוד (למשל app secret אחרי מעבר לאפליקציית Meta חדשה):
+  ```powershell
+  npx firebase apphosting:rollouts:create shovarim-web --git-branch main --project shovarim-prod
+  ```
+  בלי זה ממשיכים לקבל 401 על סוד שלכאורה תוקן — וזה נראה בדיוק כמו תיקון שלא עבד.
 - ⚠️ **כל הוספת `secret:` חייבת להיות באותו PR עם הרצת `secrets:set`+`grantaccess` בפועל** — אחרת ה-rollout נכשל ולא מנסה שוב לבד. זו בדיוק התקלה שהפילה את הפרודקשן ליומיים ב-Phase 4.3, ראו הפוסט-מורטם למטה.
 
 ## First-deploy runbook (סדר מדויק)

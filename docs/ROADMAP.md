@@ -175,7 +175,7 @@ Route Handler ראשון באפליקציה (`src/app/api/chat/route.ts`, stream
 
 **נשאר לבדוק ידנית**: אין דרך לבדוק את החיבור האמיתי ל-Meta לפני 5.5.c (אין app, אין מספר, ואין סודות) — ה-handshake, החתימה והדדופליקציה נבדקו מול payload-ים שנבנו ונחתמו מקומית, לא מול Meta עצמה. שליחת התשובה דרך Graph API (`sendWhatsAppText`) היא **הנתיב היחיד שלא הורץ מעולם** — בכל הבדיקות אין credentials יוצאים והוא מדלג עם warning.
 
-#### 5.5.c — הקמה ופרודקשן (בביצוע)
+#### 5.5.c — הקמה ופרודקשן ✅ הושלם (2026-08-30)
 Meta app + מספר עסקי, סודות ב-Secret Manager (`WHATSAPP_APP_SECRET`/`WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_VERIFY_TOKEN`, כולם `[RUNTIME]` בלבד) עם סקריפט בדפוס `Set-AppHosting-CardEncryptionKey.ps1`, ותיעוד ב-`DEPLOYMENT`/`CHATBOT`/`SECURITY`/`PRIVACY`.
 
 **סדר הפעולות** — הרישום של ה-webhook מול Meta **חייב** לבוא אחרי rollout שכולל את הסודות: Meta עושה `GET` עם `hub.verify_token`, ו-`getInboundConfig()` מחזיר `null` כל עוד הסודות ריקים, כלומר 503 והרישום נכשל. לכן: לאסוף את כל הערכים מ-Meta → PR הסודות + rollout → ורק אז לרשום webhook.
@@ -191,7 +191,15 @@ Meta app + מספר עסקי, סודות ב-Secret Manager (`WHATSAPP_APP_SECRET
 - **Phase 7 (התראות יזומות)** — תזכורות תפוגה ב-WhatsApp ייחסמו בדיוק ככה. הן דורשות **message templates מאושרים מראש** מ-Meta, תהליך אישור נפרד לגמרי. לא הרחבה של מה שקיים.
 - **מקרה קצה ידוע ב-webhook** — אם עיבוד הודעה מתארך מעבר לחלון (או ב-retry מאוחר של Meta), `sendWhatsAppText` ייכשל ב-`131047` ו-`route.ts` יבלע את זה ללוג בלבד, אחרי שהפעולה **כבר בוצעה** (כרטיס נוצר, יתרה עודכנה). מהצד של המשתמש זה נראה כמו בוט שותק. נדיר בפרודקשן (הבוט עונה בשניות), לא נחסם, ומתועד כאן כדי שלא יאובחן שוב מאפס.
 
-**נשאר**: permanent access token (System User עם האפליקציה **וגם** ה-WABA כ-assets, הרשאות `whatsapp_business_messaging`+`whatsapp_business_management`, expiration `Never`), verify token, `Set-AppHosting-WhatsAppSecrets.ps1`, `apphosting.yaml`, רישום ה-webhook + subscribe ל-`messages` בלבד, ואז inbound אמיתי מקצה לקצה.
+**✅ inbound אמיתי מקצה לקצה (2026-08-30)** — הודעה חתומה מ-Meta הגיעה ל-`route.ts`, קוד הקישור נפדה, והמשתמש קיבל תשובה בווטסאפ. עם זה כל חוליה בשרשרת הורצה לפחות פעם אחת מול Meta האמיתית: handshake, חתימה, דדופליקציה, פדיון, agent turn ושליחה.
+
+**הושלם בדרך**: permanent access token (System User עם האפליקציה **וגם** ה-WABA כ-assets), verify token, `Set-AppHosting-WhatsAppSecrets.ps1`, ארבע רשומות ב-`apphosting.yaml` (PR #23), ורישום ה-webhook.
+
+**ממצא: שני מנויים נפרדים, ואף אחד לא מדווח על כישלון** — זה מה שעיכב את ה-inbound, ולא שום דבר בקוד. כדי ש-delivery יישלח בכלל צריך גם סימון `messages` תחת Webhook fields **וגם** רשומה ב-`{WABA_ID}/subscribed_apps` שקובעת **איזו אפליקציה** מקבלת. במקרה שלנו אפליקציה ישנה החזיקה את המנוי, האפליקציה החדשה לא ירשה אותו, וההודעות הלכו אליה — בלי שגיאה, בלי לוג, בלי אינדיקציה בשום מסך. האבחון: `GET {WABA_ID}/subscribed_apps` ב-Graph API Explorer, ואז `DELETE` לישנה ו-`POST` לחדשה. מתועד במלואו ב-`docs/DEPLOYMENT.md`.
+
+**ממצא נלווה**: החלפת Meta app מבטלת את ה-App Secret (סוד ברמת האפליקציה) אבל **לא** את ה-Phone Number ID / WABA ID כשהאפליקציה החדשה מחוברת לאותו WABA — כלומר אין שינוי קוד, רק `secrets:set` + rollout. וללא ה-rollout הסוד החדש כלל לא נכנס לתוקף: משתני הסביבה מוזרקים בעליית ה-instance.
+
+**נשאר לפאזות הבאות**: מספר טלפון אמיתי במקום מספר הטסט (מוגבל ל-~5 נמענים מאושרים), ו-message templates אם וכאשר יידרשו התראות יזומות (ADR #31).
 
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.
