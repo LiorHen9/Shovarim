@@ -62,11 +62,24 @@ function toSummary(link: ChannelLink): ChannelLinkSummary {
 // credential, and "generate a new one" should not quietly leave the old one
 // live. Filtering in memory rather than with a second where() clause keeps
 // this off a composite index — a user has a handful of codes at most.
+//
+// A user who already has this channel linked gets nothing: issuing a code to
+// them only creates a live bearer credential for an account that needs no new
+// link (issue #26). /settings hides the button in that state, but the action
+// is directly POST-able (ADR #25), so the rule lives here too. Unlinking is
+// the deliberate way back — which also makes "move my number to another
+// account" (redeemLinkCode, ADR #29) unaffected: that code is issued by the
+// *other* account, which has no link yet.
 export async function createLinkCodeForUid(
   uid: string,
   channel: ChannelKind
 ): Promise<IssuedLinkCode> {
   const now = Timestamp.now();
+
+  const links = await listChannelLinksForUid(uid);
+  if (links.some((link) => link.channel === channel)) {
+    throw new ActionError("הערוץ כבר מקושר לחשבון. נתקו את הקישור הקיים לפני יצירת קישור חדש.");
+  }
 
   const existing = await adminDb.collection(CODES).where("uid", "==", uid).get();
   const stillOpen = existing.docs.filter((doc) => (doc.data() as ChannelLinkCode).usedAt === null);
