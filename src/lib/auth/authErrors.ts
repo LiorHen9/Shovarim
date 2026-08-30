@@ -15,14 +15,10 @@ export function toAuthErrorCode(error: unknown): string {
   return UNKNOWN_AUTH_ERROR_CODE;
 }
 
-// The user closing the Google popup, or a second click superseding the first,
-// is a normal interaction — not a failure worth an error toast or a Cloud
+// The user backing out of the Google account chooser mid-redirect is a
+// normal interaction — not a failure worth an error toast or a Cloud
 // Logging entry. Kept separate from the message map so both callers agree.
-const CANCELLED_CODES = new Set([
-  "auth/popup-closed-by-user",
-  "auth/cancelled-popup-request",
-  "auth/user-cancelled",
-]);
+const CANCELLED_CODES = new Set(["auth/redirect-cancelled-by-user", "auth/user-cancelled"]);
 
 export function isCancelledByUser(code: string): boolean {
   return CANCELLED_CODES.has(code);
@@ -33,12 +29,13 @@ export function isCancelledByUser(code: string): boolean {
 // the raw code appended (see buildSignInErrorMessage), so a support question
 // arrives with the one detail that makes it diagnosable.
 const MESSAGES_BY_CODE: Record<string, string> = {
-  "auth/popup-blocked": "הדפדפן חסם את חלון ההתחברות. אפשרו חלונות קופצים לאתר ונסו שוב",
   "auth/unauthorized-domain": "הדומיין הזה לא מאושר להתחברות. פנו למנהל המערכת",
   "auth/network-request-failed": "בעיית רשת בזמן ההתחברות. בדקו את החיבור ונסו שוב",
   "auth/too-many-requests": "יותר מדי ניסיונות התחברות. המתינו רגע ונסו שוב",
   "auth/account-exists-with-different-credential":
     "קיים כבר חשבון עם האימייל הזה דרך ספק אחר",
+  "auth/web-storage-unsupported":
+    "הדפדפן חוסם אחסון מקומי הנדרש להתחברות. בטלו מצב גלישה פרטית ונסו שוב",
 };
 
 const STAGE_FALLBACK: Record<AuthErrorStage, string> = {

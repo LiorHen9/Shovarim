@@ -21,7 +21,7 @@ Server Action (privacy.ts) → מאמת session → קורא ל-adminDb/adminAut
 ```
 
 ## Auth
-`src/lib/auth/` הוא ה-abstraction layer מעל Firebase Auth (ראה `docs/DECISIONS.md` #2). זרימה: כפתור Google (client) → `signInWithPopup` → `user.getIdToken()` → Server Action `createSession` (`src/actions/auth.ts`) מאמתת את ה-token, יוצרת session cookie בשם `__session` (Admin SDK, `docs/DECISIONS.md` #9), ומוודאת קיום `users/{uid}`. `src/proxy.ts` — **לא** `middleware.ts`, ראה `docs/DECISIONS.md` #8 — בודק רק שהעוגייה קיימת (fast path); האימות המלא (`adminAuth.verifySessionCookie`) קורה ב-`app/(protected)/layout.tsx`.
+`src/lib/auth/` הוא ה-abstraction layer מעל Firebase Auth (ראה `docs/DECISIONS.md` #2). זרימה: כפתור Google (client) → `signInWithRedirect` (ניווט מלא, לא popup — `docs/DECISIONS.md` #34) → חזרה לאותו עמוד → `getRedirectResult` → `user.getIdToken()` → Server Action `createSession` (`src/actions/auth.ts`) מאמתת את ה-token, יוצרת session cookie בשם `__session` (Admin SDK, `docs/DECISIONS.md` #9), ומוודאת קיום `users/{uid}`. `src/proxy.ts` — **לא** `middleware.ts`, ראה `docs/DECISIONS.md` #8 — בודק רק שהעוגייה קיימת (fast path); האימות המלא (`adminAuth.verifySessionCookie`) קורה ב-`app/(protected)/layout.tsx`.
 
 ## מבנה תיקיות
 ```
