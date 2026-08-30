@@ -225,5 +225,17 @@ service cloud.firestore {
       // message and silence the bot for that message.
       allow read, write: if false;
     }
+
+    match /listInviteCodes/{code} {
+      // Phone-number list invitations (docs/DECISIONS.md ADR #37, issue #58).
+      // Same bearer-credential class as channelLinkCodes above: the doc id *is*
+      // the secret carried in the WhatsApp message, so a client read would let
+      // anyone enumerate live invites and accept one meant for someone else.
+      // Unlike cardLists/members, this doc cannot be keyed by the invitee's uid
+      // — at creation time the owner knows only a phone number, and the uid
+      // does not exist yet for a user who has not signed up. Both the owner's
+      // and the invitee's views go through Server Actions.
+      allow read, write: if false;
+    }
   }
 }

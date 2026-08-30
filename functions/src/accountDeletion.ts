@@ -34,6 +34,7 @@ export async function deleteUserAccount(uid: string): Promise<void> {
     channelLinksSnap,
     channelLinkCodesSnap,
     chatSessionsSnap,
+    listInvitesSnap,
   ] = await Promise.all([
     db.collection("cardLists").where("ownerId", "==", uid).get(),
     db.collection("cards").where("ownerId", "==", uid).get(),
@@ -53,6 +54,12 @@ export async function deleteUserAccount(uid: string): Promise<void> {
     db.collection("channelLinks").where("uid", "==", uid).get(),
     db.collection("channelLinkCodes").where("uid", "==", uid).get(),
     db.collection("chatSessions").where("uid", "==", uid).get(),
+    // Invites this user sent out (ADR #37). Keyed by code, so like the three
+    // above they are only reachable through their own field — and a live
+    // invite outliving its issuer is a bearer credential to a list that is
+    // about to be deleted. Top-level collection, so no index override needed
+    // (unlike the members collection-group query above).
+    db.collection("listInviteCodes").where("invitedBy", "==", uid).get(),
   ]);
 
   await Promise.all(ownedListsSnap.docs.map((listDoc) => db.recursiveDelete(listDoc.ref)));
@@ -60,9 +67,12 @@ export async function deleteUserAccount(uid: string): Promise<void> {
   await Promise.all(ownedCategoriesSnap.docs.map((categoryDoc) => categoryDoc.ref.delete()));
   await Promise.all(otherMembershipsSnap.docs.map((memberDoc) => memberDoc.ref.delete()));
   await Promise.all(
-    [...channelLinksSnap.docs, ...channelLinkCodesSnap.docs, ...chatSessionsSnap.docs].map((doc) =>
-      doc.ref.delete()
-    )
+    [
+      ...channelLinksSnap.docs,
+      ...channelLinkCodesSnap.docs,
+      ...chatSessionsSnap.docs,
+      ...listInvitesSnap.docs,
+    ].map((doc) => doc.ref.delete())
   );
   await db.collection("consents").doc(uid).delete();
 

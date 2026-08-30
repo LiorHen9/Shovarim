@@ -245,6 +245,33 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 
 מסמך פנימי בלבד: `firestore.rules` חוסם קריאה/כתיבה מ-client לחלוטין — לקוח שיכול היה ליצור מסמך כזה מראש היה משתיק את הבוט להודעה מסוימת. מומלץ TTL policy על `receivedAt` (המסמכים חסרי ערך אחרי חלון ה-retry של Meta).
 
+## `listInviteCodes/{code}`
+`src/types/listInvite.ts`, נגיש דרך `src/lib/services/listInvites.ts`
+```ts
+{
+  code: string;         // base32 (Crockford) בן 12 תווים, זהה ל-doc id
+  listId: string;
+  role: "manager" | "viewer";
+  phone: string;        // E.164 מנורמל — המספר שאליו ההזמנה הופנתה
+  invitedBy: string;    // uid של בעל הרשימה שיצר את ההזמנה
+  status: "pending" | "accepted" | "declined";
+  createdAt: Timestamp;
+  expiresAt: Timestamp; // createdAt + 14 יום
+  usedAt: Timestamp | null;
+}
+```
+הזמנת שיתוף רשימה לפי **מספר טלפון** במקום לפי אימייל (`docs/DECISIONS.md` ADR #37, issue #58) — הנתיב היחיד שמאפשר לשתף רשימה עם מי שעדיין אין לו חשבון. משלים את `cardLists/{listId}/members` (ADR #15) ולא מחליף אותו: זרימת האימייל נשארת כמו שהיא.
+
+**למה collection נפרד ולא מסמך `members` עם `status:"pending"`**: מסמך member ממופתח לפי `memberUid`, וברגע היצירה אין uid בכלל — הבעלים מכיר רק מספר טלפון, והמוזמן אולי עדיין לא נרשם. מסמך ה-member נוצר רק ברגע האישור, ואז ישירות כ-`status:"accepted"` (דילוג על שלב ה-pending, שאין בו צורך כאן — האישור המפורש כבר התרחש בעמוד ההזמנה).
+
+**מחלקת אמון זהה ל-`channelLinkCodes`**: ה-doc id הוא הסוד שנשלח בהודעת הוואטסאפ, ולכן `firestore.rules` חוסם קריאה וכתיבה מ-client לחלוטין. גם תצוגת ההזמנות הפתוחות של הבעלים וגם התצוגה המקדימה של המוזמן עוברות דרך Server Actions. **12 תווים ולא 8** (בשונה מ-`channelLinkCodes`): הקוד חי 14 יום ולא 10 דקות, כך שחלון הניחוש גדול בסדרי גודל — 32^12 (~10^18) שומר על אותו יחס בטיחות. נוצר מ-`crypto.randomInt` כמו קוד הקישור, ולא מוקלד ידנית אלא נלחץ כלינק, ולכן האורך אינו עלות UX.
+
+**האישור אינו נשען על החזקת הקוד בלבד**: `acceptListInvite` מוודא שה-uid המאשר הוא זה שאליו `channelLinks` ממפה את `phone` (ADR #29/#37) — הקוד מוכיח "הופנתה אליי הזמנה", והקישור מוכיח "המספר הזה שלי". לינק שהועבר הלאה לא מספיק לבדו.
+
+יצירת הזמנה חדשה לאותה `(listId, phone)` מבטלת הזמנה קודמת שטרם מומשה (`usedAt` מסומן), באותו דפוס כמו `createLinkCodeForUid` — לא נשאר יותר מ-credential חי אחד לאותו יעד. `where("listId","==",...)` בלבד וסינון בזיכרון, בלי אינדקס מרוכב.
+
+מומלץ להגדיר **TTL policy** על `expiresAt` (כמו ב-`channelLinkCodes`) — הלוגיקה לא נשענת על זה, קוד פג נדחה בקוד גם אם המסמך קיים.
+
 ## אינדקסים מרוכבים (`firestore.indexes.json`)
 - `cards`: `ownerId ASC, expiryDate ASC` — דוחות "עומד לפוג"
 - `cards`: `ownerId ASC, status ASC, createdAt DESC` — רשימת כרטיסים לפי סטטוס
