@@ -9,15 +9,21 @@ import { normalizeAuthErrorCode, UNKNOWN_AUTH_ERROR_CODE } from "@/lib/validatio
 
 describe("toAuthErrorCode", () => {
   it("pulls the code off a FirebaseError-shaped object", () => {
-    expect(toAuthErrorCode({ code: "auth/popup-blocked" })).toBe("auth/popup-blocked");
+    expect(toAuthErrorCode({ code: "auth/network-request-failed" })).toBe(
+      "auth/network-request-failed"
+    );
   });
 
-  it.each([new Error("boom"), null, undefined, "auth/popup-blocked", { code: 42 }, { code: "" }])(
-    "falls back to unknown for %j",
-    (value) => {
-      expect(toAuthErrorCode(value)).toBe(UNKNOWN_AUTH_ERROR_CODE);
-    }
-  );
+  it.each([
+    new Error("boom"),
+    null,
+    undefined,
+    "auth/network-request-failed",
+    { code: 42 },
+    { code: "" },
+  ])("falls back to unknown for %j", (value) => {
+    expect(toAuthErrorCode(value)).toBe(UNKNOWN_AUTH_ERROR_CODE);
+  });
 
   it("does not pass through a code that breaks the log-safe shape", () => {
     expect(toAuthErrorCode({ code: "auth/../../etc/passwd" })).toBe(UNKNOWN_AUTH_ERROR_CODE);
@@ -40,24 +46,24 @@ describe("normalizeAuthErrorCode", () => {
 });
 
 describe("isCancelledByUser", () => {
-  it("treats a closed popup as a non-failure", () => {
-    expect(isCancelledByUser("auth/popup-closed-by-user")).toBe(true);
-    expect(isCancelledByUser("auth/cancelled-popup-request")).toBe(true);
+  it("treats backing out of the account chooser as a non-failure", () => {
+    expect(isCancelledByUser("auth/redirect-cancelled-by-user")).toBe(true);
+    expect(isCancelledByUser("auth/user-cancelled")).toBe(true);
   });
 
-  it("does not swallow a blocked popup", () => {
-    expect(isCancelledByUser("auth/popup-blocked")).toBe(false);
+  it("does not swallow a genuine failure", () => {
+    expect(isCancelledByUser("auth/network-request-failed")).toBe(false);
   });
 });
 
 describe("buildSignInErrorMessage", () => {
   it("gives actionable text plus the raw code for known failures", () => {
-    const message = buildSignInErrorMessage("provider-sign-in", "auth/popup-blocked");
-    expect(message).toContain("חלונות קופצים");
-    expect(message).toContain("(auth/popup-blocked)");
+    const message = buildSignInErrorMessage("provider-sign-in", "auth/network-request-failed");
+    expect(message).toContain("בעיית רשת");
+    expect(message).toContain("(auth/network-request-failed)");
   });
 
-  it("distinguishes a failed session mint from a failed popup", () => {
+  it("distinguishes a failed session mint from a failed provider sign-in", () => {
     expect(buildSignInErrorMessage("create-session", UNKNOWN_AUTH_ERROR_CODE)).not.toBe(
       buildSignInErrorMessage("provider-sign-in", UNKNOWN_AUTH_ERROR_CODE)
     );

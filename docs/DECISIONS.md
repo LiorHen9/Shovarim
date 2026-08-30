@@ -307,3 +307,17 @@ for collection members and field memberUid
 **מה זה לא — ולמה אין כאן בדיקת E2E.** האמולטור של Firestore בונה אינדקס לכל שאילתה שמגיעה אליו, ולכן `npm run test:e2e` היה ירוק (15/15) בזמן שפרודקשן נכשל, ובדיקה חדשה מול האמולטור תהיה ירוקה גם אם האינדקס יימחק שוב. **בדיקה כזו הייתה נותנת ביטחון כוזב ולכן לא נכתבה.** השומר היחיד שעובד הוא התאמה ידנית: לכל `collectionGroup(` בקוד צריכה להיות רשומה מתאימה ב-`firestore.indexes.json` — שש כאלה נכון להיום, ממופות ב-`docs/DATA_MODEL.md`.
 
 **לקח כללי**: `docs/DECISIONS.md` #32 שלל "בעיית אינדקס" על סמך מטריצת בדיקות שרצה מול האמולטור. מטריצה מול האמולטור אינה יכולה לשלול כשל אינדקס — היא עיוורת לו לחלוטין. שלילה של סיבה אפשרית תקפה רק אם כלי הבדיקה מסוגל להראות אותה.
+
+## 34. התחברות עוברת מ-`signInWithPopup` ל-`signInWithRedirect` (סוגר סעיף פתוח ב-ADR #27)
+**תאריך**: 2026-08-30
+**סוגר**: הסעיף שנשאר פתוח במפורש ב-ADR #27: "מעבר ל-`signInWithRedirect` בנייד נשאר פתוח ולא נכלל כאן". GitHub issue #32.
+
+**החלטה**: `signInWithProvider` (`src/lib/auth/authService.ts`) קורא ל-`signInWithRedirect` במקום `signInWithPopup`, לכל הדפדפנים — לא רק בנייד/Safari. נוסף `completeRedirectSignIn` (עוטף `getRedirectResult`). זרימת הקישור/session (`getIdToken` → Server Action `createSession`) נשארה זהה; רק נקודת ההפעלה שלה זזה מ-callback מיידי בתוך `handleSignIn` ל-`useEffect` שרץ בכל mount של `SignInButtons`, כולל ה-mount שקורה כשהאפליקציה חוזרת מ-Google לאותו URL.
+
+**נימוק**: `signInWithPopup` תלוי ב-`window.open` שקורה מיד בתוך user gesture; ADR #27 כבר תיעד שהמתנה ל-App Check token לפני הקריאה שוברת את זה ב-iOS Safari (`auth/popup-blocked`). גם עם App Check תקין, ADR #27 ציין ש"סיבוב רשת" נשאר לפני `window.open` — כלומר הפגיעות המבנית (popup תלוי-תזמון) לא נפתרת רק בתיקון ה-site key, היא תלויה בזרימה עצמה. Redirect מנווט את כל העמוד, כך שאין תלות בתזמון של `window.open` מול gesture בכלל — לא רק "עובד יותר טוב", אלא מסלקת מחלקת הבאג הזו. אין סיבה להגביל את הזרימה לנייד בלבד: redirect עובד זהה בדסקטופ, ושמירה על שני מסלולים (popup לדסקטופ, redirect לנייד) הייתה מכפילה את משטח הבדיקה/הבאגים בלי תועלת אמיתית.
+
+**השלכה על ניהול ה-state**: בניגוד ל-popup (שמחזיר `Promise<User>` ישירות בתוך אותו טעינת-עמוד), redirect מנווט את הדפדפן משם וחזרה — `handleSignIn` הופך ל-fire-and-forget, וה-`user`/שגיאה מגיעים רק אחרי ש-`SignInButtons` נטען מחדש מאפס בעמוד המקורי (Firebase שומר את ה-URL המקורי ומנווט חזרה אליו). כדי לשמר `providerId` לתצוגת "מתחבר..." ולדיווח שגיאות (`stage`/`providerId` ב-`reportAuthError`) על פני ה-round-trip הזה, `SignInButtons` כותב אותו ל-`sessionStorage` (`shovarim:pendingSignInProvider`) לפני הניווט. `completeRedirectSignIn`/`getRedirectResult` עצמו **לא** תלוי ב-`sessionStorage` הזה — הוא נקרא ללא תנאי בכל mount (התבנית המומלצת של Firebase), כדי שאובדן ה-flag (מצב גלישה פרטית, טאב שנוקה) לא יאבד את תוצאת ה-redirect עצמה, רק את הליבל/הדיווח הנלווים לה.
+
+**קודי שגיאה**: `authErrors.ts` הוחלף מקודים ספציפיים ל-popup (`auth/popup-blocked`, `auth/popup-closed-by-user`, `auth/cancelled-popup-request`) לקודים הרלוונטיים ל-redirect (`auth/redirect-cancelled-by-user` כ"ביטול לגיטימי", `auth/web-storage-unsupported` כהודעה חדשה ב-`MESSAGES_BY_CODE`) — לא נשארו כ-fallback מת, כי הם לא יכולים לקרות יותר מהזרימה הזו.
+
+**אלטרנטיבה שנדחתה**: זיהוי UA (Safari/מובייל) והפעלת redirect רק שם, popup בכל השאר — נדחה: מוסיף ענף קוד ומשטח בדיקה (שני מסלולי sign-in) כדי לשמר התנהגות (popup) שאין לה יתרון אמיתי על redirect בדסקטופ, רק כדי "לא לשנות את מה שכבר עבד" — לא נימוק מספיק מול הפשטות של מסלול יחיד.
