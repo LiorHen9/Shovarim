@@ -29,6 +29,7 @@
 | `FIREBASE_ADMIN_PRIVATE_KEY` | Secret Manager, מוזרק דרך `secret:` reference ב-`apphosting.yaml` | **סוד אמיתי** — לעולם לא plaintext |
 | `CARD_FIELD_ENCRYPTION_KEY` | Secret Manager, מוזרק דרך `secret:` reference ב-`apphosting.yaml` | **סוד אמיתי** — מפתח AES-256 להצפנת `cvv`/`barcodeOrCode`, ראו למטה |
 | `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` | `apphosting.yaml` (plain) | לא סוד — מזהה site ל-reCAPTCHA |
+| `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` | Secret Manager, מוזרק דרך `secret:` reference ב-`apphosting.yaml` | **סוד אמיתי** — מקבע את מזהי ה-Server Actions בין builds, ראו למטה |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | GitHub Actions secret | מזהה תצורה, לא סוד קריטי בפני עצמו |
 | `GCP_SERVICE_ACCOUNT_EMAIL` | GitHub Actions secret | מזהה |
 | `FIREBASE_PROJECT_ID` | GitHub Actions secret | מזהה הפרויקט לפקודת ה-deploy |
@@ -78,6 +79,24 @@
    - בשאלה `Would you like to add this secret to apphosting.yaml?` לענות **n** — הרשומה כבר קיימת שם מ-PR #14, ותשובת `Y` הייתה מוסיפה כפילות עם `availability: [BUILD, RUNTIME]` במקום ה-`[RUNTIME]` המכוון (המפתח נטען lazily, `next build` לא צריך אותו — ראו ההערה ב-`apphosting.yaml` ואת הפוסט-מורטם של Phase 3.3).
    - **גיבוי**: המפתח הוא הדבר היחיד שמפענח `cvv`/`barcodeOrCode` בפרודקשן. אובדן/רוטציה שלו הופכים את הערכים המוצפנים (`v1:` prefix) לבלתי ניתנים לשחזור.
 3. אחרי ה-rollout הראשון שכולל את הקוד: `npm run migrate:encrypt-fields` (מול production — יש להריץ עם משתני `FIREBASE_ADMIN_*`/`NEXT_PUBLIC_FIREBASE_PROJECT_ID` אמיתיים ב-env, לא `.env.local` שמצביע ל-emulator) כדי להצפין כרטיסים קיימים שנוצרו לפני השדרוג. אידמפוטנטי — בטוח להריץ שוב. **הורץ מול production ב-2026-08-29** (על ידי המשתמש, ידנית).
+
+## מפתח ה-Server Actions — למה כל deploy שבר טאבים פתוחים (ADR #32)
+
+**התסמין**: אחרי כל rollout, כל טאב שכבר היה פתוח מקבל **404** על `POST` לעמוד הנוכחי (למשל `/settings`) ברגע שלוחצים על משהו. גוף התשובה `Server action not found`, כותרת `x-nextjs-action-not-found: 1`. רענון קשיח פותר — וזה בדיוק מה שמסווה את הבעיה כתקלה נקודתית.
+
+**הסיבה**: מזהי ה-Server Actions נגזרים ממפתח שנוצר **אקראית** ב-`next build` כשאין cache חם (`loadOrGenerateKey` ב-`node_modules/next/dist/server/app-render/encryption-utils-server.js`), ונצרב גם ל-bundle של הלקוח וגם ל-`.next/server/server-reference-manifest.json` בשרת. שני הצדדים תמיד מסונכרנים **בתוך** אותו build, אבל לקוח מ-build קודם מול שרת חדש אינו — הוא שולח מזהה שהשרת לא מכיר, ו-Next מחזיר 404. כל rollout של App Hosting בונה בקונטיינר נקי, ולכן זה חל על **כל** פעולה באפליקציה ועל **כל** rollout, כולל כזה שנגע רק ב-docs.
+
+⚠️ **מקומית זה נראה כאילו אין בעיה**: Next שומר את המפתח ב-`.next/cache/.rscinfo` ומשתמש בו מחדש, אז שני builds מקומיים כן מסכימים — עד תפוגה של 14 יום, `rm -rf .next`, או קונטיינר CI בלי ה-cache הזה. **נמדד** (2026-08-30): שני builds נקיים עם המפתח מקובע נתנו מזהים זהים בית-בבית; בלעדיו שרדו **0 מתוך 18** מזהים.
+
+**התיקון**: `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` מקובע כ-secret ב-`apphosting.yaml` עם `availability: [BUILD, RUNTIME]`. ה-BUILD הוא הקריטי — הערך נצרב למניפסט בזמן ה-build; RUNTIME נשמר עבור ה-Edge runtime שקורא אותו מהסביבה.
+
+**הקמה** (חד-פעמית):
+1. ליצור מפתח base64 באורך 32 בתים — אותו פורמט ש-Next מייצר לעצמו:
+   `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
+2. `.\Set-AppHosting-ActionsEncryptionKey.ps1` — `secrets:set` (מדביקים את הערך בפרומפט) ואז `grantaccess`. לשאלה `Would you like to add this secret to apphosting.yaml?` לענות **n**: הרשומה כבר שם בכתב יד עם ה-availability הנכון.
+3. חייב לרוץ **לפני** שה-`secret:` מגיע ל-`main` — rollout שמפנה ל-secret שאינו קיים נכשל ולא מנסה שוב (הפוסט-מורטם למטה).
+
+⚠️ **רוטציה של המפתח הזה שקולה להיעדרו**: היא מחליפה את כל המזהים ושוברת כל לקוח פתוח עד שירענן. הוא נוצר פעם אחת ונשמר. הוא לא מגן על מידע של משתמשים — הוא מצפין ארגומנטים שנסגרים (closure) בתוך Server Actions — אבל הוא כן סוד: מי שמחזיק בו יכול לזייף/לפענח את אותם ארגומנטים.
 
 ## ערוץ WhatsApp — הקמה חד-פעמית (Phase 5.5.c) — ✅ הושלם (2026-08-30)
 
@@ -260,6 +279,13 @@ https://console.cloud.google.com/logs/query;query=httpRequest.requestUrl%3A%22wh
    .\Set-AppHosting-AdminKey.ps1
    ```
    ירוץ אחרי שה-backend קיים (ה-`grantaccess` צריך backend id).
+
+8ב. **שאר ה-secrets** — אותו שלב, אותה דרישה (backend קיים), וכולם **לפני** שההפניות ב-`apphosting.yaml` מגיעות ל-`main`:
+   ```powershell
+   .\Set-AppHosting-CardEncryptionKey.ps1        # cvv/barcodeOrCode
+   .\Set-AppHosting-ActionsEncryptionKey.ps1     # מזהי Server Actions, ראו למעלה
+   .\Set-AppHosting-WhatsAppSecrets.ps1          # ערוץ WhatsApp
+   ```
 
 9. **Rollout ראשון** — קורה אוטומטית אחרי מיזוג ל-`main`, או ידנית:
    ```powershell

@@ -90,6 +90,35 @@ env:
     secret: card-field-encryption-key
     availability: [RUNTIME]
 
+  # Pins the key Next derives every Server Action id from. Without it, a build
+  # that finds no warm cache generates a fresh random key (loadOrGenerateKey in
+  # node_modules/next/dist/server/app-render/encryption-utils-server.js), so
+  # EVERY action id changes — and each App Hosting rollout builds in a clean
+  # container, including docs-only rollouts. Any tab still holding the previous
+  # bundle then POSTs an id the new server has never heard of, and Next answers
+  # 404 ("Server action not found", x-nextjs-action-not-found: 1) with no hint
+  # that a redeploy is the cause. That is the 2026-08-30 export failure, and it
+  # applies to every Server Action in the app, not just that one.
+  #
+  # ⚠️ Locally this looks like a non-problem: Next caches the key in
+  # .next/cache/.rscinfo and reuses it across builds, so two local builds agree
+  # — until the 14-day expiry, a `rm -rf .next`, or a CI container without that
+  # cache. Measured here: two clean builds with this key pinned produced
+  # byte-identical ids; without it, 0 of 18 ids survived.
+  #
+  # BUILD availability is the load-bearing one: the value is baked into
+  # .next/server/server-reference-manifest.json at build time. RUNTIME is kept
+  # for the Edge runtime, which reads it from the environment instead.
+  #
+  # Rotating this value invalidates every open client the same way a missing
+  # key does, so treat it as permanent. Populate via
+  # Set-AppHosting-ActionsEncryptionKey.ps1 BEFORE this entry reaches main — a
+  # rollout referencing a nonexistent secret fails and does not retry (the
+  # Phase 4.3 outage, docs/DEPLOYMENT.md).
+  - variable: NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
+    secret: next-server-actions-encryption-key
+    availability: [BUILD, RUNTIME]
+
   # Anthropic Claude API — production authenticates via Workload Identity
   # Federation (src/lib/mcp/anthropicClient.ts, docs/DECISIONS.md ADR #20),
   # not a static ANTHROPIC_API_KEY. These are configuration IDs, not

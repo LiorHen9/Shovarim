@@ -72,6 +72,16 @@ export function encryptNullableField(value: string | null): string | null {
   return value === null || value === "" ? value : encryptSensitiveField(value);
 }
 
-export function decryptNullableField(value: string | null): string | null {
-  return value === null || value === "" ? value : decryptSensitiveField(value);
+// `undefined` is accepted, not just `null`: GiftCard declares cvv/barcodeOrCode
+// as `string | null`, but a Firestore document written before those fields
+// existed simply has no such key, and `doc.data() as GiftCard` hands back
+// `undefined` with TypeScript none the wiser. That gap crashed the data export
+// in production with "Cannot read properties of undefined (reading 'split')"
+// (2026-08-30) — a plain TypeError, so toActionResult rethrew it and the
+// Server Action answered 500. Normalizing here rather than at each call site
+// keeps the next reader of a legacy document from rediscovering it.
+export function decryptNullableField(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  if (value === "") return "";
+  return decryptSensitiveField(value);
 }

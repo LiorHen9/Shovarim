@@ -1,19 +1,29 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 import { signInAsTestUser } from "./helpers/auth";
+
+// Same defaults as .env.local; `firebase emulators:exec` injects the host into
+// CI's environment (see .github/workflows/ci.yml).
+const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
+const PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "demo-shovarim";
+
+async function createCardThroughUi(page: Page, name: string, balance: string): Promise<string> {
+  await page.goto("/cards/new");
+  await page.getByLabel("שם הכרטיס").fill(name);
+  await page.getByLabel("יתרה התחלתית").fill(balance);
+  await page.getByRole("button", { name: "שמירה" }).click();
+  await page.waitForURL(/\/cards\/(?!new$)[^/]+$/, { timeout: 15000 });
+  return page.url().split("/").pop()!;
+}
 
 test("user can export their data as JSON", async ({ page }) => {
   const uid = `e2e-${randomUUID()}`;
   const cardName = `כרטיס ייצוא ${randomUUID().slice(0, 8)}`;
   await signInAsTestUser(page, { uid, email: `${uid}@example.com`, name: "בודק אוטומטי" });
 
-  await page.goto("/cards/new");
-  await page.getByLabel("שם הכרטיס").fill(cardName);
-  await page.getByLabel("יתרה התחלתית").fill("80");
-  await page.getByRole("button", { name: "שמירה" }).click();
-  await page.waitForURL(/\/cards\/(?!new$)[^/]+$/, { timeout: 15000 });
+  await createCardThroughUi(page, cardName, "80");
 
   await page.goto("/settings");
   // Proof that /settings hydrated: this text only renders once
@@ -32,6 +42,45 @@ test("user can export their data as JSON", async ({ page }) => {
   expect(exported.cards).toHaveLength(1);
   expect(exported.cards[0].name).toBe(cardName);
   expect(exported.cards[0].currentBalance).toBe(80);
+});
+
+// Regression for the production 500 of 2026-08-30 (docs/DECISIONS.md ADR #32).
+// A card document written before cvv/barcodeOrCode existed has no such keys at
+// all — not `null`, absent — and `doc.data() as GiftCard` typed the resulting
+// `undefined` as `string | null`, so decryptSensitiveField ran `undefined
+// .split(":")`. The TypeError is not an ActionError, so it escaped
+// toActionResult and the whole export answered 500. The existing test above
+// cannot catch this: the create form always writes both keys.
+test("export tolerates a card document with no cvv/barcodeOrCode fields", async ({ page, request }) => {
+  const uid = `e2e-${randomUUID()}`;
+  const cardName = `כרטיס ישן ${randomUUID().slice(0, 8)}`;
+  await signInAsTestUser(page, { uid, email: `${uid}@example.com`, name: "בודק אוטומטי" });
+
+  const cardId = await createCardThroughUi(page, cardName, "50");
+
+  // Delete the two keys outright. Naming a field in updateMask while omitting
+  // it from the body is Firestore's REST "remove this field", and "Bearer
+  // owner" is the emulator's rules bypass — the point is to produce a document
+  // shape the app itself can no longer write.
+  const mask = "updateMask.fieldPaths=cvv&updateMask.fieldPaths=barcodeOrCode";
+  const stripped = await request.patch(
+    `http://${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents/cards/${cardId}?${mask}`,
+    { headers: { Authorization: "Bearer owner" }, data: { fields: {} } }
+  );
+  expect(stripped.ok()).toBeTruthy();
+  expect((await stripped.json()).fields).not.toHaveProperty("cvv");
+
+  await page.goto("/settings");
+  await expect(page.getByText("אין ערוצים מקושרים")).toBeVisible(); // hydration gate, see above
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "ייצוא כל הנתונים שלי (JSON)" }).click();
+  const download = await downloadPromise;
+
+  const exported = JSON.parse(await readFile((await download.path())!, "utf-8"));
+  expect(exported.cards).toHaveLength(1);
+  expect(exported.cards[0].name).toBe(cardName);
+  expect(exported.cards[0].cvv).toBeNull();
+  expect(exported.cards[0].barcodeOrCode).toBeNull();
 });
 
 // docs/ROADMAP.md Phase 5.5.a. Proves the linking flow end to end with no
