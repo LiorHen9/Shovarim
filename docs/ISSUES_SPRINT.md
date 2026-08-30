@@ -8,14 +8,16 @@
 
 ---
 
-## 1. ☐ #31 — קונטרסט מסגרות פקדים
+## 1. ✅ #31 — קונטרסט מסגרות פקדים
 https://github.com/LiorHen9/Shovarim/issues/31 (label: design)
 
 **קבצים**: `src/app/globals.css` (טוקנים `--border`/`--input`), `src/components/ui/input.tsx:11`.
 
-**ממצא**: `--border`/`--input` הם `oklch(0.922 0 0)` מול `--background: oklch(1 0 0)` (לבן טהור) — קונטרסט ~1.2:1, מתחת ל-3:1 הנדרש (`docs/ACCESSIBILITY.md` checklist). שינוי טוקן יחיד (הורדת lightness ל-~0.75–0.8) משפיע על Input/Select/Button-outline בכל האתר.
+**ממצא**: `--border`/`--input` היו `oklch(0.922 0 0)` מול `--background: oklch(1 0 0)` (לבן טהור) — קונטרסט ~1.26:1, מתחת ל-3:1 הנדרש (`docs/ACCESSIBILITY.md` checklist).
 
-**Effort**: קטן. **Risk**: נמוך.
+**תיקון**: הורדת lightness ל-`oklch(0.65 0 0)` לשני הטוקנים (light theme בלבד — `.dark` כבר תקין) → קונטרסט ~3.24:1 מול הרקע הלבן (חישוב אנליטי: ל-oklch אכרומטי, luminance יחסי = L³, כך שקונטרסט = 1.05/(L³+0.05)). `--sidebar-border` (אותו ערך מקורי) נשאר ללא שינוי בכוונה — מפריד דקורטיבי, לא UI component boundary, מחוץ לתחום ה-issue. אומת ויזואלית מול dev server אמיתי (עמוד זמני עם `Input`/`Button variant="outline"`, נמחק בסיום) — הבדל ברור בין before/after.
+
+**Effort**: קטן. **Risk**: נמוך. **אימות**: `npm run typecheck && npm run lint && npm run build` עברו; השוואת screenshot before/after אישרה קונטרסט נראה לעין.
 
 ---
 
