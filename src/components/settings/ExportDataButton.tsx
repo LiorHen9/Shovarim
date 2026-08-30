@@ -28,8 +28,19 @@ export function ExportDataButton() {
       URL.revokeObjectURL(url);
 
       toast.success("הנתונים יוצאו בהצלחה");
-    } catch {
-      toast.error("ייצוא הנתונים נכשל");
+    } catch (error) {
+      // Anything reaching here is a *thrown* Server Action error, not an
+      // ActionError (those come back as `{ error }` above). Next redacts the
+      // message in production and leaves only `digest` — the id of the matching
+      // server log line. Showing it turns "ייצוא הנתונים נכשל", which was
+      // indistinguishable between a stale action id (404) and a server crash
+      // (500), into something traceable in App Hosting logs.
+      console.error("[export] Server Action failed", error);
+      const digest =
+        typeof error === "object" && error !== null && "digest" in error
+          ? String((error as { digest: unknown }).digest)
+          : null;
+      toast.error(digest ? `ייצוא הנתונים נכשל (קוד שגיאה ${digest})` : "ייצוא הנתונים נכשל");
     } finally {
       setPending(false);
     }

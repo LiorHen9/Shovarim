@@ -231,7 +231,14 @@ export async function buildUserDataExport(uid: string): Promise<UserDataExport> 
     })
   );
 
-  const categories = categoriesSnap.docs.map((doc) => doc.data() as Category);
+  // The doc id, not any `id` field inside the document: scripts/seed-categories.ts
+  // writes an `id` for the system defaults, but CreateCategoryDialog uses addDoc
+  // and writes none — so user-created categories exported as raw data() came out
+  // with `id: undefined`, which JSON.stringify then dropped entirely.
+  const categories: Category[] = categoriesSnap.docs.map((doc) => ({
+    ...(doc.data() as Omit<Category, "id">),
+    id: doc.id,
+  }));
   const channelLinks = await listChannelLinksForUid(uid);
   const chatSessions = await listChatSessionsForUid(uid);
 
