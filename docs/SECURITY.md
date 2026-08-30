@@ -25,7 +25,8 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 ## הצפנה
 - Firestore/Storage: הצפנה at-rest כברירת מחדל של Google Cloud — מספיקה לרוב השדות.
 - `barcodeOrCode` (מספר כרטיס בפועל) ו-`cvv` — שני השדות הרגישים ביותר: **מוצפנים גם ב-application level** (AES-256-GCM, `src/lib/crypto/fieldEncryption.ts`), מעבר להצפנת at-rest. המפתח (`CARD_FIELD_ENCRYPTION_KEY`, base64 32 בייט) חי ב-`.env.local` בפיתוח וב-Secret Manager בפרודקשן (`secret:` reference ב-`apphosting.yaml`, ראו `docs/DEPLOYMENT.md`) — לעולם לא מגיע ללקוח.
-- **כתיבה/קריאה עוברות תמיד דרך Server Actions (Admin SDK)**, לא client SDK ישיר: `createCard`/`updateCardDetails`/`getCardSecrets` (`src/actions/card.ts`) הם המקומות היחידים שמצפינים/מפענחים. שאר שדות הכרטיס ממשיכים להיכתב ישירות מה-client (`CardForm`/`EditCardDialog` עדיין כותבים ישירות ל-`cardLists` ומעלים תמונות ל-Storage) — רק שני השדות הרגישים עברו ל-server-side, כדי לא להרחיב את ה-scope של השינוי מעבר לנדרש.
+- **כתיבה/קריאה עוברות תמיד דרך Server Actions (Admin SDK)**, לא client SDK ישיר: `createCard`/`updateCardDetails`/`getCardSecrets` (`src/actions/card.ts`) הם המקומות היחידים שמצפינים/מפענחים מהאתר. שאר שדות הכרטיס ממשיכים להיכתב ישירות מה-client (`CardForm`/`EditCardDialog` עדיין כותבים ישירות ל-`cardLists` ומעלים תמונות ל-Storage) — רק שני השדות הרגישים עברו ל-server-side, כדי לא להרחיב את ה-scope של השינוי מעבר לנדרש.
+- **מ-2026-08-30 (ADR #36) גם ה-MCP tools (`createCard`/`updateCard`) יכולים לכתוב את שני השדות** — אותה שכבת שירות בדיוק (`createCardForUid`/`updateCardDetailsForUid` ב-`src/lib/services/cards.ts`), אותה הצפנה, אותו Admin SDK. השינוי האמיתי הוא **מקור הערך**: עכשיו הוא יכול להגיע מטקסט חופשי שהמשתמש הקליד לצ'אט, לא רק מטופס. ראו סעיף "צ'אטבוט/CLI" למטה להשלכות.
 - `useCard`/`useCards` (client `onSnapshot`) ממשיכים לקבל את `cards/{cardId}` המלא כולל `cvv`/`barcodeOrCode` — אבל כערך מוצפן (`v1:...`), לא כטקסט גלוי. פענוח קורה רק על-פי דרישה מפורשת (`getCardSecrets`, כשמשתמש עם הרשאת ניהול פותח את דיאלוג העריכה) ובייצוא נתונים (`buildUserDataExport`) — לא נשמר ב-state של הדפדפן מעבר לכך.
 - כרטיסים שנוצרו/נערכו **לפני** השדרוג הזה עדיין מכילים `cvv`/`barcodeOrCode` בטקסט גלוי עד הרצת `npm run migrate:encrypt-fields` (חד-פעמי, אידמפוטנטי) — `decryptSensitiveField` מזהה ומחזיר ערכים לא-מוצפנים כמו שהם (backward-compat למעבר), ראו הערה בקוד.
 
@@ -46,6 +47,7 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 - **Semantic cache מבודד לפי `uid`**: אין שיתוף cache בין משתמשים; שאילתות שחושפות `cvv`/`barcodeOrCode` לא נשמרות ב-cache כלל, כדי לצמצם את משטח הנזק של באג cache עתידי.
 - **Audit log מורחב**: כל קריאת tool (מבצע, tool, פרמטרים ללא סודות, ערוץ, תוצאה) נכתבת ל-`auditLog` (`docs/DATA_MODEL.md`).
 - **Rate limiting per-uid**: ערוצי WhatsApp/Telegram חושפים משטח spoofing (מספר טלפון) שלא קיים באפליקציית ה-web המאומתת מול Google — מטופל ברמת הרצת ה-tools, לא ברמת Firestore Rules בלבד.
+- **`cvv`/`barcodeOrCode` דרך הצ'אט (ADR #36, 2026-08-30)**: `createCard`/`updateCard` מקבלים כעת את שני השדות — חריגה מכוונת ומצומצמת מהעיצוב המקורי ("אף פעם לא tool-schema field"), לבקשת המשתמש. הערך שהוקלד עובר בפועל דרך קונטקסט המודל (Anthropic API) ובהיסטוריית השיחה, עד לאיפוס/דחיסה שלה. **לא** מכוסה ע"י prompt caching — `cache_control: ephemeral` יושב אך ורק על בלוק ה-system (`agentLoop.ts`), לא על ה-messages. בווב ההיסטוריה חיה רק ב-state של הדפדפן (ADR #22); **בוואטסאפ** היא עוברת דרך שרתי Meta ונשמרת ב-`chatSessions/{channelKey}` בצד שרת עד 24 שעות אי-פעילות (ADR #29/#30) — ראו "קישור ערוץ→משתמש" למטה וגם `docs/PRIVACY.md`. ההצפנה עצמה, נתיב הכתיבה (Admin SDK בלבד) והסתרתם מכלי הקריאה (`getCard`/`listCards`) לא השתנו.
 
 ### קישור ערוץ→משתמש (Phase 5.5.a, ADR #29)
 **ההנחה שכל השאר נשען עליה**: מספר טלפון ב-payload נכנס הוא **לא** credential — כל אחד יכול לשלוח payload עם מספר של מישהו אחר. לכן:
@@ -65,7 +67,7 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 - **fail-closed לפני ההקמה**: בלי `WHATSAPP_APP_SECRET`/`WHATSAPP_VERIFY_TOKEN` ה-endpoint מחזיר 503 ואינו מעבד דבר — כלומר הקוד יכול להיפרס לפרודקשן לפני 5.5.c בלי לפתוח משטח תקיפה.
 - **`src/proxy.ts` לא מגן על `/api/*` ואסור שיגן**: redirect של endpoint JSON לדף HTML שובר את הקוראים שלו (המלכודת מקומיט `ff99bb8`). ההגנה כאן היא החתימה, לא ה-proxy.
 
-**מה שנשאר פתוח**: תוכן ההודעות והתשובות עובר דרך שרתי Meta (ראו `docs/PRIVACY.md`), ואין עדיין מגננה ייעודית ל-prompt injection על טקסט חופשי מעבר להפרדה המבנית של ה-`uid`.
+**מה שנשאר פתוח**: תוכן ההודעות והתשובות עובר דרך שרתי Meta (ראו `docs/PRIVACY.md`) — כולל `cvv`/`barcodeOrCode` עצמם מ-ADR #36 אם המשתמש/ת בוחר/ת להזין אותם דרך וואטסאפ — ואין עדיין מגננה ייעודית ל-prompt injection על טקסט חופשי מעבר להפרדה המבנית של ה-`uid`.
 
 ## Testing
 `@firebase/rules-unit-testing` מול Firestore Emulator (דורש Java מותקן מקומית — ראה `docs/ARCHITECTURE.md`). טסטים נדרשים לפני Phase 1 sign-off:
