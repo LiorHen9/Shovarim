@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,12 @@ export function SignInButtons() {
   // hydration mismatch on the page the redirect lands back on. The real
   // value is picked up a moment later, inside the effect below.
   const [pendingProviderId, setPendingProviderId] = useState<AuthProviderId | null>(null);
+  // Covers the sign-in screen while the round trip back from the provider is
+  // still being settled, so the user doesn't see the login page again between
+  // the redirect landing and `/dashboard` rendering (issue #47). Same reason
+  // as `pendingProviderId` above for starting `false`: SSR can't know a
+  // redirect is pending, so anything else would be a hydration mismatch.
+  const [isCompletingRedirect, setIsCompletingRedirect] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -50,6 +57,12 @@ export function SignInButtons() {
     async function completeSignIn() {
       const providerId = readPendingProviderId();
       setPendingProviderId(providerId);
+      // Raised synchronously, before the first `await` below: the whole point
+      // is to beat the async chain (redirect result → id token → session
+      // cookie → navigation), which is what makes the flash last long enough
+      // to notice. Gated on the stored provider so a plain visitor — for whom
+      // `completeRedirectSignIn()` just resolves `null` — never sees it.
+      if (providerId) setIsCompletingRedirect(true);
       // Tracked so the catch can tell a failed redirect from a failed
       // session-cookie mint — the two used to collapse into one
       // indistinguishable toast (docs/DECISIONS.md ADR #27).
@@ -58,6 +71,7 @@ export function SignInButtons() {
         const user = await completeRedirectSignIn();
         if (!user) {
           setPendingProviderId(null);
+          setIsCompletingRedirect(false);
           return;
         }
         const idToken = await user.getIdToken();
@@ -75,6 +89,11 @@ export function SignInButtons() {
           if (providerId) void reportAuthError({ stage, providerId, code });
           toast.error(buildSignInErrorMessage(stage, code));
         }
+        // Only lowered on failure. On the success path the overlay is left up
+        // deliberately: `router.push` is async, and clearing it here would put
+        // the login screen back on screen for exactly the stretch this issue
+        // is about. The component unmounts with the navigation instead.
+        setIsCompletingRedirect(false);
       } finally {
         setPendingProviderId(null);
         window.sessionStorage.removeItem(PENDING_PROVIDER_KEY);
@@ -104,17 +123,35 @@ export function SignInButtons() {
   }
 
   return (
-    <div className="flex flex-col gap-3 w-full max-w-xs">
-      {SUPPORTED_PROVIDERS.map((provider) => (
-        <Button
-          key={provider.id}
-          onClick={() => handleSignIn(provider.id)}
-          disabled={pendingProviderId !== null}
-          size="lg"
+    <>
+      {isCompletingRedirect ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+          data-testid="redirect-sign-in-overlay"
         >
-          {pendingProviderId === provider.id ? "מתחבר..." : provider.labelHe}
-        </Button>
-      ))}
-    </div>
+          {/* Opaque card rather than bare text on the scrim: the blurred
+              sign-in button sits directly behind this spot, and dark-on-dark
+              there fell short of the 4.5:1 the accessibility checklist wants. */}
+          <div className="flex flex-col items-center gap-3 rounded-lg border bg-background px-6 py-5 shadow-lg">
+            <Loader2 className="size-8 animate-spin text-primary" aria-hidden="true" />
+            <p className="text-sm font-medium">מתחברים לחשבון…</p>
+          </div>
+        </div>
+      ) : null}
+      <div className="flex flex-col gap-3 w-full max-w-xs" aria-busy={isCompletingRedirect}>
+        {SUPPORTED_PROVIDERS.map((provider) => (
+          <Button
+            key={provider.id}
+            onClick={() => handleSignIn(provider.id)}
+            disabled={pendingProviderId !== null}
+            size="lg"
+          >
+            {pendingProviderId === provider.id ? "מתחבר..." : provider.labelHe}
+          </Button>
+        ))}
+      </div>
+    </>
   );
 }

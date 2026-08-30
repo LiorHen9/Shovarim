@@ -55,25 +55,36 @@ https://github.com/LiorHen9/Shovarim/issues/26
 
 ---
 
-## 4. ☐ #37 — לסגור, אין קוד נדרש
+## 4. ✅ #37 — נסגר, ללא שינוי קוד
+
 https://github.com/LiorHen9/Shovarim/issues/37
 
 **ממצא**: `src/lib/mcp/toolSchemas.ts:37-38,51-56` ו-`src/lib/mcp/mcpServer.ts:131-132,170` מאשרים ש-`cvv`/`barcodeOrCode` כבר נתמכים ב-`createCard`/`updateCard` דרך הצ'אט (ADR #36, מומש 2026-08-30). רק תמונת כרטיס עדיין לא נתמכת דרך הצ'אט — מגבלה מכוונת (אין תמיכת vision), לא קשורה לתלונה המקורית.
 
-**פעולה**: לסגור את ה-issue ב-GitHub עם הסבר + קישור ל-`docs/DECISIONS.md` ADR #36. אין שינוי קוד.
+**סגירה**: ה-issue נסגר ידנית ע"י המשתמש ב-2026-08-30. אין שינוי קוד.
+
+**⚠️ נשאר פתוח להמשך (מתוך התגובות ב-issue)**: הועלתה אפשרות ל-**masking** של נתונים רגישים (מספר כרטיס/CVV) כך שלא יגיעו ל-LLM כלל, ופעולות יצירה/עריכה שמערבות אותם יתבצעו בזרימה דטרמיניסטית במקום דרך MCP tool — בדומה לאופן שבו סוכן קולי אוסף פרטי אשראי. ההחלטה של המשתמש: כרגע ה-tools מטפלים גם בנתונים האלה, והנושא יישקל עתידית. **אם זה יוחלט — לפתוח issue/ADR נפרד**, זה לא חלק מהספרינט הזה.
 
 ---
 
-## 5. ☐ #47 — פלאש חזרה למסך התחברות אחרי redirect של Google
+## 5. ✅ #47 — פלאש חזרה למסך התחברות אחרי redirect של Google
+
 https://github.com/LiorHen9/Shovarim/issues/47
 
-**קבצים**: `src/lib/auth/authService.ts:25-40`, `src/components/auth/SignInButtons.tsx:50-86`, `src/app/(public)/page.tsx:12-14`.
+**קבצים**: `src/components/auth/SignInButtons.tsx`, `tests/e2e/public.spec.ts`.
 
-**ממצא**: הזרימה בפועל היא `signInWithRedirect` (לא popup כפי שתואר ב-issue — ר' הערת קוד ב-`authService.ts:25-28` על iOS Safari + App Check). `completeSignIn()` רץ ב-`useEffect` על דף ה-`(public)` הרגיל: `completeRedirectSignIn()` → `getIdToken()` → `createSession()` Server Action → `router.push`/`router.refresh` (שורות 65-67) — כל זה קורה **אחרי** שהדף כבר צויר במלואו כמסך התחברות רגיל, ולכן נראה "מהבהב" עד ש-`pendingProviderId` נקבע (שורה 52).
+**ממצא**: הזרימה בפועל היא `signInWithRedirect` (לא popup כפי שתואר ב-issue — ר' הערת קוד ב-`authService.ts:25-28` על iOS Safari + App Check). `completeSignIn()` רץ ב-`useEffect` על דף ה-`(public)` הרגיל: `completeRedirectSignIn()` → `getIdToken()` → `createSession()` Server Action → `router.push`/`router.refresh` — כל זה קורה **אחרי** שהדף כבר צויר במלואו כמסך התחברות רגיל.
 
-**גישה מומלצת**: state חדש (למשל `isCompletingRedirect`) שנקבע ל-`true` **סינכרונית** בראש ה-effect, לפני כל `await`, ומצייר overlay מלא-מסך עם `backdrop-blur`+spinner כל עוד הוא `true`.
+**תיקון**: state חדש `isCompletingRedirect` שנקבע ל-`true` **סינכרונית** בראש ה-effect, לפני ה-`await` הראשון, ומצייר overlay `fixed inset-0` עם `backdrop-blur-sm` + spinner (`Loader2`, אותו idiom כמו `ChannelLinksSection.tsx:203`).
 
-**Effort**: קטן-בינוני. **Risk**: נמוך.
+**שלוש החלטות בתיקון**:
+1. **מותנה ב-`providerId` מ-sessionStorage** — מבקר רגיל, שאצלו `completeRedirectSignIn()` פשוט מחזיר `null`, לא רואה overlay בכלל. זו הסיבה שההעלאה של ה-state לא מותנית ב-`await`.
+2. **לא מורידים את ה-overlay ב-`finally`** אלא רק בענף `!user` וב-`catch`. `router.push` אסינכרוני — הורדה ב-`finally` הייתה מחזירה את מסך ההתחברות לאוויר בדיוק בטווח שה-issue מתלונן עליו. בהצלחה הקומפוננטה נעלמת עם הניווט.
+3. **כרטיס אטום סביב ה-spinner/טקסט** ולא טקסט חשוף על ה-scrim — בצילום המסך הראשון הטקסט נחת בדיוק מעל כפתור ההתחברות הכהה המטושטש, כהה-על-כהה מתחת ל-4.5:1.
+
+**מגבלה ידועה**: פריים ראשון אחד עדיין מצויר בלי ה-overlay. ה-HTML של `/` הוא SSR ולשרת אין דרך לדעת שחוזרים מ-redirect (Firebase לא מוסיף query params לכתובת החזרה), כך שהדפדפן מצייר את מסך ההתחברות לפני ש-React בכלל מתחיל hydration. סגירה מלאה של הפער הזה דורשת inline script חוסם ב-`<head>` — לא שווה את המחיר. התיקון מקצר את ההבהוב מכל אורך שרשרת ה-async לפריים בודד.
+
+**Effort**: קטן-בינוני. **Risk**: נמוך. **אימות**: `typecheck`/`lint`/`build` עברו; `tests/e2e/public.spec.ts` — 4/4 עברו, כולל טסט regression חדש שמוודא ש**אין** overlay למבקר רגיל. ה-overlay עצמו אומת ויזואלית ב-screenshot מול dev server (הפעלה זמנית של ה-state, הוחזר לקדמותו).
 
 ---
 
