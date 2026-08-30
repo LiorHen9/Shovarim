@@ -251,6 +251,17 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 - `members` (collection group): `memberUid ASC, status ASC` — "השיתופים/ההזמנות שלי" על פני רשימות של בעלים שונים (`useCardLists`, `usePendingInvitations`), ראו `docs/DECISIONS.md` #15
 - `usageLog` (collection group): `ownerId ASC, date DESC` — יומן שימושים גלובלי למשתמש
 
+## אינדקסי שדה־בודד ב-collection group (`fieldOverrides`)
+Firestore יוצר אינדקס single-field אוטומטי לכל שדה — **אבל רק ב-collection scope**. שאילתת `collectionGroup` על שדה בודד (בלי `where` שני שמפעיל אינדקס מרוכב) דורשת הצהרה מפורשת, אחרת היא נכשלת ב-`FAILED_PRECONDITION` בפרודקשן. ראו `docs/DECISIONS.md` #33.
+
+- `members.memberUid` — `COLLECTION_GROUP ASC`, בשביל `where("memberUid","==",uid)` **בלי** `status`. שני צרכנים: `buildUserDataExport` (ייצוא חייב לכלול גם הזמנות pending) ו-`functions/src/accountDeletion.ts` (מחיקה חייבת למחוק גם אותן). כל שאר השאילתות על `members` מסננות `status` ולכן מוגשות ע"י האינדקס המרוכב שלמעלה.
+
+**חשוב**: `fieldOverride` **מחליף** את האינדוקס האוטומטי של אותו שדה, ולא מתווסף אליו. לכן הרשומה מצהירה במפורש גם על `COLLECTION ASC/DESC` — השמטתם הייתה שוברת דווקא את השאילתות שכן עבדו. אימות אחרי הפריסה (`gcloud firestore indexes fields list`) הראה את שלושת האינדקסים במצב `CREATING`, כולל השניים שהיו קודם מכוסים ע"י ה-wildcard `__default__` — כלומר ההחלפה אכן מתרחשת, לא תוספת.
+
+ברירת המחדל של ה-wildcard כוללת גם `arrayConfig: CONTAINS`, ו-**הרשומה הזו משמיטה אותו במכוון**: `memberUid` הוא uid, לעולם לא מערך, ו-`array-contains` עליו חסר משמעות. אם אי פעם ישתנה לשדה מערך — צריך להוסיף אותו לרשומה, אחרת השאילתה תיכשל בדיוק כמו זו שה-ADR הזה מתאר.
+
+**האמולטור לא יתפוס חוסר כזה**: הוא בונה אינדקס לכל שאילתה שמגיעה אליו, ולכן `npm run test:e2e` יעבור גם כשהאינדקס חסר בפרודקשן. הבדיקה היחידה שתופסת את זה היא לוודא שלכל `collectionGroup(` בקוד יש התאמה כאן — נכון להיום יש שש כאלה (`useCardLists`, `usePendingInvitations`, `cardLists.ts`, `cards.ts`, `export.ts`, `accountDeletion.ts`).
+
 **שים לב**: סינון הכרטיסים בתוך רשימה ספציפית (`/cards/lists/[listId]`) נעשה בצד לקוח (`cards.filter(c => c.listId === listId)`) על תוצאות `useCards` הקיים, לא ע"י שאילתת Firestore נוספת עם `where("listId", "==", ...)` — כך נמנע אינדקס מורכב נוסף (`ownerId + listId + createdAt`). סביר להסתמך על כך כל עוד מספר הכרטיסים למשתמש קטן (שימוש אישי); אם זה ישתנה, יש להוסיף את השאילתה+אינדקס בהתאם.
 
 ## עדכון יתרה
