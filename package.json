@@ -16,6 +16,7 @@
     "sweep:account-deletions": "tsx --env-file=.env.local scripts/sweep-account-deletions.ts",
     "migrate:encrypt-fields": "tsx --env-file=.env.local scripts/migrate-encrypt-sensitive-fields.ts",
     "whatsapp:sim": "tsx --env-file=.env.local scripts/whatsapp-sim.ts",
+    "chat:scenario": "tsx --env-file=.env.local scripts/run-chat-scenario.ts",
     "test:unit": "vitest run tests/unit",
     "test:rules": "vitest run tests/rules",
     "test:e2e": "playwright test"
