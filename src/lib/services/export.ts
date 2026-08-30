@@ -121,6 +121,15 @@ export async function buildUserDataExport(uid: string): Promise<UserDataExport> 
       adminDb.collection("users").doc(uid).get(),
       adminDb.collection("consents").doc(uid).get(),
       adminDb.collection("cardLists").where("ownerId", "==", uid).get(),
+      // No status filter, unlike every other members query (useCardLists,
+      // usePendingInvitations, cardLists.ts, cards.ts) — an export owes the
+      // user their pending invitations too, not just accepted ones. That makes
+      // it a single-field collection-group query, and Firestore does NOT create
+      // those automatically the way it does for collection scope: it needs the
+      // explicit COLLECTION_GROUP override on members.memberUid in
+      // firestore.indexes.json. Without it every export failed in production
+      // with FAILED_PRECONDITION while the emulator passed, because the
+      // emulator invents an index for whatever it is asked (ADR #33).
       adminDb.collectionGroup("members").where("memberUid", "==", uid).get(),
       adminDb.collection("cards").where("ownerId", "==", uid).get(),
       adminDb.collection("categories").where("ownerId", "==", uid).get(),

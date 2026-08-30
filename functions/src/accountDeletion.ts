@@ -38,6 +38,13 @@ export async function deleteUserAccount(uid: string): Promise<void> {
     db.collection("cardLists").where("ownerId", "==", uid).get(),
     db.collection("cards").where("ownerId", "==", uid).get(),
     db.collection("categories").where("ownerId", "==", uid).get(),
+    // Deliberately unfiltered by status — an erasure must drop pending
+    // invitations too, not only accepted memberships. Same single-field
+    // collection-group shape as the export (src/lib/services/export.ts), and it
+    // depends on the same COLLECTION_GROUP override on members.memberUid in
+    // firestore.indexes.json (ADR #33). Before that override existed this threw
+    // FAILED_PRECONDITION, which nothing had noticed only because no account
+    // had reached the sweep yet.
     db.collectionGroup("members").where("memberUid", "==", uid).get(),
     // Phase 5.5 (docs/DECISIONS.md ADR #29). These three are keyed by
     // channelKey, not uid, so the ownership queries above never reach them —
