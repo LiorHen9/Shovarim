@@ -63,14 +63,20 @@ function uniquePhone(): string {
   return `+9725${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
 }
 
+// The UI (issue #39) shows a wa.me link with the code pre-filled as the
+// message rather than the raw code, so it's recovered from the link's href —
+// same approach as extractLinkCodeFromRegion in settings.spec.ts.
 async function issueLinkCode(page: Page): Promise<string> {
   await page.goto("/settings");
   // Hydration gate — see the note in settings.spec.ts.
   await expect(page.getByText("אין ערוצים מקושרים")).toBeVisible();
   await page.getByRole("button", { name: "חיבור WhatsApp" }).click();
-  const codeRegion = page.getByRole("region", { name: "קוד קישור WhatsApp" });
+  const codeRegion = page.getByRole("region", { name: "קישור חיבור WhatsApp" });
   await expect(codeRegion).toBeVisible();
-  return (await codeRegion.locator("code").innerText()).trim();
+  const href = await codeRegion.getByRole("link", { name: "פתיחת WhatsApp" }).getAttribute("href");
+  const code = new URL(href!).searchParams.get("text");
+  expect(code).toBeTruthy();
+  return code!;
 }
 
 test("GET handshake echoes the challenge only for the right verify token", async ({ request }) => {

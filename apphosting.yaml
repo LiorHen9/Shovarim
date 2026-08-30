@@ -191,3 +191,13 @@ env:
   - variable: WHATSAPP_VERIFY_TOKEN
     secret: whatsapp-verify-token
     availability: [RUNTIME]
+
+  # Client-side (issue #39): the bot's public WhatsApp number, used to build
+  # the wa.me deep link in /settings (src/lib/whatsapp/deepLink.ts). Not a
+  # secret, and NOT the same value as WHATSAPP_PHONE_NUMBER_ID above — that one
+  # is the Graph API's private identifier for the number, this is the number
+  # itself. BUILD availability is required: inlined into the client bundle at
+  # build time like the other NEXT_PUBLIC_* vars.
+  - variable: NEXT_PUBLIC_WHATSAPP_BOT_PHONE
+    value: "+15551845212"
+    availability: [BUILD, RUNTIME]

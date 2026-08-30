@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Link2, Loader2, RefreshCw, Unlink } from "lucide-react";
+import { Link2, Loader2, MessageCircle, RefreshCw, Unlink } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,16 @@ import {
   listMyChannelLinks,
   unlinkMyChannel,
 } from "@/actions/channelLink";
-import type { ChannelLinkSummary, IssuedLinkCode } from "@/types/channelLink";
+import { buildWhatsAppLinkCodeUrl } from "@/lib/whatsapp/deepLink";
+import type { ChannelLinkSummary } from "@/types/channelLink";
+
+// What the section keeps in state after issuing a code: only the built
+// wa.me URL and its expiry, never the raw code — the UI is link-only
+// (issue #39), so there is nothing left for a user to read and retype.
+interface IssuedLink {
+  url: string;
+  expiresAt: string;
+}
 
 const CHANNEL_LABELS: Record<ChannelLinkSummary["channel"], string> = {
   whatsapp: "WhatsApp",
@@ -37,7 +46,7 @@ function formatDateTime(iso: string): string {
 export function ChannelLinksSection() {
   const [links, setLinks] = useState<ChannelLinkSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [issued, setIssued] = useState<IssuedLinkCode | null>(null);
+  const [issued, setIssued] = useState<IssuedLink | null>(null);
   const [pending, setPending] = useState(false);
   const [unlinkTarget, setUnlinkTarget] = useState<ChannelLinkSummary | null>(null);
 
@@ -90,9 +99,14 @@ export function ChannelLinksSection() {
         toast.error(result.error);
         return;
       }
-      setIssued(result);
+      const url = buildWhatsAppLinkCodeUrl(result.code);
+      if (!url) {
+        toast.error("קישור החיבור לא הוגדר. פנו למנהל המערכת.");
+        return;
+      }
+      setIssued({ url, expiresAt: result.expiresAt });
     } catch {
-      toast.error("יצירת קוד הקישור נכשלה");
+      toast.error("יצירת קישור החיבור נכשלה");
     } finally {
       setPending(false);
     }
@@ -131,18 +145,22 @@ export function ChannelLinksSection() {
           <div
             className="space-y-2 rounded-lg border p-4"
             role="region"
-            aria-label="קוד קישור WhatsApp"
+            aria-label="קישור חיבור WhatsApp"
             aria-live="polite"
           >
             <p className="text-sm text-muted-foreground">
-              שלחו את הקוד הבא בהודעת WhatsApp למספר של הבוט, כדי לקשר את המספר שלכם לחשבון:
+              לחצו על הכפתור כדי לפתוח WhatsApp עם הודעה מוכנה למספר של הבוט — שליחתה תקשר את המספר
+              שלכם לחשבון:
             </p>
-            <code className="block font-mono text-2xl font-bold tracking-[0.3em]" dir="ltr">
-              {issued.code}
-            </code>
+            <Button asChild>
+              <a href={issued.url} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="size-4" />
+                פתיחת WhatsApp
+              </a>
+            </Button>
             <p className="text-sm text-muted-foreground">
-              הקוד תקף עד {formatDateTime(issued.expiresAt)}, לשימוש חד-פעמי. אל תעבירו אותו לאף אחד
-              — מי שמחזיק בקוד יכול לקשר את המספר שלו לחשבון שלכם.
+              הקישור תקף עד {formatDateTime(issued.expiresAt)}, לשימוש חד-פעמי. אל תעבירו אותו לאף
+              אחד — מי שישלח את ההודעה דרכו יכול לקשר את המספר שלו לחשבון שלכם.
             </p>
           </div>
         )}

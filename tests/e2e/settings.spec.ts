@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
 import { signInAsTestUser } from "./helpers/auth";
 
@@ -8,6 +8,15 @@ import { signInAsTestUser } from "./helpers/auth";
 // CI's environment (see .github/workflows/ci.yml).
 const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
 const PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "demo-shovarim";
+
+// The UI (issue #39) no longer shows the raw code — only a wa.me link with it
+// pre-filled as the message text — so tests recover it from the link's href.
+async function extractLinkCodeFromRegion(codeRegion: Locator): Promise<string> {
+  const href = await codeRegion.getByRole("link", { name: "פתיחת WhatsApp" }).getAttribute("href");
+  const code = new URL(href!).searchParams.get("text");
+  expect(code).toBeTruthy();
+  return code!;
+}
 
 async function createCardThroughUi(page: Page, name: string, balance: string): Promise<string> {
   await page.goto("/cards/new");
@@ -99,9 +108,9 @@ test("user can link a WhatsApp channel with a one-time code and unlink it", asyn
   await expect(page.getByText("אין ערוצים מקושרים")).toBeVisible();
 
   await page.getByRole("button", { name: "חיבור WhatsApp" }).click();
-  const codeRegion = page.getByRole("region", { name: "קוד קישור WhatsApp" });
+  const codeRegion = page.getByRole("region", { name: "קישור חיבור WhatsApp" });
   await expect(codeRegion).toBeVisible();
-  const code = (await codeRegion.locator("code").innerText()).trim();
+  const code = await extractLinkCodeFromRegion(codeRegion);
   expect(code).toMatch(/^[0-9A-HJKMNP-TV-Z]{8}$/);
 
   // Redeemed without a session, the way the webhook will: the code is the only
@@ -127,9 +136,9 @@ test("a link code cannot be redeemed twice", async ({ page }) => {
   await page.goto("/settings");
   await expect(page.getByText("אין ערוצים מקושרים")).toBeVisible(); // hydration gate, see above
   await page.getByRole("button", { name: "חיבור WhatsApp" }).click();
-  const codeRegion = page.getByRole("region", { name: "קוד קישור WhatsApp" });
+  const codeRegion = page.getByRole("region", { name: "קישור חיבור WhatsApp" });
   await expect(codeRegion).toBeVisible();
-  const code = (await codeRegion.locator("code").innerText()).trim();
+  const code = await extractLinkCodeFromRegion(codeRegion);
 
   await page.goto(`/e2e/redeem-link?externalId=${encodeURIComponent(phone)}&code=${code}`);
   await expect(page.getByRole("status")).toHaveText("redeemed");

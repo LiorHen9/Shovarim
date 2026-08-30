@@ -35,6 +35,10 @@ jobs:
       # calling graph.facebook.com from CI.
       WHATSAPP_APP_SECRET: e2e-local-app-secret
       WHATSAPP_VERIFY_TOKEN: e2e-local-verify-token
+      # Dummy bot number so the wa.me deep link (issue #39,
+      # src/lib/whatsapp/deepLink.ts) builds in CI the same as WHATSAPP_APP_SECRET
+      # above — tests/e2e/settings.spec.ts reads the code back out of it.
+      NEXT_PUBLIC_WHATSAPP_BOT_PHONE: "972500000000"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

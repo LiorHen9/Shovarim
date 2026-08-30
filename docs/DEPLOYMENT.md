@@ -214,6 +214,7 @@ https://console.cloud.google.com/logs/query;query=httpRequest.requestUrl%3A%22wh
 | `WHATSAPP_ACCESS_TOKEN` | `secret:` | permanent token לשליחה דרך Graph API |
 | `WHATSAPP_VERIFY_TOKEN` | `secret:` | מחרוזת אקראית שאנחנו בוחרים, ל-handshake של ה-`GET` |
 | `WHATSAPP_PHONE_NUMBER_ID` | plain | מזהה, לא חומר סוד. גם מסנן deliveries של מספרים אחרים תחת אותו Meta app |
+| `NEXT_PUBLIC_WHATSAPP_BOT_PHONE` | plain | לא הפקת webhook — המספר הפומבי לתצוגה, לבניית קישור ה-`wa.me` ב-`/settings` (issue #39, `src/lib/whatsapp/deepLink.ts`). שונה מ-`WHATSAPP_PHONE_NUMBER_ID`, שהוא מזהה פרטי של ה-Graph API. `[BUILD, RUNTIME]` כי מוזרק לבאנדל הלקוח |
 
 - **`apphosting.yaml` מכיל את ארבעתם מ-5.5.c** (שם הסוד ב-Secret Manager: `whatsapp-app-secret` / `whatsapp-access-token` / `whatsapp-verify-token`). 5.5.b נמנע מזה בכוונה עד שהסודות יוזרקו בפועל — ולכן **חובה להריץ את הסקריפט לפני שה-PR מגיע ל-`main`**, ראו האזהרה למטה.
 - כולם `availability: [RUNTIME]` **בלבד** — נקראים lazily בתוך ה-handler (`src/lib/whatsapp/config.ts`), `next build` לא צריך אותם (בניגוד ל-`adminApp.ts`; ראו ההערה ב-`apphosting.yaml`).
