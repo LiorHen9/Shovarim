@@ -103,6 +103,12 @@ export interface UserDataExport {
   // credentials, and an export file is exactly the artifact that gets emailed
   // around. chatSessions, written since Phase 5.5.b, is included — the
   // conversation text is the user's own data.
+  //
+  // listInviteCodes (ADR #37) is excluded for the same bearer-credential
+  // reason: an open invite in an export file is a working link into a list.
+  // The resulting memberships do show up — under listMemberships for the
+  // invitee, and under the owner's own lists — so nothing about who has access
+  // is hidden, only the credential itself.
   channelLinks: ChannelLinkSummary[];
   chatSessions: ExportedChatSession[];
 }

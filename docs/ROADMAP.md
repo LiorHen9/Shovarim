@@ -203,6 +203,18 @@ Meta app + מספר עסקי, סודות ב-Secret Manager (`WHATSAPP_APP_SECRET
 
 **נשאר לפאזות הבאות**: מספר טלפון אמיתי במקום מספר הטסט (מוגבל ל-~5 נמענים מאושרים), ו-message templates אם וכאשר יידרשו התראות יזומות (ADR #31).
 
+## שיתוף רשימה עם משתמש שאינו רשום ✅ הושלם (2026-08-31)
+issue #58, `docs/DECISIONS.md` ADR #37. משלים את שיתוף הרשימות של Phase 3.2, שעבד רק מול משתמש קיים (`adminAuth.getUserByEmail`).
+- **מודל נתונים**: `listInviteCodes/{code}` — קוד bearer בן 12 תווים, TTL 14 יום, `allow read, write: if false` (אותה מחלקת אמון כמו `channelLinkCodes`). `firestore.rules` ו-`docs/DATA_MODEL.md` עודכנו לפני הקוד, לפי הכלל הקבוע.
+- **הבעלים**: מצב שני ב-`ShareListDialog` — מספר טלפון במקום אימייל, ובתמורה קישור `wa.me/?text=...` **בלי מספר יעד** (הבעלים בוחר את איש הקשר), עם שני נוסחי הודעה לפי האם המספר כבר מוכר למערכת. כולל רשימת הזמנות ממתינות וביטול.
+- **המוזמן**: עמוד ציבורי `/invite/[code]` (`src/components/lists/InvitePanel.tsx`). תצוגה מקדימה בלי אימות (הקוד הוא הסוד), התחברות דרך `?next=` הקיים (בלי שינוי ב-`proxy.ts`/`SignInButtons`), ואם המספר לא מקושר — אותה זרימת קישור בדיוק שב-`/settings` (`createLinkCodeForUid` + `buildWhatsAppLinkCodeUrl`), לא מנגנון מקביל.
+- **הליבה האבטחתית**: `acceptListInvite` דורש קוד **וגם** `channelLinks` שממפה את המספר ל-uid המאשר, ומריץ את שתי הבדיקות מחדש בשרת (ה-gate של ה-UI אינו שלב הרשאה). דחייה לא דורשת קישור. מסמך ה-member נכתב ישירות כ-`accepted` — אין שלב `pending`, כי האישור המפורש כבר קרה בעמוד.
+- **`NEXT_PUBLIC_APP_URL` חדש** (`.env.example`, `apphosting.yaml`, `src/lib/appUrl.ts`): הלינק נשלח בהודעת וואטסאפ ולכן חייב להיות אבסולוטי — הצורך הראשון כזה באפליקציה.
+- **GDPR**: `accountDeletion.ts` מוחק הזמנות לפי `invitedBy` (אינדקס אוטומטי — collection רגיל, לא collection-group); הייצוא **לא** כולל הזמנות פתוחות (bearer credentials, כמו קודי הקישור). `docs/PRIVACY.md` מסמן חוב חדש: זו הפעם הראשונה שנשמר PII של אדם שאינו משתמש ולא נתן הסכמה.
+- אימות: `typecheck`/`lint`/`build` נקיים, `functions` build נקי. `test:rules` — 50/50 (47 + 3 חדשים: גם הבעלים המנפיק לא יכול לקרוא את הקוד, ומוזמן לא יכול לסמן `accepted` מה-client). `test:unit` — 54 ללא שינוי. E2E — 20/20 ב-`--workers=1`, כולל `tests/e2e/listInvite.spec.ts` החדש: הצטרפות מלאה דרך webhook חתום אמיתי, **דחיית אישור כשמקושר מספר אחר**, תצוגה מקדימה + `?next=` למשתמש מנותק, ודחייה שאינה הפיכה.
+
+**נשאר לבדוק ידנית**: קליק-דרך עם שני חשבונות Google אמיתיים ומכשיר וואטסאפ אמיתי — ה-E2E מדמה את ההודעה הנכנסת דרך webhook חתום מקומית, לא דרך Meta. בנוסף: `NEXT_PUBLIC_APP_URL` בפרודקשן נכנס לתוקף רק אחרי rollout (נצרב ל-bundle ב-build), ולכן יש לוודא שהלינק בהודעה מצביע לדומיין הנכון ולא ל-localhost.
+
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.
 (הערה: החלטת ה-hosting/deploy טופלה מוקדם יותר ב-Phase 3.3 — לא כאן, בניגוד למה שנרמז במקור ב-ADR #5.)
