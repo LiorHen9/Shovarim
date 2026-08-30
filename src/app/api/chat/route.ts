@@ -19,7 +19,7 @@ import { chatRequestSchema } from "@/lib/validation/chat";
 import { createMcpServer } from "@/lib/mcp/mcpServer";
 import { runAgentTurn, toAnthropicTools } from "@/lib/mcp/agentLoop";
 import { createAnthropicClient } from "@/lib/mcp/anthropicClient";
-import { SYSTEM_PROMPT } from "@/lib/mcp/systemPrompt";
+import { buildSystemPrompt } from "@/lib/mcp/systemPrompt";
 
 export const runtime = "nodejs";
 
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
         const result = await runAgentTurn({
           client: anthropic,
           mcp,
-          systemPrompt: SYSTEM_PROMPT,
+          systemPrompt: buildSystemPrompt(),
           tools,
           history: history as Anthropic.Beta.BetaMessageParam[],
           userMessage: message,

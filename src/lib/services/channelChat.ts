@@ -17,7 +17,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { createAnthropicClient } from "../mcp/anthropicClient";
 import { runAgentTurn, toAnthropicTools } from "../mcp/agentLoop";
 import { createMcpServer } from "../mcp/mcpServer";
-import { SYSTEM_PROMPT } from "../mcp/systemPrompt";
+import { buildSystemPrompt } from "../mcp/systemPrompt";
 import { ActionError } from "../actions/errorsCore";
 import { linkCodeSchema } from "../validation/channelLink";
 import {
@@ -109,7 +109,7 @@ export async function handleInboundChannelMessage({
     const result = await runAgentTurn({
       client: createAnthropicClient(),
       mcp,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: buildSystemPrompt(),
       tools: await toAnthropicTools(mcp),
       history,
       userMessage: text,
