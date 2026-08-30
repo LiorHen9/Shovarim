@@ -102,10 +102,19 @@ export function ChatPanel() {
     }
   }
 
+  const hasMessages = messages.length > 0;
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex min-h-[50vh] flex-col gap-3 rounded-lg border p-4" aria-live="polite">
-        {messages.length === 0 && (
+      {/* כשאין עדיין שיחה הקונטיינר לא שומר מקום ולא לובש מסגרת — אחרת הוא נראה
+          כמו שדה קלט ריק ודוחף את תיבת הכתיבה לתחתית העמוד (issue #27). */}
+      <div
+        className={
+          hasMessages ? "flex min-h-[50vh] flex-col gap-3 rounded-lg border p-4" : "flex flex-col gap-3"
+        }
+        aria-live="polite"
+      >
+        {!hasMessages && (
           <p className="text-sm text-muted-foreground">שאל/י על הכרטיסים שלך, או בקש/י לרשום שימוש, לעדכן יתרה, ועוד.</p>
         )}
         {messages.map((m, i) => (
