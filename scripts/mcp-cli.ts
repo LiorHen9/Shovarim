@@ -17,7 +17,7 @@ import { connectAuthEmulator, getAuth, signInWithCustomToken } from "firebase/au
 import { adminAuth } from "../src/lib/firebase/adminApp";
 import { runAgentTurn, toAnthropicTools } from "../src/lib/mcp/agentLoop";
 import { createAnthropicClient } from "../src/lib/mcp/anthropicClient";
-import { SYSTEM_PROMPT } from "../src/lib/mcp/systemPrompt";
+import { buildSystemPrompt } from "../src/lib/mcp/systemPrompt";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -88,7 +88,7 @@ async function main() {
     const result = await runAgentTurn({
       client,
       mcp,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: buildSystemPrompt(),
       tools,
       history,
       userMessage: userInput,
