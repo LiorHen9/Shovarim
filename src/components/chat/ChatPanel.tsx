@@ -12,6 +12,10 @@ interface ChatMessage {
   text: string;
 }
 
+// חיווי אחיד לכל שלבי העיבוד — שמות ה-tools הם פרט מימוש פנימי
+// ולא מוצגים למשתמש/ת (issue #43).
+const THINKING_STATUS = "חושב/ת...";
+
 type ChatStreamEvent =
   | { type: "text"; text: string }
   | { type: "tool_call"; name: string }
@@ -46,7 +50,7 @@ export function ChatPanel() {
     setMessages((prev) => [...prev, { role: "user", text: trimmed }, { role: "assistant", text: "" }]);
     setInput("");
     setPending(true);
-    setStatusText("חושב/ת...");
+    setStatusText(THINKING_STATUS);
 
     try {
       const res = await fetch("/api/chat", {
@@ -82,7 +86,7 @@ export function ChatPanel() {
             setStatusText(null);
             appendToLastAssistantMessage(event.text);
           } else if (event.type === "tool_call") {
-            setStatusText(`משתמש/ת בכלי ${event.name}...`);
+            setStatusText(THINKING_STATUS);
           } else if (event.type === "done") {
             historyRef.current = event.history;
           } else if (event.type === "error") {

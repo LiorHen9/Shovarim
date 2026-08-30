@@ -21,14 +21,18 @@ https://github.com/LiorHen9/Shovarim/issues/31 (label: design)
 
 ---
 
-## 2. ☐ #43 — לא להציג שמות tools בזמן "חושב"
+## 2. ✅ #43 — לא להציג שמות tools בזמן "חושב"
 https://github.com/LiorHen9/Shovarim/issues/43
 
-**קבצים**: `src/components/chat/ChatPanel.tsx:84-85`, אופציונלי גם `src/app/api/chat/route.ts:70` ו-`src/lib/mcp/agentLoop.ts`.
+**קבצים**: `src/components/chat/ChatPanel.tsx`.
 
-**ממצא**: `setStatusText(\`משתמש/ת בכלי ${event.name}...\`)` חושף את שם ה-tool למשתמש. להחליף בקבוע `"חושב/ת..."` (תואם לערך ההתחלתי בשורה 49). אופציונלי: להסיר את שדה `name` מ-`ChatStreamEvent`/`onToolCall` כדי שהשרת לא ישלח את זה כלל.
+**ממצא**: `setStatusText(\`משתמש/ת בכלי ${event.name}...\`)` חשף את שם ה-tool למשתמש.
 
-**Effort**: קטן. **Risk**: נמוך.
+**תיקון**: קבוע `THINKING_STATUS = "חושב/ת..."` בראש הקומפוננטה, משמש גם כערך ההתחלתי ב-`sendMessage` וגם בענף `tool_call` — כך שהחיווי אחיד לכל שלבי העיבוד ואין דרך שהשם ידלוף ל-UI.
+
+**החלטת היקף**: התיקון מכוון ל-UI בלבד (בחירת המשתמש). שדה `name` נשאר ב-`ChatStreamEvent`/`route.ts:70`/`agentLoop.onToolCall` — הוא עדיין נראה ב-DevTools בזרם ה-NDJSON, אבל נחוץ ל-`scripts/run-chat-scenario.ts:62` לצורכי debug. אם בעתיד תידרש הסתרה גם ברמת ה-wire, זה שינוי נפרד.
+
+**Effort**: קטן. **Risk**: נמוך. **אימות**: `npm run typecheck && npm run lint && npm run build` עברו.
 
 ---
 
