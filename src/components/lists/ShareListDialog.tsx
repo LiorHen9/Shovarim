@@ -172,7 +172,18 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
           שיתוף
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      {/* DialogContent is centered with top-1/2 -translate-y-1/2 and ships with
+          neither a max-height nor an overflow (src/components/ui/dialog.tsx), so
+          content taller than the viewport is clipped at BOTH ends with no way to
+          scroll to it. This dialog grows without bound — two invite forms, the
+          issued-invite panel, every pending phone invite and every member — so
+          on a short window the "יצירת הזמנה לוואטסאפ" button ends up off-screen
+          and the feature looks missing. Scoped here rather than in the shared
+          component: the same gap exists in the other dialogs (EditCardDialog is
+          the next tallest) and is worth fixing globally, but that is a wider
+          change than this one. svh, not vh: on mobile vh ignores the browser
+          chrome and would keep part of the dialog unreachable. */}
+      <DialogContent className="max-h-[85svh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>שיתוף הרשימה &quot;{listName}&quot;</DialogTitle>
         </DialogHeader>
