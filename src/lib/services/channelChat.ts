@@ -28,11 +28,13 @@ import {
 } from "./channelLinks";
 import { loadChannelHistory, saveChannelHistory } from "./chatSessions";
 import { checkAndConsumeRateLimit, RateLimitExceededError } from "./rateLimit";
+import { getAppUrl } from "../appUrl";
 import type { ChannelKind } from "../../types/channelLink";
 
 export const REPLY_NOT_LINKED =
   "היי! המספר הזה עדיין לא מקושר לחשבון Shovarim.\n" +
-  "כדי לקשר: היכנסו לאתר → הגדרות → “חיבור WhatsApp”, ושלחו לכאן את הקוד בן 8 התווים שיוצג (תקף ל-10 דקות).";
+  "כדי לקשר: היכנסו לאתר → הגדרות → “חיבור WhatsApp”, ושלחו לכאן את הקוד בן 8 התווים שיוצג (תקף ל-10 דקות).\n" +
+  getAppUrl();
 
 export const REPLY_LINKED =
   "מעולה, המספר הזה מקושר עכשיו לחשבון שלך ✅\n" +
