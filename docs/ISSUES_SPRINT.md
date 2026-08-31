@@ -280,11 +280,10 @@ https://github.com/LiorHen9/Shovarim/issues/66
 **תיקון (עודכן — לינק כפתור, לא טקסט מוטמע)**: המשתמש ביקש במפורש שהלינק לא יהיה חלק ממחרוזת ההודעה אלא כפתור מוצמד. `handleInboundChannelMessage` משנה טיפוס החזרה מ-`string` ל-`ChannelReply` (`{ text, cta? }`) — `cta` מוגדר רק על ה-`REPLY_NOT_LINKED`, כל שאר הענפים מחזירים טקסט בלבד. `graph.ts` מקבל `sendWhatsAppCtaUrl` חדשה ששולחת הודעת `interactive`/`cta_url` (Meta Cloud API — כפתור קישור אמיתי בתוך WhatsApp, לא URL כתוב), עם מגבלת גוף נפרדת של הודעות אינטראקטיביות (1024 תווים, מוגדרת כ-`MAX_INTERACTIVE_BODY_LENGTH` לצד ה-4096 של הודעת טקסט רגילה). ה-webhook route בוחר בין `sendWhatsAppCtaUrl`/`sendWhatsAppText` לפי קיום `reply.cta`.
 
 **Effort**: קטן-בינוני. **Risk**: נמוך. **אימות**: `npm run typecheck && npm run lint && npm run build` עברו; `tests/unit/whatsappWebhook.test.ts` — 17/17 עברו. אין assertions ב-`tests/`/`scripts/` שהתבססו על `handleInboundChannelMessage` מחזיר `string` (רק `scripts/whatsapp-sim.ts`, עודכן).
-**קבצים**: `src/lib/services/channelChat.ts:33-37` (`REPLY_NOT_LINKED`), `src/lib/appUrl.ts` (`getAppUrl`).
 
-**תיקון**: הוספת `getAppUrl()` כשורה אחרונה ב-`REPLY_NOT_LINKED` — concatenation טהור על מחרוזת מודול קבועה, בלי מעורבות LLM ובלי עלות טוקנים. מכיוון שהשולח עדיין לא מאומת, הלינק הוא לעמוד הבית/התחברות (`/`), לא ל-`/settings`.
+**⚠️ תקלת מיזוג שהתגלתה בפרודקשן (תוקנה)**: PR #70 (הגרסה הראשונה, טקסט מוטמע) מוזג ל-`main` לפני שה-PR עודכן לגרסת הכפתור. PR #71 שהריץ אחריו את שני ה-commits מהאותו branch לא הסיר את השורה הישנה שצירפה `getAppUrl()` ישירות לטקסט — כי ה-branch נוצר מ-squash קודם ו-git לא זיהה שהתוכן כבר קיים ב-`main`. התוצאה: `REPLY_NOT_LINKED` הכיל גם את הלינק כטקסט וגם כפתור `cta` — בדיוק מה שדווח ע"י המשתמש שראה זאת בהודעת WhatsApp אמיתית. תוקן על branch נפרד (`fix-issue-66-duplicate-link`) בהסרת השורה הכפולה; אומת ב-`git diff` מול הקומיט המקורי הנכון שהעץ תואם 1:1.
 
-**Effort**: קטן. **Risk**: נמוך. **אימות**: `npm run typecheck && npm run lint && npm run build` עברו. אין אזכור של `REPLY_NOT_LINKED`/הטקסט שלה ב-`tests/`/`scripts/` (נבדק בגרפ) — אין assertions שנשברו.
+**לקח לעתיד**: אחרי squash-merge של PR, אין להמשיך לפתוח PR נוסף מאותו branch בלי rebase על `main` העדכני קודם — אחרת commits קודמים "חוזרים לחיים" ב-diff.
 
 ---
 
