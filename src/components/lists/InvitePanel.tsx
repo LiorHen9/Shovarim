@@ -32,11 +32,12 @@ const ROLE_LABELS = {
 const POLL_INTERVAL_MS = 4000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
 
-// The invite landing UI (ADR #38). The code is the credential, so the only
-// thing standing between arriving here and joining is identifying yourself:
-// sign in, and — so the owner can see who joined — link a WhatsApp number. Both
-// steps try to get out of the way, and the accept/decline choice is a dialog
-// that opens by itself the moment they are done.
+// The invite landing UI (ADR #39). Joining takes two proofs, and this screen is
+// where the second one is collected: signing in says which account, and linking
+// the WhatsApp number the invite was addressed to is what authorizes the join
+// at all — holding the link is not enough. Both steps try to get out of the
+// way, and the accept/decline choice is a dialog that opens by itself the
+// moment they are done.
 export function InvitePanel({
   preview,
   initialGate,
@@ -242,8 +243,9 @@ export function InvitePanel({
         </div>
       )}
 
-      {/* Reachable only for invites issued before ADR #38, which named a
-          specific number. */}
+      {/* The account is real but wrong: it has proved a different number from
+          the one this invite names, which is exactly the case the binding
+          exists to stop. */}
       {signedIn && gate === "linked_to_other_number" && (
         <p className="text-sm text-muted-foreground">
           החשבון שלכם מקושר למספר WhatsApp אחר מזה שאליו נשלחה ההזמנה
@@ -264,9 +266,12 @@ export function InvitePanel({
               <>
                 כדי לאשר את ההצטרפות, יש לוודא שמספר הוואטסאפ שאליו נשלחה ההזמנה (מסתיים ב-
                 <span dir="ltr">{preview.phoneHint}</span>) שייך לחשבון שלכם. שלחו הודעה מהמספר הזה
-                — כך נדע שהוא באמת שלכם.
+                — כך נדע שהוא באמת שלכם. אחרי השליחה חזרו לכאן — נמשיך אוטומטית.
               </>
             ) : (
+              /* No hint means an ADR #38 bearer leftover, which named no
+                 number: any linked number will do, and it is collected so the
+                 owner can see who joined rather than to authorize it. */
               <>
                 נותר שלב אחד: שליחת הודעה אחת בוואטסאפ, כדי שנוכל לשייך את המספר שלכם לחשבון. אחרי
                 השליחה חזרו לכאן — נמשיך אוטומטית.
