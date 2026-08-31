@@ -1,9 +1,10 @@
 // First Route Handler in the app (docs/ROADMAP.md Phase 5.4). Streams NDJSON
-// (one JSON object per line) rather than raw text so the final line can carry
-// back the full updated Anthropic message history — the browser has no
-// server-side chat session to persist it in, so it round-trips the whole
-// history on every request, same as scripts/mcp-cli.ts does in-process (see
-// docs/DECISIONS.md ADR #22 for the scope note on this).
+// (one JSON object per line) rather than raw text for the assistant's reply.
+// History used to round-trip through the client on every request (ADR #22)
+// but now persists server-side in chatSessions under a "web:{uid}" key — same
+// collection and 24h-idle-reset WhatsApp already uses (issue #44), so GET
+// restores prior turns on page load and POST no longer trusts client-sent
+// history.
 //
 // Connects the MCP server in-process via InMemoryTransport instead of
 // spawning mcp-server/index.ts as a subprocess (what the CLI does) — spawning
@@ -20,14 +21,46 @@ import { createMcpServer } from "@/lib/mcp/mcpServer";
 import { runAgentTurn, toAnthropicTools } from "@/lib/mcp/agentLoop";
 import { createAnthropicClient } from "@/lib/mcp/anthropicClient";
 import { buildSystemPrompt } from "@/lib/mcp/systemPrompt";
+import { loadChannelHistory, saveChannelHistory } from "@/lib/services/chatSessions";
 
 export const runtime = "nodejs";
 
 type ChatStreamEvent =
   | { type: "text"; text: string }
   | { type: "tool_call"; name: string }
-  | { type: "done"; history: Anthropic.Beta.BetaMessageParam[] }
+  | { type: "done" }
   | { type: "error"; message: string };
+
+function webChannelKey(uid: string): string {
+  return `web:${uid}`;
+}
+
+// Tool-use/tool-result turns carry no text worth showing — only the plain
+// user/assistant conversation renders in the UI.
+function extractDisplayText(content: Anthropic.Beta.BetaMessageParam["content"]): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((block): block is { type: "text"; text: string } => block.type === "text")
+    .map((block) => block.text)
+    .join("");
+}
+
+export async function GET() {
+  let uid: string;
+  try {
+    uid = await requireUid();
+  } catch {
+    return Response.json({ error: "התחברות נדרשת" }, { status: 401 });
+  }
+
+  const history = await loadChannelHistory<Anthropic.Beta.BetaMessageParam>(webChannelKey(uid), uid);
+  const messages = history
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({ role: m.role, text: extractDisplayText(m.content) }))
+    .filter((m) => m.text.trim().length > 0);
+
+  return Response.json({ messages });
+}
 
 export async function POST(request: Request) {
   let uid: string;
@@ -42,7 +75,9 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return Response.json({ error: "בקשה לא תקינה" }, { status: 400 });
   }
-  const { message, history } = parsed.data;
+  const { message } = parsed.data;
+  const channelKey = webChannelKey(uid);
+  const history = await loadChannelHistory<Anthropic.Beta.BetaMessageParam>(channelKey, uid);
 
   const server = createMcpServer(uid, "web");
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
@@ -64,12 +99,13 @@ export async function POST(request: Request) {
           mcp,
           systemPrompt: buildSystemPrompt(),
           tools,
-          history: history as Anthropic.Beta.BetaMessageParam[],
+          history,
           userMessage: message,
           onText: (text) => controller.enqueue(encodeEvent({ type: "text", text })),
           onToolCall: (name) => controller.enqueue(encodeEvent({ type: "tool_call", name })),
         });
-        controller.enqueue(encodeEvent({ type: "done", history: result.history }));
+        await saveChannelHistory(channelKey, uid, result.history);
+        controller.enqueue(encodeEvent({ type: "done" }));
       } catch (error) {
         console.error("chat route agent turn failed", error);
         controller.enqueue(encodeEvent({ type: "error", message: "אירעה שגיאה. נסה/י שוב." }));
