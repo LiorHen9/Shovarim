@@ -72,7 +72,8 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
   id: string;                    // == memberUid
   listId: string;
   memberUid: string;
-  email: string;                 // snapshot של המייל שהוזמן, לתצוגה
+  email: string;                 // snapshot של המייל, לתצוגה
+  phone?: string | null;         // מספר הווטסאפ שהיה מקושר ברגע ההצטרפות (ADR #38)
   role: "manager" | "viewer";
   status: "pending" | "accepted";
   invitedBy: string;             // uid של בעל הרשימה
@@ -80,7 +81,9 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
   updatedAt: Timestamp;
 }
 ```
-שיתוף רשימה — ראו `docs/DECISIONS.md` #15. doc id תמיד שווה ל-`memberUid`, נוצר על ידי `inviteListMember` (`src/actions/listShare.ts`, Admin SDK מפענח אימייל ל-uid). "מנהל" מאושר (`status:"accepted"`) יכול לנהל כרטיסים ברשימה כמו הבעלים; "צופה" מאושר יכול רק לקרוא. כרטיסים שנוצרים דרך שיתוף עדיין נכתבים עם `ownerId` של בעל הרשימה (לא של היוצר בפועל) — ראו הערה ב-`cards` למעלה וב-`usageLog.createdBy` למטה.
+שיתוף רשימה — ראו `docs/DECISIONS.md` #15 ו-#38. doc id תמיד שווה ל-`memberUid`, נוצר על ידי `acceptListInvite` (`src/lib/services/listInvites.ts`) כשהמוזמן מאשר. "מנהל" מאושר (`status:"accepted"`) יכול לנהל כרטיסים ברשימה כמו הבעלים; "צופה" מאושר יכול רק לקרוא. כרטיסים שנוצרים דרך שיתוף עדיין נכתבים עם `ownerId` של בעל הרשימה (לא של היוצר בפועל) — ראו הערה ב-`cards` למעלה וב-`usageLog.createdBy` למטה.
+
+`phone` **אופציונלי** (ולא `string | null`) כי `useListMembers` עושה cast גולמי על ה-snapshot: מסמכים שנכתבו לפני ADR #38 לא מכילים את המפתח כלל. הוא נכתב פעם אחת בלבד, ברגע שהמוזמן מאשר את ההצטרפות — **לא** נשלף מחדש מ-`channelLinks` בזמן תצוגה, מה שהיה חושף בפני הבעלים מספר שהחבר אולי ניתק מאז (`docs/PRIVACY.md`). `status:"pending"` נוצר רק על ידי מסלול האימייל שהוסר ב-ADR #38; מסמכים כאלה שנוצרו בעבר ממשיכים להיות ניתנים לאישור מ-`/cards`.
 
 ## `cards/{cardId}/usageLog/{entryId}` (subcollection, immutable)
 `src/types/usageLog.ts`
@@ -251,22 +254,24 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 {
   code: string;         // base32 (Crockford) בן 12 תווים, זהה ל-doc id
   listId: string;
-  role: "manager" | "viewer";
-  phone: string;        // E.164 מנורמל — המספר שאליו ההזמנה הופנתה
+  role: "manager" | "viewer";   // תמיד "viewer" ביצירה מאז ADR #38
+  phone: string | null; // null = לינק שיתוף רגיל; ערך = הזמנה ישנה כרוכה למספר (ADR #37)
   invitedBy: string;    // uid של בעל הרשימה שיצר את ההזמנה
   status: "pending" | "accepted" | "declined";
   createdAt: Timestamp;
-  expiresAt: Timestamp; // createdAt + 14 יום
+  expiresAt: Timestamp; // createdAt + 48 שעות
   usedAt: Timestamp | null;
 }
 ```
-הזמנת שיתוף רשימה לפי **מספר טלפון** במקום לפי אימייל (`docs/DECISIONS.md` ADR #37, issue #58) — הנתיב היחיד שמאפשר לשתף רשימה עם מי שעדיין אין לו חשבון. משלים את `cardLists/{listId}/members` (ADR #15) ולא מחליף אותו: זרימת האימייל נשארת כמו שהיא.
+לינק שיתוף רשימה (`docs/DECISIONS.md` ADR #38, שהחליף חלקים מ-ADR #37) — הנתיב היחיד לשיתוף רשימה, כולל עם מי שעדיין אין לו חשבון. מאז ADR #38 מסלול האימייל (ADR #15) הוסר כנקודת כניסה; מסמכי `members` שנוצרו דרכו נשארים.
 
-**למה collection נפרד ולא מסמך `members` עם `status:"pending"`**: מסמך member ממופתח לפי `memberUid`, וברגע היצירה אין uid בכלל — הבעלים מכיר רק מספר טלפון, והמוזמן אולי עדיין לא נרשם. מסמך ה-member נוצר רק ברגע האישור, ואז ישירות כ-`status:"accepted"` (דילוג על שלב ה-pending, שאין בו צורך כאן — האישור המפורש כבר התרחש בעמוד ההזמנה).
+**למה collection נפרד ולא מסמך `members` עם `status:"pending"`**: מסמך member ממופתח לפי `memberUid`, וברגע היצירה אין uid בכלל — הבעלים לא נוקב באיש קשר כלשהו. מסמך ה-member נוצר רק ברגע האישור, ואז ישירות כ-`status:"accepted"` (דילוג על שלב ה-pending, שאין בו צורך כאן — האישור המפורש כבר התרחש בעמוד ההזמנה).
 
-**מחלקת אמון זהה ל-`channelLinkCodes`**: ה-doc id הוא הסוד שנשלח בהודעת הוואטסאפ, ולכן `firestore.rules` חוסם קריאה וכתיבה מ-client לחלוטין. גם תצוגת ההזמנות הפתוחות של הבעלים וגם התצוגה המקדימה של המוזמן עוברות דרך Server Actions. **12 תווים ולא 8** (בשונה מ-`channelLinkCodes`): הקוד חי 14 יום ולא 10 דקות, כך שחלון הניחוש גדול בסדרי גודל — 32^12 (~10^18) שומר על אותו יחס בטיחות. נוצר מ-`crypto.randomInt` כמו קוד הקישור, ולא מוקלד ידנית אלא נלחץ כלינק, ולכן האורך אינו עלות UX.
+**מחלקת אמון זהה ל-`channelLinkCodes`**: ה-doc id הוא הסוד שנשלח בהודעת הוואטסאפ, ולכן `firestore.rules` חוסם קריאה וכתיבה מ-client לחלוטין. גם תצוגת הלינקים הפתוחים של הבעלים וגם התצוגה המקדימה של המוזמן עוברות דרך Server Actions. **12 תווים ולא 8** (בשונה מ-`channelLinkCodes`): הקוד חי 48 שעות ולא 10 דקות, ומאז ADR #38 הוא ה-credential כולו — 32^12 (~10^18) שומר על יחס בטיחות שמרני. נוצר מ-`crypto.randomInt` כמו קוד הקישור, ולא מוקלד ידנית אלא נלחץ כלינק, ולכן האורך אינו עלות UX.
 
-**האישור אינו נשען על החזקת הקוד בלבד**: `acceptListInvite` מוודא שה-uid המאשר הוא זה שאליו `channelLinks` ממפה את `phone` (ADR #29/#37) — הקוד מוכיח "הופנתה אליי הזמנה", והקישור מוכיח "המספר הזה שלי". לינק שהועבר הלאה לא מספיק לבדו.
+**`phone: null` — הקוד הוא ה-credential כולו** (ADR #38): מי שמחזיק בלינק יכול להצטרף. מה שמגביל: חד-פעמיות (`status`/`usedAt`), TTL של 48 שעות, תקרה של 10 לינקים פתוחים לרשימה, ויכולת ביטול של הבעלים. `phone` לא-null הוא הזמנה שנוצרה לפני ADR #38 וממשיכה להיאכף בתנאי ADR #37 — `acceptListInvite` מוודא שה-uid המאשר הוא זה שאליו `channelLinks` ממפה את המספר. ללא מיגרציה: כל ענף מתפצל על `invite.phone === null`.
+
+**אין אינדקס מרוכב**: כל השאילתות על ה-collection הן `where("listId","==",…)` על שדה בודד, והסינון ל"פתוח" (`status` + `expiresAt`) נעשה בזיכרון — לרשימה יש לכל היותר `MAX_OPEN_INVITES` הזמנות חיות.
 
 יצירת הזמנה חדשה לאותה `(listId, phone)` מבטלת הזמנה קודמת שטרם מומשה (`usedAt` מסומן), באותו דפוס כמו `createLinkCodeForUid` — לא נשאר יותר מ-credential חי אחד לאותו יעד. `where("listId","==",...)` בלבד וסינון בזיכרון, בלי אינדקס מרוכב.
 

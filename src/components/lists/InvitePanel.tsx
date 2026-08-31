@@ -1,12 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Link2, Loader2, LogIn, MessageCircle, RefreshCw, X } from "lucide-react";
+import { Check, Loader2, LogIn, MessageCircle, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { acceptInvite, declineInvite, getInviteGate } from "@/actions/listInvite";
 import { createChannelLinkCode } from "@/actions/channelLink";
 import { buildWhatsAppLinkCodeUrl } from "@/lib/whatsapp/deepLink";
@@ -17,9 +25,18 @@ const ROLE_LABELS = {
   viewer: "צופה (צפייה בלבד)",
 } as const;
 
-// The invite landing UI (ADR #37). Accepting requires two separate facts — an
-// invite addressed to a number, and proof that the number belongs to this
-// account — so most of this component is about explaining which one is missing.
+// How long to keep re-checking whether the number got linked. The link code
+// itself expires in 10 minutes, but anyone who is going to send the WhatsApp
+// message does so within a minute or two of leaving this tab; past that the
+// manual button is the right affordance rather than a timer nobody is watching.
+const POLL_INTERVAL_MS = 4000;
+const POLL_TIMEOUT_MS = 3 * 60 * 1000;
+
+// The invite landing UI (ADR #38). The code is the credential, so the only
+// thing standing between arriving here and joining is identifying yourself:
+// sign in, and — so the owner can see who joined — link a WhatsApp number. Both
+// steps try to get out of the way, and the accept/decline choice is a dialog
+// that opens by itself the moment they are done.
 export function InvitePanel({
   preview,
   initialGate,
@@ -34,51 +51,94 @@ export function InvitePanel({
   const [pending, setPending] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [done, setDone] = useState<"accepted" | "declined" | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(initialGate === "ready");
 
   const terminal = preview.status !== "pending" || preview.expired;
+
+  // Shared by the poll and the manual button; only the latter says anything out
+  // loud, since a background check that finds nothing is not news.
+  const checkGate = useCallback(
+    async (announce: boolean) => {
+      try {
+        const result = await getInviteGate({ code: preview.code });
+        if ("error" in result) {
+          if (announce) toast.error(result.error);
+          return;
+        }
+        setGate(result.gate);
+        if (result.gate === "ready") {
+          setLinkUrl(null);
+          setConfirmOpen(true);
+        } else if (announce) {
+          toast.info("המספר עדיין לא מקושר. שלחו את ההודעה בוואטסאפ ונסו שוב.");
+        }
+      } catch {
+        if (announce) toast.error("בדיקת מצב הקישור נכשלה");
+      }
+    },
+    [preview.code]
+  );
 
   async function refreshGate() {
     setPending(true);
     try {
-      const result = await getInviteGate({ code: preview.code });
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      setGate(result.gate);
-      if (result.gate === "ready") {
-        setLinkUrl(null);
-        toast.success("המספר קושר בהצלחה — אפשר לאשר את ההצטרפות");
-      } else {
-        toast.info("המספר עדיין לא מקושר. שלחו את ההודעה בוואטסאפ ונסו שוב.");
-      }
-    } catch {
-      toast.error("בדיקת מצב הקישור נכשלה");
+      await checkGate(true);
     } finally {
       setPending(false);
     }
   }
 
-  async function handleLinkNumber() {
-    setPending(true);
-    try {
-      const result = await createChannelLinkCode({ channel: "whatsapp" });
-      if ("error" in result) {
-        toast.error(result.error);
-        return;
-      }
-      const url = buildWhatsAppLinkCodeUrl(result.code);
-      if (!url) {
-        toast.error("קישור החיבור לא הוגדר. פנו למנהל המערכת.");
-        return;
-      }
-      setLinkUrl(url);
-    } catch {
-      toast.error("יצירת קישור החיבור נכשלה");
-    } finally {
-      setPending(false);
-    }
-  }
+  // Issued on arrival rather than behind a first click, so the screen the
+  // invitee lands on already offers the single button that matters. The code is
+  // short-lived and supersedes any earlier one for this user, so minting it
+  // eagerly costs nothing.
+  useEffect(() => {
+    if (!signedIn || gate !== "needs_channel_link" || linkUrl !== null) return;
+    let cancelled = false;
+    createChannelLinkCode({ channel: "whatsapp" })
+      .then((result) => {
+        if (cancelled || "error" in result) return;
+        const url = buildWhatsAppLinkCodeUrl(result.code);
+        if (url) setLinkUrl(url);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn, gate, linkUrl]);
+
+  // Linking finishes out of band — the user sends a WhatsApp message and the
+  // webhook redeems the code — so nothing tells this tab about it. Returning to
+  // the tab is the precise signal, and the interval covers the desktop case
+  // where WhatsApp Web never took focus away.
+  useEffect(() => {
+    if (!signedIn || gate !== "needs_channel_link") return;
+    // Local to the effect rather than a ref: the deadline is meaningful only
+    // while this gate is the one being watched, and the effect re-runs whenever
+    // that changes.
+    const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+    const expired = () => Date.now() > deadline;
+    const onReturn = () => {
+      if (document.visibilityState === "visible" && !expired()) void checkGate(false);
+    };
+
+    const timer = window.setInterval(() => {
+      if (expired()) window.clearInterval(timer);
+      else void checkGate(false);
+    }, POLL_INTERVAL_MS);
+    // visibilitychange is dispatched at the Document, focus at the window —
+    // together they cover both "switched back from the WhatsApp app" and
+    // "clicked back into this tab".
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", onReturn);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", onReturn);
+    };
+  }, [signedIn, gate, checkGate]);
 
   async function handleAccept() {
     setPending(true);
@@ -88,6 +148,7 @@ export function InvitePanel({
         toast.error(result.error);
         return;
       }
+      setConfirmOpen(false);
       setDone("accepted");
       toast.success("הצטרפת לרשימה");
       router.push(`/cards/lists/${result.listId}`);
@@ -106,6 +167,7 @@ export function InvitePanel({
         toast.error(result.error);
         return;
       }
+      setConfirmOpen(false);
       setDone("declined");
     } catch {
       toast.error("דחיית ההזמנה נכשלה");
@@ -180,20 +242,36 @@ export function InvitePanel({
         </div>
       )}
 
+      {/* Reachable only for invites issued before ADR #38, which named a
+          specific number. */}
       {signedIn && gate === "linked_to_other_number" && (
         <p className="text-sm text-muted-foreground">
-          החשבון שלכם מקושר למספר WhatsApp אחר מזה שאליו נשלחה ההזמנה (מסתיים ב-
-          <span dir="ltr">{preview.phoneHint}</span>). כדי לאשר, נתקו את הקישור הקיים בהגדרות וקשרו
-          את המספר שאליו נשלחה ההזמנה.
+          החשבון שלכם מקושר למספר WhatsApp אחר מזה שאליו נשלחה ההזמנה
+          {preview.phoneHint && (
+            <>
+              {" "}
+              (מסתיים ב-<span dir="ltr">{preview.phoneHint}</span>)
+            </>
+          )}
+          . כדי לאשר, נתקו את הקישור הקיים בהגדרות וקשרו את המספר שאליו נשלחה ההזמנה.
         </p>
       )}
 
       {signedIn && gate === "needs_channel_link" && (
         <div className="space-y-3 rounded-lg border p-4" aria-live="polite">
           <p className="text-sm text-muted-foreground">
-            כדי לאשר את ההצטרפות, יש לוודא שמספר הוואטסאפ שאליו נשלחה ההזמנה (מסתיים ב-
-            <span dir="ltr">{preview.phoneHint}</span>) שייך לחשבון שלכם. שלחו הודעה מהמספר הזה —
-            כך נדע שהוא באמת שלכם.
+            {preview.phoneHint ? (
+              <>
+                כדי לאשר את ההצטרפות, יש לוודא שמספר הוואטסאפ שאליו נשלחה ההזמנה (מסתיים ב-
+                <span dir="ltr">{preview.phoneHint}</span>) שייך לחשבון שלכם. שלחו הודעה מהמספר הזה
+                — כך נדע שהוא באמת שלכם.
+              </>
+            ) : (
+              <>
+                נותר שלב אחד: שליחת הודעה אחת בוואטסאפ, כדי שנוכל לשייך את המספר שלכם לחשבון. אחרי
+                השליחה חזרו לכאן — נמשיך אוטומטית.
+              </>
+            )}
           </p>
 
           {linkUrl ? (
@@ -204,37 +282,18 @@ export function InvitePanel({
                   פתיחת WhatsApp
                 </a>
               </Button>
-              <p className="text-sm text-muted-foreground">
-                אחרי שליחת ההודעה, חזרו לכאן ולחצו על &quot;בדיקה מחדש&quot;.
-              </p>
               <Button variant="outline" onClick={() => void refreshGate()} disabled={pending}>
-                <RefreshCw className="size-4" />
+                {pending ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
                 בדיקה מחדש
               </Button>
             </div>
           ) : (
-            <Button onClick={() => void handleLinkNumber()} disabled={pending}>
-              <Link2 className="size-4" />
-              קישור מספר הוואטסאפ
-            </Button>
+            <p className="text-sm text-muted-foreground">מכינים את הקישור...</p>
           )}
-        </div>
-      )}
-
-      {signedIn && gate === "ready" && (
-        <div className="flex gap-2">
-          <Button onClick={() => void handleAccept()} disabled={pending}>
-            {pending ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Check className="size-4" />
-            )}
-            אישור והצטרפות
-          </Button>
-          <Button variant="outline" onClick={() => void handleDecline()} disabled={pending}>
-            <X className="size-4" />
-            דחייה
-          </Button>
         </div>
       )}
 
@@ -247,6 +306,41 @@ export function InvitePanel({
         >
           דחיית ההזמנה
         </Button>
+      )}
+
+      {/* Opens by itself once nothing is in the way — on arrival for a visitor
+          who is already set up, or the moment polling notices the number was
+          linked. Reopenable from the panel so dismissing it is not a dead end. */}
+      {signedIn && gate === "ready" && (
+        <>
+          <Button variant="outline" onClick={() => setConfirmOpen(true)}>
+            הצגת ההזמנה
+          </Button>
+          <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <DialogContent className="max-h-[85svh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>הצטרפות לרשימה &quot;{preview.listName}&quot;</DialogTitle>
+                <DialogDescription>
+                  ההצטרפות תיתן לכם הרשאת {ROLE_LABELS[preview.role]}. אפשר לצאת מהרשימה בכל שלב.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button onClick={() => void handleAccept()} disabled={pending}>
+                  {pending ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Check className="size-4" />
+                  )}
+                  אישור והצטרפות
+                </Button>
+                <Button variant="outline" onClick={() => void handleDecline()} disabled={pending}>
+                  <X className="size-4" />
+                  דחייה
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
       )}
     </Panel>
   );

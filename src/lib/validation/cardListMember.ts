@@ -3,15 +3,6 @@ import { z } from "zod";
 export const listMemberRoleSchema = z.enum(["manager", "viewer"]);
 export type ListMemberRoleInput = z.infer<typeof listMemberRoleSchema>;
 
-export const inviteListMemberSchema = z.object({
-  listId: z.string().trim().min(1),
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .min(1, "כתובת אימייל נדרשת")
-    .email("כתובת אימייל לא תקינה"),
-  role: listMemberRoleSchema,
-});
-
-export type InviteListMemberInput = z.infer<typeof inviteListMemberSchema>;
+// inviteListMemberSchema lived here for the email invite path of ADR #15, which
+// ADR #38 removed — sharing no longer asks the owner for an address. Existing
+// members created that way are untouched; only the entry point is gone.
