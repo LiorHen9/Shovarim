@@ -120,6 +120,11 @@ test("user can link a WhatsApp channel with a one-time code and unlink it", asyn
 
   await page.goto("/settings");
   await expect(page.getByText(phone)).toBeVisible();
+  // issue #68 / ADR #41: a fresh link is active, shows no message yet (the
+  // e2e stand-in calls redeemLinkCode directly, bypassing the inbound-message
+  // path that would set lastMessageAt), and carries a re-verify deadline.
+  await expect(page.getByText("טרם נשלחה הודעה מאז הקישור")).toBeVisible();
+  await expect(page.getByText("נדרש אימות מחדש עד", { exact: false })).toBeVisible();
 
   // issue #26: with the channel linked there is nothing left to issue — a
   // second code would be a live bearer credential for an account that already

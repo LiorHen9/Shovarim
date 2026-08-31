@@ -13,6 +13,7 @@ import { adminDb } from "../firebase/adminApp";
 import { ActionError } from "../actions/errorsCore";
 import { writeAuditLog } from "../audit/log";
 import { deleteChannelHistory } from "./chatSessions";
+import { channelLinkReverifyDeadlineMs, isChannelLinkStale } from "./channelLinkExpiry";
 import { LINK_CODE_ALPHABET, LINK_CODE_LENGTH } from "../validation/channelLink";
 import type {
   ChannelKind,
@@ -54,6 +55,10 @@ function toSummary(link: ChannelLink): ChannelLinkSummary {
     externalId: link.externalId,
     linkedAt: link.linkedAt.toDate().toISOString(),
     lastMessageAt: link.lastMessageAt ? link.lastMessageAt.toDate().toISOString() : null,
+    status: isChannelLinkStale(link.linkedAt, link.lastMessageAt) ? "expired" : "active",
+    reverifyBy: new Date(
+      channelLinkReverifyDeadlineMs(link.linkedAt, link.lastMessageAt)
+    ).toISOString(),
   };
 }
 
@@ -76,8 +81,14 @@ export async function createLinkCodeForUid(
 ): Promise<IssuedLinkCode> {
   const now = Timestamp.now();
 
+  // An expired link (issue #68, ADR #41) does not block a fresh code — that
+  // *is* the renewal path, and redeemLinkCode already overwrites a same-uid
+  // link with no extra confirmation. Only a still-active link blocks this,
+  // matching the original reasoning in the comment above (issue #26): no
+  // point in a live bearer credential for a link that needs no renewal yet.
   const links = await listChannelLinksForUid(uid);
-  if (links.some((link) => link.channel === channel)) {
+  const existingForChannel = links.find((link) => link.channel === channel);
+  if (existingForChannel && existingForChannel.status === "active") {
     throw new ActionError("הערוץ כבר מקושר לחשבון. נתקו את הקישור הקיים לפני יצירת קישור חדש.");
   }
 
@@ -186,7 +197,11 @@ export async function redeemLinkCode(
       lastMessageAt: null,
     });
     tx.update(codeRef, { usedAt: now });
-    return { uid: codeDoc.uid, linkedAt: now.toDate().toISOString() };
+    return {
+      uid: codeDoc.uid,
+      linkedAt: now.toDate().toISOString(),
+      reverifyBy: new Date(channelLinkReverifyDeadlineMs(now, null)).toISOString(),
+    };
   });
 
   // Re-linking may hand this number to a different account, so any earlier
@@ -209,19 +224,28 @@ export async function redeemLinkCode(
     externalId,
     linkedAt: link.linkedAt,
     lastMessageAt: null,
+    status: "active",
+    reverifyBy: link.reverifyBy,
   };
 }
 
 // The uid lookup every inbound message goes through. Returns null rather than
 // throwing: "not linked" is an ordinary state the webhook answers with an
-// explanatory message, not an error.
+// explanatory message, not an error. A stale link (issue #68, ADR #41) is
+// treated exactly the same as "never linked" — same null, same reply — so a
+// recycled number does not silently keep resolving to its previous owner,
+// and so an unauthenticated sender learns nothing new (no distinct message
+// for "expired" vs "never linked", consistent with ADR #29's uniform-failure
+// principle).
 export async function resolveUidForChannel(
   channel: ChannelKind,
   externalId: string
 ): Promise<string | null> {
   const snap = await adminDb.collection(LINKS).doc(buildChannelKey(channel, externalId)).get();
   if (!snap.exists) return null;
-  return (snap.data() as ChannelLink).uid;
+  const link = snap.data() as ChannelLink;
+  if (isChannelLinkStale(link.linkedAt, link.lastMessageAt)) return null;
+  return link.uid;
 }
 
 // Best-effort activity stamp for the "last message" column in /settings

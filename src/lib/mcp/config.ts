@@ -22,3 +22,18 @@ export const RATE_LIMITS = {
 } as const;
 
 export type RateLimitBucket = keyof typeof RATE_LIMITS;
+
+// Periodic re-verification for channelLinks (docs/ROADMAP.md issue #68,
+// docs/DECISIONS.md ADR #41). Two independent clocks; either one elapsing
+// forces the sender through the full link flow again (Google sign-in in
+// /settings + a fresh WhatsApp code) — see src/lib/services/channelLinkExpiry.ts.
+//   maxAgeDays — hard cap since the last (re)verification, checked regardless
+//                of activity. Without this, a recycled number that the new
+//                holder keeps messaging would never re-prompt: activity alone
+//                keeps resetting inactivityDays below.
+//   inactivityDays — shorter cap since the last inbound message, for the more
+//                    common case of a recycled number that goes quiet.
+export const CHANNEL_LINK_REVERIFY = {
+  maxAgeDays: 30,
+  inactivityDays: 14,
+} as const;
