@@ -123,6 +123,40 @@ describe("extractInboundMessages", () => {
     ).toEqual([]);
   });
 
+  it("extracts a reply-button tap as text, same as typed input (issue #75)", () => {
+    const messages = extractInboundMessages(
+      payload({
+        messages: [
+          {
+            from: "972501234567",
+            id: "wamid.button",
+            type: "interactive",
+            interactive: { type: "button_reply", button_reply: { id: "relink_confirm", title: "כן" } },
+          },
+        ],
+      })
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.text).toBe("כן");
+  });
+
+  it("falls through to text: null for a non-button_reply interactive message", () => {
+    const messages = extractInboundMessages(
+      payload({
+        messages: [
+          {
+            from: "972501234567",
+            id: "wamid.list",
+            type: "interactive",
+            interactive: { type: "list_reply" },
+          },
+        ],
+      })
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.text).toBeNull();
+  });
+
   it("caps an oversized body instead of rejecting the delivery", () => {
     const messages = extractInboundMessages(
       payload({

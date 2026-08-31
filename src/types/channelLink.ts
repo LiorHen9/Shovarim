@@ -63,3 +63,17 @@ export interface IssuedLinkCode {
   code: string;
   expiresAt: string;
 }
+
+// channelRelinkConfirmations/{channelKey} — issue #75. Holds a redeemed-but-
+// not-yet-applied code while we wait for the sender to confirm they want to
+// move this number away from the account it is linked to now. At most one
+// per channelKey, mirroring channelLinks itself. See docs/DATA_MODEL.md.
+export interface ChannelRelinkConfirmation {
+  channelKey: string;
+  channel: ChannelKind;
+  externalId: string;
+  code: string;
+  existingUid: string;
+  createdAt: Timestamp;
+  expiresAt: Timestamp;
+}

@@ -100,3 +100,50 @@ export async function sendWhatsAppCtaUrl(
 
   return true;
 }
+
+// Real WhatsApp reply buttons (issue #75) — "interactive"/"button" rather
+// than cta_url above: these round-trip an id/title pair back on the webhook
+// (interactive.button_reply) instead of opening a URL, which is what a
+// yes/no confirmation needs. Same drop-when-unconfigured contract as the
+// other two senders.
+export async function sendWhatsAppReplyButtons(
+  to: string,
+  body: string,
+  buttons: { id: string; title: string }[]
+): Promise<boolean> {
+  const config = getOutboundConfig();
+  if (!config) {
+    console.warn("[whatsapp] outbound not configured — reply dropped");
+    return false;
+  }
+
+  const response = await fetch(`${config.graphBaseUrl}/${config.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: { text: body.slice(0, MAX_INTERACTIVE_BODY_LENGTH) },
+        action: {
+          buttons: buttons.map((button) => ({
+            type: "reply",
+            reply: { id: button.id, title: button.title },
+          })),
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new WhatsAppSendError(response.status, await response.text().catch(() => ""));
+  }
+
+  return true;
+}

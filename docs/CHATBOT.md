@@ -29,7 +29,9 @@
 | `src/lib/services/{cards,usage,balance,cardLists}.ts` | שכבת השירות (Admin SDK, uid כפרמטר) — משותפת בין MCP tools ל-Server Actions |
 | `src/lib/services/rateLimit.ts` | `checkAndConsumeRateLimit` — fixed-window rate limit פר-uid (`rateLimits/{uid}`) |
 | `src/types/auditLog.ts` | טיפוס רשומת audit log לקריאות tool |
-| `src/lib/services/channelLinks.ts` | **הערוץ→uid** — יצירה/פדיון של קוד קישור, `resolveUidForChannel`, `touchChannelLink` |
+| `src/lib/services/channelLinks.ts` | **הערוץ→uid** — יצירה/פדיון של קוד קישור, `resolveUidForChannel`, `touchChannelLink`; `redeemLinkCode` זורק `RelinkConfirmationRequiredError` כשקוד עומד לדרוס קישור של חשבון אחר (issue #75) |
+| `src/lib/services/channelRelinkConfirmations.ts` | מצב-ביניים "כן/לא" לפני מעבר בעלות על מספר מקושר (issue #75, `docs/DECISIONS.md` ADR #40) |
+| `src/lib/utils/mask.ts` | `maskEmail`/`maskPhone` — מיסוך להודעת אישור ה-relink |
 | `src/lib/validation/channelLink.ts` | נרמול E.164, פורמט קוד ה-base32, `channelKey` |
 | `src/actions/channelLink.ts` + `src/components/settings/ChannelLinksSection.tsx` | הצד המאומת: הפקת קוד ב-`/settings`, רשימת ערוצים, ניתוק |
 | `src/app/api/whatsapp/webhook/route.ts` | ה-webhook (5.5.b) — handshake, חתימה, דדופליקציה, שליחת התשובה |
@@ -87,6 +89,7 @@
 - **הנחיה ברמת system prompt נגד הזיה** — לא מנגנון אכיפה, רק הנחיה טקסטואלית.
 - **Rate limiting per-uid, שני buckets** — `rateLimits/{subjectId}` (fixed window). `tools`: 30 קריאות/5 דקות, נאכף בתוך `withToolExecution` לפני כל handler; חריגה חוזרת כ-tool error (`isError: true`), לא כשגיאת פרוטוקול. `turns`: 12 הודעות/5 דקות, נאכף פעם אחת בראש כל הודעה נכנסת בערוץ webhook — כולל שיחה בלי שום קריאת tool. מספר שאינו מקושר נמדד לפי `channelKey` (אין uid, וזה משטח ניחוש קודי הקישור). ADR #21/#30.
 - **אישור מפורש לפעולות הרסניות** (שלב 5.4) — `deleteCard`/`deleteUsageEntry` דורשים `confirmed: true` בסכימה, וה-system prompt מנחה לשאול בטקסט חופשי ולחכות לתשובה חיובית מפורשת לפני הקריאה. אם `confirmed` הוא `false`, ה-handler מחזיר tool error שמסביר למודל לשאול קודם. **זו לא אכיפה קשיחה** — המודל הוא זה שממלא את השדה; אין code-level gate בלולאת ה-tool-use (ADR #22, כולל האלטרנטיבה שנדחתה).
+- **אישור לפני מעבר בעלות על מספר מקושר** (issue #75, ADR #40) — בשונה מהאישור למעלה, זו כן אכיפה קשיחה ברמת קוד, לפני שהמודל בכלל נכנס לתמונה: קוד קישור שעומד לדרוס קישור קיים של חשבון **אחר** לא מתבצע מיד — `redeemLinkCode` זורק `RelinkConfirmationRequiredError`, נכתב מסמך ב-`channelRelinkConfirmations`, והערוץ מוצג עם מייל/טלפון ממוסכים של הבעלים הנוכחי + כפתורי "כן"/"לא". כל עוד אישור ממתין, ההודעה הבאה מתפרשת **רק** כ-"כן"/"לא" (`parseYesNo`, השוואת מחרוזת מדויקת) — לא כקוד חדש ולא כשאלה למודל.
 - **`ActionError` מוחזר כ-tool error, לא כקריסה** — שגיאות צפויות (לא נמצא/אין הרשאה/יתרה לא מספיקה) חוזרות למודל כ-`isError: true` והוא מסביר למשתמש; רק באגים אמיתיים נזרקים הלאה. אותה הבחנה כמו ADR #18 ל-Server Actions.
 - **חסר עדיין**: אין content moderation, אין stop sequences, אין allow/deny lists. אין semantic cache (מתוכנן, ADR #17). ב-`/chat` ו-`mcp:cli` עדיין אין מגבלת turns — ה-bucket הזה נאכף רק בערוצי webhook, שם כל הודעה מגיעה מגורם לא-מאומת; בווב ה-session cookie הוא כבר חסם כניסה.
 
@@ -103,7 +106,7 @@
 ### מה קיים בפועל (5.5.b) ומה לא
 | | סטטוס |
 |---|---|
-| מודל הנתונים (`channelLinks`/`channelLinkCodes`/`chatSessions`/`channelMessages`) + Rules | ✅ |
+| מודל הנתונים (`channelLinks`/`channelLinkCodes`/`chatSessions`/`channelMessages`/`channelRelinkConfirmations`) + Rules | ✅ |
 | הפקת קוד, פדיון, רשימת ערוצים, ניתוק, audit log | ✅ |
 | UI ב-`/settings` | ✅ |
 | מחיקת חשבון + ייצוא מכסים את הערוצים ואת השיחות | ✅ |
@@ -143,8 +146,8 @@
 ## מסמכים קשורים
 
 - `docs/ROADMAP.md` Phase 5 — כל השלבים (5.1 עד 5.4) כולל מה נדחה במפורש ומה מתוכנן.
-- `docs/DECISIONS.md` ADR #17 (MCP + uid בצד שרת), #19 (walking skeleton, runtime), #20 (מודל/caching/WIF), #21 (rate limiting), #22 (UI + סט tools מלא, שכבת שירות משותפת, transport in-process), **#29 (ערוץ WhatsApp — קישור, runtime, היסטוריה בצד שרת)**, **#30 (ה-webhook — שכבה ניטרלית לספק, buckets, דדופליקציה, 503 עד ההקמה)**, **#36 (`cvv`/`barcodeOrCode` הופכים לשדות tool — חריגה מ-#17/#22)**.
+- `docs/DECISIONS.md` ADR #17 (MCP + uid בצד שרת), #19 (walking skeleton, runtime), #20 (מודל/caching/WIF), #21 (rate limiting), #22 (UI + סט tools מלא, שכבת שירות משותפת, transport in-process), **#29 (ערוץ WhatsApp — קישור, runtime, היסטוריה בצד שרת)**, **#30 (ה-webhook — שכבה ניטרלית לספק, buckets, דדופליקציה, 503 עד ההקמה)**, **#36 (`cvv`/`barcodeOrCode` הופכים לשדות tool — חריגה מ-#17/#22)**, **#40 (אישור לפני מעבר בעלות על מספר מקושר — issue #75)**.
 - `docs/SECURITY.md` — threat #6 (prompt injection / פעולה בשם משתמש אחר), וסעיף "קישור ערוץ→משתמש".
-- `docs/DATA_MODEL.md` — collections `auditLog`, `channelLinks`, `channelLinkCodes`, `chatSessions`.
+- `docs/DATA_MODEL.md` — collections `auditLog`, `channelLinks`, `channelLinkCodes`, `chatSessions`, `channelRelinkConfirmations`.
 - `docs/DEPLOYMENT.md` — הקמת WIF ל-PROD, והקמת WhatsApp (Meta app, מספר, סודות).
 - `docs/PRIVACY.md` — מספר הטלפון כ-PII והעברת תוכן לצד שלישי.

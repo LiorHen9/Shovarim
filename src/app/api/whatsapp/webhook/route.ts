@@ -9,7 +9,7 @@
 // silently and the caller gets HTML where it expected JSON.
 import { getInboundConfig } from "@/lib/whatsapp/config";
 import { verifyMetaSignature } from "@/lib/whatsapp/signature";
-import { sendWhatsAppText, sendWhatsAppCtaUrl } from "@/lib/whatsapp/graph";
+import { sendWhatsAppText, sendWhatsAppCtaUrl, sendWhatsAppReplyButtons } from "@/lib/whatsapp/graph";
 import { extractInboundMessages } from "@/lib/validation/whatsapp";
 import { claimInboundMessage } from "@/lib/services/channelMessages";
 import { buildChannelKey } from "@/lib/services/channelLinks";
@@ -103,7 +103,9 @@ export async function POST(request: Request) {
     // possibly wrote data), so a retry would be strictly worse than a lost
     // reply.
     try {
-      if (reply.cta) {
+      if (reply.buttons) {
+        await sendWhatsAppReplyButtons(message.from, reply.text, reply.buttons);
+      } else if (reply.cta) {
         await sendWhatsAppCtaUrl(message.from, reply.text, reply.cta);
       } else {
         await sendWhatsAppText(message.from, reply.text);

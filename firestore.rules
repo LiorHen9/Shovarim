@@ -217,6 +217,15 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /channelRelinkConfirmations/{channelKey} {
+      // Pending "move this number to a different account?" confirmation
+      // (issue #75). Internal document written only by the webhook's
+      // deterministic layer, same trust class as channelLinks itself — a
+      // client that could read or write it could forge or leak a relink
+      // confirmation state.
+      allow read, write: if false;
+    }
+
     match /chatSessions/{channelKey} {
       // Server-side conversation history for channels that have no client to
       // hold it (the web chat keeps history client-side instead — ADR #22).
