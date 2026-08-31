@@ -6,6 +6,14 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { completeRedirectSignIn, signInWithProvider } from "@/lib/auth/authService";
 import { createSession } from "@/actions/auth";
 import { SUPPORTED_PROVIDERS, type AuthProviderId } from "@/lib/auth/providers";
@@ -44,6 +52,11 @@ export function SignInButtons() {
   // as `pendingProviderId` above for starting `false`: SSR can't know a
   // redirect is pending, so anything else would be a hydration mismatch.
   const [isCompletingRedirect, setIsCompletingRedirect] = useState(false);
+  // Shown once, right after createSession bootstraps a brand-new users/{uid}
+  // profile (issue #67) — suggests linking a phone/WhatsApp channel before
+  // the user lands on the destination they were headed to.
+  const [showPhoneNudge, setShowPhoneNudge] = useState(false);
+  const [pendingDestination, setPendingDestination] = useState("/dashboard");
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -76,9 +89,17 @@ export function SignInButtons() {
         }
         const idToken = await user.getIdToken();
         stage = "create-session";
-        await createSession(idToken);
-        router.push(searchParams.get("next") ?? "/dashboard");
-        router.refresh();
+        const { isNewUser } = await createSession(idToken);
+        const destination = searchParams.get("next") ?? "/dashboard";
+        if (isNewUser) {
+          // Hold off on navigating until the nudge is dismissed, below.
+          setIsCompletingRedirect(false);
+          setPendingDestination(destination);
+          setShowPhoneNudge(true);
+        } else {
+          router.push(destination);
+          router.refresh();
+        }
       } catch (error) {
         const code = toAuthErrorCode(error);
         console.error(`sign-in failed at ${stage} (${code})`, error);
@@ -103,6 +124,15 @@ export function SignInButtons() {
     void completeSignIn();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Shared by both dialog buttons and by Escape/outside-click (via
+  // onOpenChange below) — dismissing the nudge without a destination would
+  // strand the user on a login page that already finished signing them in.
+  function dismissPhoneNudge(goToSettings: boolean) {
+    setShowPhoneNudge(false);
+    router.push(goToSettings ? "/settings" : pendingDestination);
+    router.refresh();
+  }
 
   async function handleSignIn(providerId: AuthProviderId) {
     setPendingProviderId(providerId);
@@ -152,6 +182,30 @@ export function SignInButtons() {
           </Button>
         ))}
       </div>
+      <Dialog
+        open={showPhoneNudge}
+        onOpenChange={(open) => {
+          // Escape / outside-click reaches here with open=false — treat it
+          // the same as "אולי מאוחר יותר" so the user is never left stranded
+          // without a destination.
+          if (!open) dismissPhoneNudge(false);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>חברו את הוואטסאפ שלכם</DialogTitle>
+            <DialogDescription>
+              קבלו תזכורות ועדכונים ישירות לוואטסאפ. אפשר לחבר את המספר בכל שלב דרך ההגדרות.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => dismissPhoneNudge(false)}>
+              אולי מאוחר יותר
+            </Button>
+            <Button onClick={() => dismissPhoneNudge(true)}>מעבר להגדרות</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

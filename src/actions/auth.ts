@@ -9,8 +9,11 @@ import type { AuthProviderId } from "@/lib/auth/providers";
 // Called right after a successful client-side sign-in. Verifies the fresh ID
 // token, mints a long-lived session cookie for SSR route protection
 // (src/middleware.ts + app/(protected)/layout.tsx), and makes sure a
-// users/{uid} profile document exists (first-login bootstrap).
-export async function createSession(idToken: string): Promise<void> {
+// users/{uid} profile document exists (first-login bootstrap). `isNewUser`
+// tells the caller whether that bootstrap just created the profile, so the
+// UI can nudge a brand-new user to link a phone number (issue #67) without
+// needing a separate "have they seen this" flag.
+export async function createSession(idToken: string): Promise<{ isNewUser: boolean }> {
   const decoded = await adminAuth.verifyIdToken(idToken);
 
   // Firebase requires the ID token to have been issued within the last 5
@@ -33,7 +36,8 @@ export async function createSession(idToken: string): Promise<void> {
     path: "/",
   });
 
-  await ensureUserProfile(decoded);
+  const isNewUser = await ensureUserProfile(decoded);
+  return { isNewUser };
 }
 
 export async function clearSession(): Promise<void> {
@@ -49,10 +53,10 @@ interface DecodedForProfile {
   firebase: { sign_in_provider: string };
 }
 
-async function ensureUserProfile(decoded: DecodedForProfile): Promise<void> {
+async function ensureUserProfile(decoded: DecodedForProfile): Promise<boolean> {
   const userRef = adminDb.collection("users").doc(decoded.uid);
   const snap = await userRef.get();
-  if (snap.exists) return;
+  if (snap.exists) return false;
 
   const providerId: AuthProviderId = decoded.firebase.sign_in_provider.startsWith("apple")
     ? "apple"
@@ -75,4 +79,6 @@ async function ensureUserProfile(decoded: DecodedForProfile): Promise<void> {
     fcmTokens: [],
     deletionRequestedAt: null,
   });
+
+  return true;
 }
