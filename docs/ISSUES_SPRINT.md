@@ -287,18 +287,18 @@ https://github.com/LiorHen9/Shovarim/issues/66
 
 ---
 
-## 20. ☐ #67 — פופאפ אחרי כניסה ראשונה: הצעה לחבר מספר טלפון
+## 20. ✅ #67 — פופאפ אחרי כניסה ראשונה: הצעה לחבר מספר טלפון
 https://github.com/LiorHen9/Shovarim/issues/67
 
-**קבצים**: `src/actions/auth.ts` (`createSession`, `ensureUserProfile`), `src/components/auth/SignInButtons.tsx:71-81`, `src/components/ui/dialog.tsx`, `src/components/lists/ShareListDialog.tsx` (דפוס Dialog לשימוש חוזר), `src/components/settings/ChannelLinksSection.tsx`, `src/app/(protected)/settings/page.tsx`.
+**קבצים**: `src/actions/auth.ts` (`createSession`, `ensureUserProfile`), `src/components/auth/SignInButtons.tsx`.
 
-**ממצא**: `ensureUserProfile` (`src/actions/auth.ts`) כבר בודק `if (snap.exists) return;` לפני יצירת מסמך `users/{uid}` חדש — זו בדיוק ההפרדה "משתמש חדש לגמרי" מול "כניסה חוזרת", בלי שום צורך בשדה Firestore חדש: מספיק שה-server actions (`ensureUserProfile`/`createSession`, כרגע `void`) יחזירו boolean `isNewUser`. מכיוון שה-Firestore existence check הוא חד-פעמי במהותו (המסמך נוצר פעם אחת בלבד לכל uid), אין סיכון ש-boolean כזה "ידלוף" שוב בכניסה הבאה — לא נדרש שדה נוסף כמו `hasSeenPhoneLinkNudge` כדי למנוע הצגה חוזרת.
+**ממצא**: `ensureUserProfile` כבר בדק `if (snap.exists) return;` לפני יצירת מסמך `users/{uid}` חדש — זו בדיוק ההפרדה "משתמש חדש לגמרי" מול "כניסה חוזרת", בלי שום צורך בשדה Firestore חדש.
 
-`SignInButtons.tsx:71-81` הוא נקודת הקריאה היחידה ל-`createSession` מיד אחרי sign-in — שם אפשר לקבל את ה-flag ולהעלות state שמציג `Dialog` (יש כבר שני דפוסים מוכנים: `ShareListDialog.tsx` ו-`ChannelLinksSection.tsx`, שניהם עם `Dialog`/`DialogContent`/`DialogHeader` של shadcn). יעד ה-CTA בפופאפ: `/settings` (שם `ChannelLinksSection` מרונדר, שורה 37 בעמוד ההגדרות).
+**תיקון**: `ensureUserProfile` מחזירה כעת `boolean` (`true` אם היא זו שיצרה את המסמך), ו-`createSession` מחזירה `{ isNewUser: boolean }` במקום `void`. ב-`SignInButtons.tsx`, מיד אחרי `createSession` — אם `isNewUser` הניווט נדחה, ובמקום זאת מוצג `Dialog` (shadcn, אותו דפוס כמו `ShareListDialog.tsx`) עם "מעבר להגדרות" (→ `/settings`, שם מרונדר `ChannelLinksSection`) ו-"אולי מאוחר יותר" (→ היעד המקורי, `next`/`/dashboard`). Escape/קליק מחוץ לדיאלוג/כפתור ה-X מנותבים דרך `onOpenChange` לאותה התנהגות כמו "אולי מאוחר יותר", כדי שלא להשאיר משתמש תקוע בלי ניווט. עמוד ה-E2E shortcut (`/e2e/sign-in`) ממשיך להתעלם מהערך המוחזר ולנווט תמיד ישירות — לא נדרש שינוי שם.
 
-**תוכנית**: (א) `ensureUserProfile`/`createSession` מחזירים `{ isNewUser: boolean }`; (ב) `SignInButtons.tsx` מציג `Dialog` מותנה ב-`isNewUser` עם כפתור "מעבר להגדרות" → `/settings`, ואפשרות "אולי מאוחר יותר"; (ג) לשקול גם לבדוק `listChannelLinksForUid` לפני הצגה — כדי לא להציע לחבר טלפון למי שכבר מחובר לערוץ WhatsApp (רלוונטי בעיקר אם/כש-issue #34 — הרשמה ראשונית דרך WhatsApp — ימומש; כרגע אין נתיב כזה אז זה לא תרחיש אמיתי היום).
+**מחוץ לתחום (בכוונה)**: לא נבדק `listChannelLinksForUid` לפני ההצגה (לדלג על מי שכבר מחובר) — אין כיום נתיב הרשמה חדש שמגיע כבר מחובר ל-WhatsApp (תלוי ב-issue #34 העתידי); ולא נוסף שדה Firestore כמו `hasSeenPhoneLinkNudge` — קיום מסמך `users/{uid}` הוא כבר אינדיקציה חד-פעמית מספקת.
 
-**Effort**: קטן-בינוני. **Risk**: נמוך.
+**Effort**: קטן-בינוני. **Risk**: נמוך. **אימות**: `npm run typecheck && npm run lint` עברו; אין test קיים שתלוי בטיפוס ההחזרה הישן של `createSession` (`tests/e2e/helpers/auth.ts` עובר דרך `/e2e/sign-in` שמתעלם מהחזרה).
 
 ---
 
