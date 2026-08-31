@@ -10,6 +10,8 @@ export type AuditLogEventType =
   | "permission_change"
   | "channel_linked"
   | "channel_unlinked"
+  | "channel_relink_requested"
+  | "channel_relink_cancelled"
   | "list_invite_created"
   | "list_invite_accepted"
   | "list_invite_declined";

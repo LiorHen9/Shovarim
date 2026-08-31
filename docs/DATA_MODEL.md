@@ -215,6 +215,25 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 
 מומלץ להגדיר **TTL policy** על `expiresAt` (Firestore → TTL) כדי שמסמכים פגי-תוקף יימחקו אוטומטית; הלוגיקה לא נשענת על זה (קוד פג נדחה בקוד גם אם המסמך עדיין קיים) — זו היגיינת אחסון בלבד.
 
+## `channelRelinkConfirmations/{channelKey}`
+`src/types/channelLink.ts`, נגיש דרך `src/lib/services/channelRelinkConfirmations.ts` (issue #75, `docs/DECISIONS.md` ADR #40)
+```ts
+{
+  channelKey: string;
+  channel: "whatsapp";
+  externalId: string;
+  code: string;         // הקוד שטרם מומש, ממתין לאישור
+  existingUid: string;  // הבעלים הנוכחי שעומד להיות מוחלף (למיסוך בהודעה + audit)
+  createdAt: Timestamp;
+  expiresAt: Timestamp; // createdAt + 10 דקות, אותו LINK_CODE_TTL_MS כמו channelLinkCodes
+}
+```
+מצב-ביניים כש-`redeemLinkCode` מזהה שקוד עומד לדרוס קישור קיים ל-uid **אחר** מזה שהנפיק את הקוד: לפני שהמעבר קורה בפועל, הערוץ צריך לאשר "כן"/"לא" (טקסט חופשי או כפתור reply אמיתי של WhatsApp — שניהם מתאחדים לאותה בדיקה דטרמיניסטית ב-`channelChat.ts`, לפני ה-LLM). doc id = `channelKey`, בדיוק כמו `channelLinks`/`channelLinkCodes` — לכל היותר אישור ממתין אחד למספר בכל רגע.
+
+**מחלקת אמון זהה ל-`channelLinks`**: מסמך פנימי לחלוטין, `firestore.rules` חוסם קריאה וכתיבה מ-client לגמרי — לקוח שיכול היה לקרוא/לכתוב אותו יכול היה לזייף או לדלוף מצב אישור relink. נכתב/נמחק אך ורק דרך `handleInboundChannelMessage`.
+
+מומלץ להגדיר **TTL policy** על `expiresAt`, כמו ב-`channelLinkCodes` — הלוגיקה לא נשענת על זה (`getPendingRelink` דוחה מסמך פג-תוקף גם אם הוא עדיין קיים).
+
 ## `chatSessions/{channelKey}`
 `src/types/channelLink.ts`, נגיש דרך `src/lib/services/chatSessions.ts` (נכתב מ-5.5.b)
 ```ts

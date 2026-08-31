@@ -18,6 +18,16 @@ const messageSchema = z.object({
   from: z.string().min(1),
   type: z.string().optional(),
   text: z.object({ body: z.string() }).optional(),
+  // Reply-button tap (issue #75) — Meta echoes back the id/title of whichever
+  // button the sender pressed. Only button_reply is handled; other
+  // interactive subtypes (e.g. future list replies) fall through to
+  // REPLY_UNSUPPORTED_TYPE unchanged, same as any other non-text message.
+  interactive: z
+    .object({
+      type: z.string().optional(),
+      button_reply: z.object({ id: z.string(), title: z.string() }).optional(),
+    })
+    .optional(),
 });
 
 const valueSchema = z.object({
@@ -69,7 +79,15 @@ export function extractInboundMessages(payload: unknown): InboundWhatsAppMessage
         );
         if (!from.success) continue;
 
-        const body = message.type === "text" ? message.text?.body?.trim() : undefined;
+        // A button tap becomes text: "כן"/"לא" identically to free-form
+        // typing — one single path into handleInboundChannelMessage, no
+        // duplicated logic between tap and typed reply.
+        const body =
+          message.type === "text"
+            ? message.text?.body?.trim()
+            : message.type === "interactive" && message.interactive?.type === "button_reply"
+              ? message.interactive.button_reply?.title?.trim()
+              : undefined;
         messages.push({
           messageId: message.id,
           from: from.data,

@@ -20,23 +20,33 @@ import { createMcpServer } from "../mcp/mcpServer";
 import { buildSystemPrompt } from "../mcp/systemPrompt";
 import { ActionError } from "../actions/errorsCore";
 import { linkCodeSchema } from "../validation/channelLink";
+import { adminAuth } from "../firebase/adminApp";
+import { writeAuditLog } from "../audit/log";
+import { maskEmail, maskPhone } from "../utils/mask";
 import {
   buildChannelKey,
   redeemLinkCode,
   resolveUidForChannel,
   touchChannelLink,
+  RelinkConfirmationRequiredError,
 } from "./channelLinks";
+import {
+  createPendingRelink,
+  getPendingRelink,
+  deletePendingRelink,
+} from "./channelRelinkConfirmations";
 import { loadChannelHistory, saveChannelHistory } from "./chatSessions";
 import { checkAndConsumeRateLimit, RateLimitExceededError } from "./rateLimit";
 import { getAppUrl } from "../appUrl";
 import type { ChannelKind } from "../../types/channelLink";
 
 // A reply's link rides as a WhatsApp CTA-URL button (interactive message),
-// never inlined into the body text — issue #66. `cta` is only ever set on
-// the not-linked reply below; every other branch returns text alone.
+// never inlined into the body text — issue #66. `cta` and `buttons` are
+// mutually exclusive — a branch returns at most one of the two, never both.
 export interface ChannelReply {
   text: string;
   cta?: { url: string; label: string };
+  buttons?: { id: string; title: string }[];
 }
 
 const HOME_CTA = { url: getAppUrl(), label: "כניסה לאתר" };
@@ -55,6 +65,37 @@ export const REPLY_UNSUPPORTED_TYPE =
 export const REPLY_ERROR = "אירעה שגיאה בעיבוד ההודעה. אפשר לנסות שוב בעוד רגע.";
 
 const REPLY_EMPTY = "לא הצלחתי לנסח תשובה. אפשר לנסח את השאלה אחרת?";
+
+// issue #75: before a link code is allowed to move a number away from an
+// account it's already linked to, the sender is shown who currently holds it
+// (masked) and must confirm with real WhatsApp reply buttons — or the exact
+// text "כן"/"לא", which unify to the same parseYesNo check (see below).
+export const RELINK_BUTTONS = [
+  { id: "relink_confirm", title: "כן" },
+  { id: "relink_cancel", title: "לא" },
+];
+
+export const REPLY_RELINK_CANCELLED = "בסדר, לא שינינו כלום. הקישור הקיים נשאר כפי שהיה.";
+
+export const REPLY_RELINK_REPROMPT = 'לא הבנתי — אפשר לענות "כן" או "לא"?';
+
+function buildRelinkConfirmText(maskedEmail: string, maskedPhone: string): string {
+  return (
+    `המספר הזה כבר מקושר לחשבון אחר (${maskedEmail}, ${maskedPhone}).\n` +
+    "לקשר אותו לחשבון הזה במקום זאת ולמחוק את היסטוריית השיחה של החשבון הקודם? כן/לא"
+  );
+}
+
+// Pure string match, no fuzzy matching, no LLM — the whole point of this
+// branch is a deterministic gate before an account-changing write. A button
+// tap reaches here as literal text too (see extractInboundMessages), so
+// typing and tapping go through the exact same check.
+export function parseYesNo(text: string): "confirm" | "cancel" | null {
+  const trimmed = text.trim();
+  if (trimmed === "כן") return "confirm";
+  if (trimmed === "לא") return "cancel";
+  return null;
+}
 
 export interface InboundChannelMessage {
   channel: ChannelKind;
@@ -83,6 +124,37 @@ export async function handleInboundChannelMessage({
     throw error;
   }
 
+  // A pending relink confirmation takes over the entire message: it is
+  // interpreted only as "כן"/"לא"/neither, never as a code or a question for
+  // the model (issue #75). This sits before the code check so a reply typed
+  // while a confirmation is outstanding can't be misread as a fresh code.
+  const pending = await getPendingRelink(channelKey);
+  if (pending) {
+    const verdict = parseYesNo(text);
+    if (verdict === "confirm") {
+      await deletePendingRelink(channelKey);
+      try {
+        await redeemLinkCode(pending.channel, pending.externalId, pending.code, { confirmed: true });
+        return { text: REPLY_LINKED };
+      } catch (error) {
+        if (error instanceof ActionError) return { text: error.message };
+        throw error;
+      }
+    }
+    if (verdict === "cancel") {
+      await deletePendingRelink(channelKey);
+      await writeAuditLog({
+        uid: pending.existingUid,
+        eventType: "channel_relink_cancelled",
+        channel,
+        paramsSummary: channelKey,
+        result: "success",
+      });
+      return { text: REPLY_RELINK_CANCELLED };
+    }
+    return { text: REPLY_RELINK_REPROMPT, buttons: RELINK_BUTTONS };
+  }
+
   // Code check comes before the linked/unlinked split so that a user who is
   // already linked can still move this number to another account by sending a
   // fresh code — the re-link ADR #29 explicitly allows. A message that merely
@@ -95,6 +167,21 @@ export async function handleInboundChannelMessage({
       await redeemLinkCode(channel, externalId, code.data);
       return { text: REPLY_LINKED };
     } catch (error) {
+      if (error instanceof RelinkConfirmationRequiredError) {
+        await createPendingRelink(channelKey, channel, externalId, code.data, error.existingUid);
+        await writeAuditLog({
+          uid: error.existingUid,
+          eventType: "channel_relink_requested",
+          channel,
+          paramsSummary: channelKey,
+          result: "success",
+        });
+        const existingUser = await adminAuth.getUser(error.existingUid);
+        return {
+          text: buildRelinkConfirmText(maskEmail(existingUser.email ?? ""), maskPhone(externalId)),
+          buttons: RELINK_BUTTONS,
+        };
+      }
       if (!(error instanceof ActionError)) throw error;
       if (!uid) return { text: error.message };
     }

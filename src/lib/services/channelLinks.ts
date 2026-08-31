@@ -107,14 +107,34 @@ export async function createLinkCodeForUid(
   throw new ActionError("יצירת קוד הקישור נכשלה, נסו שוב");
 }
 
+// Thrown mid-transaction when a code would move a number away from an
+// account *other* than the one it's already linked to, and the caller hasn't
+// passed { confirmed: true } yet — see options below. Carries the existing
+// owner's uid so channelChat.ts can build the confirmation prompt without a
+// second read.
+export class RelinkConfirmationRequiredError extends Error {
+  constructor(public readonly existingUid: string) {
+    super("relink confirmation required");
+  }
+}
+
 // Redeems a code on behalf of an inbound channel message. Single transaction:
 // two webhook events racing with the same code must not link two different
 // external ids. Reads come first (Firestore requires all reads before writes
 // in a transaction).
+//
+// options.confirmed is the only door past a relink conflict (issue #75): it
+// is set only by the internal retry in channelChat.ts, after the sender has
+// already replied "yes" to the confirmation prompt built from
+// RelinkConfirmationRequiredError. There is no separate peek before the
+// transaction — that would open a race window between the check and the
+// write — so the conflict is detected here, inside the same transaction that
+// would otherwise perform the overwrite.
 export async function redeemLinkCode(
   channel: ChannelKind,
   externalId: string,
-  code: string
+  code: string,
+  options?: { confirmed?: boolean }
 ): Promise<ChannelLinkSummary> {
   const channelKey = buildChannelKey(channel, externalId);
   const codeRef = adminDb.collection(CODES).doc(code);
@@ -126,6 +146,7 @@ export async function redeemLinkCode(
   // handles by writing plain literals and casting on read.
   const link = await adminDb.runTransaction(async (tx) => {
     const codeSnap = await tx.get(codeRef);
+    const existingLinkSnap = await tx.get(linkRef);
     const now = Timestamp.now();
 
     // One message for every failure mode: an inbound sender is unauthenticated
@@ -138,6 +159,19 @@ export async function redeemLinkCode(
     if (codeDoc.usedAt !== null) throw invalid;
     if (codeDoc.expiresAt.toMillis() <= now.toMillis()) throw invalid;
     if (codeDoc.channel !== channel) throw invalid;
+
+    // A code redeemed while this number is already linked to a *different*
+    // account is a candidate account takeover, not necessarily a legitimate
+    // "move this phone to my other account" — the sender only proved
+    // possession of the number, and the code alone proves nothing about who
+    // used to own it. Confirmation is required before the overwrite proceeds,
+    // unless the caller already collected it (options.confirmed).
+    if (existingLinkSnap.exists) {
+      const existingLink = existingLinkSnap.data() as ChannelLink;
+      if (existingLink.uid !== codeDoc.uid && !options?.confirmed) {
+        throw new RelinkConfirmationRequiredError(existingLink.uid);
+      }
+    }
 
     // Overwriting an existing link is intentional: the sender proved
     // possession of the external id (the message came from it) and the code

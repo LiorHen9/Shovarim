@@ -251,6 +251,20 @@ issue #69. הבקשה בקשה לחסום שיתוף עם מספר שכבר חב
 
 **נשאר פתוח**: `cards.spec.ts` רץ ללא `test.describe.configure`, והבדיקה הראשונה שם לוקחת ~29 שניות גם על שרת חם — קרוב מדי ל-timeout ברירת המחדל של 30 שניות. לא שונה כאן כי זה מחוץ לתחום התיקון, אבל זה יחזור.
 
+## אישור לפני מעבר בעלות על מספר WhatsApp מקושר ✅ הושלם (2026-08-31)
+issue #75, `docs/DECISIONS.md` ADR #40. `redeemLinkCode` (ADR #29) דרס בלי אזהרה קישור קיים גם כשהוא שייך לחשבון **אחר** לגמרי — לא רק "מעבר לגיטימי בין חשבונות שלי". מכיוון שהעברה כזו גם מוחקת אוטומטית (`deleteChannelHistory`) את היסטוריית השיחה של הבעלים הקודם, זו הייתה השתלטות שקטה על חשבון.
+
+- **זיהוי בתוך הטרנזקציה של `redeemLinkCode`**: `tx.get(linkRef)` נוסף לפני ה-writes הקיימים. קישור קיים ל-uid שונה מ-`codeDoc.uid` זורק `RelinkConfirmationRequiredError(existingUid)` אלא אם `options.confirmed === true` — בלי peek נפרד לפני הטרנזקציה, כדי לא לפתוח חלון race.
+- **מצב-ביניים**: `channelRelinkConfirmations/{channelKey}` (Admin SDK בלבד, `if false` ב-Rules, TTL של 10 דקות כמו `channelLinkCodes`) — `src/lib/services/channelRelinkConfirmations.ts`.
+- **שכבה דטרמיניסטית לפני ה-LLM**: `handleInboundChannelMessage` בודק אישור ממתין **לפני** בדיקת קוד קישור. כל עוד יש אישור ממתין, ההודעה מתפרשת רק כ-"כן"/"לא" (`parseYesNo`) — לא כקוד, לא נכנסת ללולאת ה-agent.
+- **כפתורי reply אמיתיים של WhatsApp**: `sendWhatsAppReplyButtons` חדש (`interactive.type:"button"`, ליד `sendWhatsAppCtaUrl` של issue #66), כותרות "כן"/"לא" בדיוק. `extractInboundMessages` הורחב לחלץ `interactive.button_reply.title` כ-`text`, כך שלחיצה וטקסט חופשי עוברים דרך אותה בדיקה בדיוק — אין כפילות לוגיקה.
+- **מיסוך**: `src/lib/utils/mask.ts` חדש — `maskEmail`/`maskPhone`, כוכביות מפורשות (שונה מ-`toPhoneHint` הקיים ב-`listInvites.ts`, שנועד למטרה אחרת).
+- **Audit log**: `channel_relink_requested`/`channel_relink_cancelled` נוספו ל-`AuditLogEventType`, נכתבים תחת `existingUid`. אישור מוצלח ממשיך להירשם כ-`channel_linked` הקיים.
+
+**אימות**: `typecheck`/`lint`/`build` נקיים. `tests/unit/mask.test.ts` חדש; `tests/unit/whatsappWebhook.test.ts` הורחב ל-payload עם `interactive.button_reply` (כולל fallback ל-`text: null` לסוגי interactive אחרים). `test:rules` — 50/50 (Rules נוסף בלבד, שום קיים לא שונה). סימולציה קצה-לקצה מול Firestore/Auth emulators דרך `npm run whatsapp:sim`: קישור מספר לחשבון A → קוד של חשבון B מאותו מספר → הודעת אישור עם מייל/טלפון ממוסכים של A + לא נדרס כלום עדיין → "לא" מבטל (הקישור נשאר אצל A, נבדק ישירות ב-Firestore) → אותו תרחיש עם "כן" מעביר בפועל את הקישור ל-B ומוחק את מסמך ה-pending.
+
+**נדחה**: re-verification תקופתי/step-up authentication כללי (זה threat שונה — מיחזור מספרים, issue #68, נשאר פתוח); חסימה מוחלטת של relink כשיש קישור אחר (הייתה שוברת את תרחיש ה"מעבר הלגיטימי" של ADR #29).
+
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.
 (הערה: החלטת ה-hosting/deploy טופלה מוקדם יותר ב-Phase 3.3 — לא כאן, בניגוד למה שנרמז במקור ב-ADR #5.)
