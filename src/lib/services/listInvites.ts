@@ -1,25 +1,24 @@
-// Shareable list invitations (docs/DECISIONS.md ADR #38, superseding ADR #37
-// decisions 1 and 3) — the path that shares a list with someone who may not
-// have an account yet.
+// Shareable list invitations (docs/DECISIONS.md ADR #39, which restores the
+// two-fact rule of ADR #37 that ADR #38 had dropped) — the path that shares a
+// list with someone who may not have an account yet.
 //
-// ADR #37 required two independent facts before an invite became a membership:
-// the code proved "an invite was addressed to this number", and channelLinks
-// proved "the number is mine". Since the owner no longer names a number, the
-// first fact has nothing to bind to, and the code stands alone as a **bearer
-// credential** — whoever holds the link can join, exactly like a WhatsApp group
-// invite link. What keeps that bounded is enforced here: single use, a 48-hour
-// TTL, a cap on how many can be open at once, and the owner's ability to revoke
-// any of them.
+// Two independent facts are required before an invite becomes a membership:
+// holding the code proves "an invite was addressed to this number", and
+// channelLinks proves "that number is mine". Neither is sufficient alone, which
+// is the whole point — a link that leaks, is forwarded, or is screenshotted is
+// worthless to anyone who cannot also receive WhatsApp on the invited number.
+// The bounds ADR #38 introduced are kept on top of that rather than in place of
+// it: single use, a 48-hour TTL, a cap on open links, and owner revocation.
 //
-// Linking a WhatsApp number is still part of the invitee's flow, but its role
-// changed: it is enrichment (so the owner can see who joined), not the
-// authorization step. Nothing below may treat it as one. This does not
-// contradict ADR #29 — a phone number is still never proof of identity; it is
-// simply no longer what this flow relies on.
+// This does not contradict ADR #29. A phone number is still never proof of
+// identity by itself; what authorizes here is channelLinks, which was built
+// precisely so that a number becomes attached to a uid only by a message the
+// account holder actually sent.
 //
-// Codes written before this change carry a non-null `phone` and are still
-// honoured on ADR #37's original terms until they expire; every branch that
-// cares splits on `invite.phone === null`.
+// Codes written during the ADR #38 window carry `phone: null` and are bearer
+// credentials — they are honoured on those weaker terms until they expire
+// rather than being invalidated, and every branch that cares splits on
+// `invite.phone === null`.
 //
 // Relative imports for the same reason as ./channelLinks.ts: scripts run this
 // under tsx, outside Next's bundler, where "@/" does not resolve.
@@ -42,16 +41,19 @@ import type {
 } from "../../types/listInvite";
 import type { ListMemberRole } from "../../types/cardListMember";
 
-// 48 hours. ADR #37 allowed 14 days because the invite was addressed to one
-// number and useless to anyone else, so a long unread window cost nothing. A
-// bearer link is different: every hour it stays live is an hour a forward or a
-// screenshot can be redeemed by a stranger. Two days still comfortably covers
-// "sent it last night, they opened it after work".
+// 48 hours. ADR #37 allowed 14 days on the reasoning that a bound invite is
+// useless to anyone but the invited number, which is true again under ADR #39 —
+// but the shorter window carried over from ADR #38 is kept deliberately. It
+// still comfortably covers "sent it last night, they opened it after work",
+// and it bounds the one case binding does not: the invited number itself
+// changing hands, or a link left live and forgotten.
 export const INVITE_TTL_MS = 48 * 60 * 60 * 1000;
 
-// Every click of the share button mints a code, and each open one is live until
-// used or expired. Capping them keeps a slipped finger from leaving a dozen
-// redeemable links behind; the owner clears them from the dialog.
+// Each open code is live until used or expired. Re-sharing with the same number
+// supersedes rather than accumulates (see createListInvite), so this cap is
+// about breadth — how many different people can have an outstanding invite to
+// one list at once — not about repeat clicks. The owner clears them from the
+// dialog.
 const MAX_OPEN_INVITES = 10;
 
 // New shares always start here. Promotion to "manager" is a separate, deliberate
@@ -73,10 +75,10 @@ function generateCode(): string {
   return code;
 }
 
-// Last 4 digits only, and only for legacy phone-bound invites. The preview is
-// readable by anyone holding the link, so the full invited number must not
-// travel with it — but the invitee needs enough to recognize which of their
-// numbers to link.
+// Last 4 digits only. The preview is readable by anyone holding the link, so
+// the full invited number must not travel with it — but the invitee needs
+// enough to recognize which of their numbers to link. null only for the ADR #38
+// bearer leftovers, which name no number.
 function toPhoneHint(phone: string | null): string | null {
   return phone === null ? null : phone.slice(-4);
 }
@@ -115,30 +117,56 @@ async function getListOwnedBy(listId: string, uid: string): Promise<{ name: stri
   return { name: list.name };
 }
 
-// Mints a fresh share link for the list owner. Nothing identifies a recipient —
-// the owner picks one in WhatsApp's own contact picker after this returns —
-// which is why the self-invite and already-member checks that used to live here
-// are gone: both keyed off a phone number nobody supplies any more. Their real
-// work happens at accept time anyway, where getListInviteGate resolves them
-// from the uid actually clicking.
+// Mints a share link addressed to one number. `input.phone` is already E.164 —
+// ilPhoneSchema normalized it, on this side of the boundary, from the ten
+// Israeli digits the form collects.
 //
-// Earlier open invites are deliberately left alone. ADR #37 closed them on
-// every new invite because "(listId, phone)" identified one recipient and a
-// second code for the same one meant "resend". Without a recipient there is no
-// such key, and sharing with three people in a row is the normal case.
+// The two guards below are convenience, not security: acceptListInvite decides
+// the same questions again from the uid that actually shows up. Resolving them
+// here only spares the owner from sending a link that could never be redeemed —
+// and both stay silent about numbers they cannot resolve, so neither turns into
+// an oracle for whether an arbitrary number has an account.
 export async function createListInvite(
   uid: string,
-  input: { listId: string },
+  input: { listId: string; phone: string },
   buildInviteUrl: (code: string) => string
 ): Promise<IssuedListInvite> {
   const list = await getListOwnedBy(input.listId, uid);
   const now = Timestamp.now();
 
+  const invitedUid = await resolveUidForChannel("whatsapp", input.phone);
+  if (invitedUid === uid) throw new ActionError("אי אפשר לשתף רשימה עם עצמך");
+  if (invitedUid !== null) {
+    const memberSnap = await adminDb
+      .collection("cardLists")
+      .doc(input.listId)
+      .collection("members")
+      .doc(invitedUid)
+      .get();
+    if (memberSnap.exists) throw new ActionError("הרשימה כבר משותפת עם המספר הזה");
+  }
+
   const open = await getOpenInvites(input.listId, now);
-  if (open.length >= MAX_OPEN_INVITES) {
+
+  // Sharing again with the same number means "resend", not "a second live
+  // code" — ADR #37's dedupe, restored along with the binding that gives
+  // (listId, phone) its meaning as a key. Superseding before the cap check also
+  // keeps a resend from counting against a limit it does not actually grow.
+  const superseded = open.filter((invite) => invite.phone === input.phone);
+  if (open.length - superseded.length >= MAX_OPEN_INVITES) {
     throw new ActionError(
       `יש כבר ${MAX_OPEN_INVITES} לינקים פתוחים לרשימה זו. בטלו לינק קיים לפני יצירת חדש.`
     );
+  }
+  if (superseded.length > 0) {
+    const batch = adminDb.batch();
+    for (const invite of superseded) {
+      batch.update(adminDb.collection(INVITES).doc(invite.code), {
+        status: "declined" satisfies ListInviteStatus,
+        usedAt: now,
+      });
+    }
+    await batch.commit();
   }
 
   const expiresAt = Timestamp.fromMillis(now.toMillis() + INVITE_TTL_MS);
@@ -150,7 +178,7 @@ export async function createListInvite(
         code,
         listId: input.listId,
         role: DEFAULT_INVITE_ROLE,
-        phone: null,
+        phone: input.phone,
         invitedBy: uid,
         status: "pending" satisfies ListInviteStatus,
         createdAt: now,
@@ -169,6 +197,7 @@ export async function createListInvite(
       const inviteUrl = buildInviteUrl(code);
       return {
         code,
+        phone: input.phone,
         inviteUrl,
         shareText: buildShareText(list.name, inviteUrl),
         expiresAt: expiresAt.toDate().toISOString(),
@@ -181,16 +210,18 @@ export async function createListInvite(
   throw new ActionError("יצירת ההזמנה נכשלה, נסו שוב");
 }
 
-// One wording now. ADR #37 branched it on whether the number was already known
-// to the system, which is unanswerable without a number — and it was framing
-// only, so nothing about what actually happens changes.
+// One wording, for both generations. ADR #37 branched it on whether the number
+// was already known to the system; that was framing only and told the recipient
+// nothing they had to act on. The closing line is not a plea but a description
+// of what the code enforces — forwarding the link gains the next person
+// nothing, because they cannot receive WhatsApp on the invited number.
 function buildShareText(listName: string, inviteUrl: string): string {
   return [
     `שיתפתי איתך את הרשימה "${listName}" ב-Shovarim.`,
     "לאישור ההצטרפות (תתבקש/י להתחבר עם חשבון Google בפעם הראשונה):",
     inviteUrl,
     "",
-    "הלינק אישי, חד-פעמי ותקף ל-48 שעות — אין להעביר אותו הלאה.",
+    "הלינק משויך למספר הזה ותקף ל-48 שעות — רק חשבון שמקושר אליו יוכל לאשר.",
   ].join("\n");
 }
 
@@ -205,18 +236,27 @@ async function getOpenInvites(listId: string, now: Timestamp): Promise<ListInvit
     .filter((invite) => invite.status === "pending" && !isExpired(invite, now));
 }
 
-// Whether the invitee is required to prove a WhatsApp number before joining.
-// With the bot number unset, buildWhatsAppLinkCodeUrl returns null and there is
-// no way for anyone to link one — so demanding it would strand every invitee
-// permanently. Checked here rather than only in the UI: the accept action is
-// directly POST-able (ADR #25), so the two sides must agree from the server's
-// own view of the environment, not the client's claim about it.
+// Whether a WhatsApp number can be linked at all right now. With the bot number
+// unset, buildWhatsAppLinkCodeUrl returns null and nobody can link one.
+//
+// This relaxes the requirement for ADR #38 bearer leftovers only, where the
+// number was never authorization to begin with and demanding it would strand
+// the invitee for nothing. It deliberately does NOT relax anything for a
+// phone-bound invite: there the link *is* the authorization, and letting a
+// missing env var wave it through would be a fail-open — a misconfigured
+// deployment would silently turn every bound invite into a bearer one. Such a
+// deployment simply cannot complete an invite, which is the correct outcome.
+//
+// Checked here rather than only in the UI: the accept action is directly
+// POST-able (ADR #25).
 function whatsAppLinkingAvailable(): boolean {
   return (process.env.NEXT_PUBLIC_WHATSAPP_BOT_PHONE?.replace(/\D/g, "") ?? "").length > 0;
 }
 
-// The WhatsApp number this account has linked, or null. Enrichment only since
-// ADR #38 — never an authorization answer.
+// The WhatsApp number this account has linked, or null. Used only on the ADR #38
+// bearer path, where it is enrichment rather than an authorization answer; a
+// bound invite asks the opposite question (resolveUidForChannel, from the
+// invited number to a uid) and never consults this.
 async function getLinkedWhatsAppNumber(uid: string): Promise<string | null> {
   const links = await listChannelLinksForUid(uid);
   return links.find((link) => link.channel === "whatsapp")?.externalId ?? null;
@@ -264,22 +304,30 @@ export async function getListInviteGate(uid: string, code: string): Promise<List
     .get();
   if (memberSnap.exists) return "already_member";
 
-  if (invite.phone !== null) {
-    // Legacy phone-bound invite (ADR #37) — unchanged terms.
-    const linkedUid = await resolveUidForChannel("whatsapp", invite.phone);
-    if (linkedUid === uid) return "ready";
-    // The invited number belongs to nobody yet → this account can link it.
-    // If it belongs to someone else, this account simply cannot accept; both
-    // read as "link that number first" from here, and the distinction is not
-    // surfaced (it would be an oracle for whether a number is registered).
-    if (linkedUid === null) return "needs_channel_link";
-    return "linked_to_other_number";
+  if (invite.phone === null) {
+    // Bearer leftover from the ADR #38 window: there is no number to match, so
+    // any linked one will do and the question is only "do we have one to
+    // record". Not reachable for invites minted since.
+    if (!whatsAppLinkingAvailable()) return "ready";
+    return (await getLinkedWhatsAppNumber(uid)) === null ? "needs_channel_link" : "ready";
   }
 
-  // Bearer invite (ADR #38). Any linked WhatsApp number will do — the question
-  // is no longer "is this the invited number" but "do we have one to record".
-  if (!whatsAppLinkingAvailable()) return "ready";
-  return (await getLinkedWhatsAppNumber(uid)) === null ? "needs_channel_link" : "ready";
+  // The bound case (ADR #39): the visitor may accept only from the account that
+  // has proved the invited number.
+  const linkedUid = await resolveUidForChannel("whatsapp", invite.phone);
+  if (linkedUid === uid) return "ready";
+  // The invited number belongs to nobody yet → this account can link it.
+  // If it belongs to someone else, this account simply cannot accept.
+  //
+  // These are deliberately NOT collapsed into one blocked state, even though
+  // telling them apart lets the holder of a live code learn whether one
+  // specific number is registered. Collapsing them would send the second group
+  // off to run a linking flow that cannot succeed — the number is already
+  // claimed — and leave them looping. The leak is bounded to a single number
+  // the owner themselves typed, behind a 48-hour code, and cannot be run over
+  // a list. See docs/SECURITY.md for the trade in full.
+  if (linkedUid === null) return "needs_channel_link";
+  return "linked_to_other_number";
 }
 
 // Accepts an invite. Every precondition is re-checked here against Firestore —
@@ -301,14 +349,16 @@ export async function acceptListInvite(
   // creation and accept; createListInvite blocks the common case up front.
   if (invite.invitedBy === uid) throw new ActionError("אי אפשר לשתף רשימה עם עצמך");
 
-  // What proves the right to join splits by invite generation. Legacy codes
-  // keep ADR #37 decision 3 exactly: holding the code proves an invite was
-  // addressed to a number, and only channelLinks proves that number belongs to
-  // the account accepting. Bearer codes (ADR #38) are the proof themselves —
-  // there is no number to match against, so the link is collected for the
-  // owner's benefit, not as a gate. Either way it is re-derived here and never
-  // taken from the client.
-  let memberPhone: string | null = null;
+  // The load-bearing check, and the whole of ADR #39's second fact: holding the
+  // code proved an invite was addressed to a number; only channelLinks proves
+  // that number belongs to the account accepting. Re-derived here from
+  // Firestore and never taken from the client — getListInviteGate is a UI hint
+  // that a directly POSTed accept would skip entirely (ADR #25).
+  //
+  // Bearer codes from the ADR #38 window have no number to match, so for those
+  // the link is collected for the owner's benefit rather than as a gate. That
+  // branch must stay exactly as narrow as `phone === null`.
+  let memberPhone: string | null;
   if (invite.phone !== null) {
     const linkedUid = await resolveUidForChannel("whatsapp", invite.phone);
     if (linkedUid !== uid) {
@@ -320,6 +370,8 @@ export async function acceptListInvite(
     if (memberPhone === null) {
       throw new ActionError("יש לקשר מספר וואטסאפ לחשבון לפני אישור ההצטרפות");
     }
+  } else {
+    memberPhone = null;
   }
 
   const memberRef = adminDb
@@ -394,9 +446,10 @@ export async function declineListInvite(code: string, uid: string | null): Promi
 }
 
 // The owner's view of the links still live on one of their lists. Each summary
-// carries its URL and message so the dialog can reopen WhatsApp for a link that
-// was generated but never sent, rather than minting a second one — which under
-// ADR #38 would mean two redeemable credentials where the owner wanted one.
+// carries its URL and message so the dialog can reopen the recipient's chat for
+// a link that was generated but never sent, rather than minting a second one —
+// which would supersede the first and invalidate a link that may already be in
+// the recipient's hands.
 export async function listInvitesForList(
   uid: string,
   listId: string,

@@ -30,6 +30,26 @@ export const e164Schema = z
   })
   .refine((value) => E164_PATTERN.test(value), "מספר טלפון לא תקין (פורמט בינלאומי, למשל ‎+972501234567)");
 
+// What the share form asks the owner for (ADR #39): a plain Israeli number the
+// way people actually say it — ten digits starting with 0, no country code. It
+// normalizes to the very same E.164 string e164Schema produces, which is the
+// point: the number the owner types and the number the webhook later reports
+// for an inbound message have to compare equal, or the invite could never be
+// matched to the account accepting it.
+//
+// Separators are stripped rather than rejected. The UI asks for digits only,
+// but a number pasted as "050-123-4567" is the same number, and refusing it
+// teaches the owner nothing. Deliberately not restricted to 05x: 07x VoIP
+// numbers are ten digits too and can hold a WhatsApp account.
+export const ilPhoneSchema = z
+  .string()
+  .trim()
+  .transform((value) => {
+    const digits = value.replace(/[\s\-().]/g, "");
+    return /^0\d{9}$/.test(digits) ? `+972${digits.slice(1)}` : digits;
+  })
+  .refine((value) => /^\+972\d{9}$/.test(value), "מספר טלפון לא תקין (10 ספרות, למשל 0501234567)");
+
 // Uppercased before validation: a code typed in lowercase is the same code.
 export const linkCodeSchema = z
   .string()

@@ -28,9 +28,12 @@ import type {
 } from "@/types/listInvite";
 
 // Thin actions over src/lib/services/listInvites.ts (ADR #18 pattern), for the
-// list sharing flow of ADR #38. Inputs are re-parsed here because Server
+// list sharing flow of ADR #39. Inputs are re-parsed here because Server
 // Actions are directly POST-able with arbitrary payloads (ADR #25), and uid
-// always comes from the session — never as an argument.
+// always comes from the session — never as an argument. The phone number the
+// share form collects is normalized by that same re-parse, so the invite is
+// bound to the E.164 the server derived and never to a string the client
+// chose.
 
 export async function createListInviteCode(
   input: unknown

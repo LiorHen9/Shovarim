@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Loader2, MessageCircle, Share2, TrashIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { useListMembers } from "@/hooks/useListMembers";
 import { db } from "@/lib/firebase/client";
+import { createListInviteSchema } from "@/lib/validation/listInvite";
 import {
   cancelMyListInvite,
   createListInviteCode,
@@ -38,11 +41,18 @@ const roleLabelHe: Record<ListMemberRole, string> = {
   viewer: "צופה",
 };
 
-// wa.me with no phone number opens WhatsApp's contact picker with the message
-// pre-filled, so the owner chooses the recipient themselves. Deliberately not
-// buildWhatsAppLinkCodeUrl, which always targets the bot's own number.
-function buildShareUrl(text: string): string {
-  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+// wa.me addressed to the invited number opens that one chat directly, with no
+// recipient picker in between — so the message cannot land anywhere except the
+// number the invite is actually bound to. Digits only, no leading "+": wa.me
+// rejects the plus. Deliberately not buildWhatsAppLinkCodeUrl, which always
+// targets the bot's own number.
+//
+// A null phone is an ADR #38 bearer leftover; it degrades to the picker the
+// same way it always behaved, which is the only thing that makes sense for a
+// link addressed to nobody.
+function buildShareUrl(phone: string | null, text: string): string {
+  const to = phone ? phone.replace(/\D/g, "") : "";
+  return `https://wa.me/${to}?text=${encodeURIComponent(text)}`;
 }
 
 function formatExpiry(iso: string): string {
@@ -54,15 +64,20 @@ function formatExpiry(iso: string): string {
   });
 }
 
-// Sharing is one click (ADR #38): the owner names nobody, and the link is minted
-// in the background on the way to WhatsApp's contact picker. Everything else
-// here is after-the-fact management — who has access, and which links are still
-// redeemable.
+// Sharing takes one number and one click (ADR #39): the owner types the
+// recipient's Israeli mobile, and the link is minted in the background on the
+// way to that person's WhatsApp chat. The number is what binds the invite —
+// only an account that has proved it can accept — so it is the one thing the
+// owner has to supply. Everything else here is after-the-fact management: who
+// has access, and which links are still redeemable.
 export function ShareListDialog({ listId, listName }: { listId: string; listName: string }) {
   const [open, setOpen] = useState(false);
   const { members } = useListMembers(open ? listId : null);
   const [invites, setInvites] = useState<ListInviteSummary[]>([]);
   const [sharing, setSharing] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const phoneFieldId = useId();
   // Only set when the popup blocker won that round — see handleShare.
   const [blockedShareUrl, setBlockedShareUrl] = useState<string | null>(null);
 
@@ -92,30 +107,48 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
     };
   }, [open, listId]);
 
-  // The whole point of the button is that one click reaches WhatsApp, but the
-  // link does not exist until the server mints it — and a window.open() issued
-  // *after* an await has lost the user gesture, which Safari and iOS block
-  // outright. So the tab is opened synchronously, still inside the gesture, and
-  // navigated once the code arrives. If the browser refused even that
-  // (w === null), fall back to a link the user clicks themselves.
+  // The whole point of the button is that one click reaches the recipient's
+  // chat, but the link does not exist until the server mints it — and a
+  // window.open() issued *after* an await has lost the user gesture, which
+  // Safari and iOS block outright. An async function still runs synchronously
+  // up to its first await, so validation and window.open both happen inside the
+  // gesture, and the tab is navigated once the code arrives. If the browser
+  // refused even that (popup === null), fall back to a link the user clicks.
+  //
+  // This is also why the field is hand-rolled instead of react-hook-form as the
+  // rest of the project's forms are: handleSubmit resolves a promise before
+  // calling the handler, which would put window.open on the far side of an
+  // await and hand it straight to the popup blocker. The shared Zod schema —
+  // the part that actually matters, since the action re-parses the same one
+  // server-side (ADR #25) — is still the single source of truth, and safeParse
+  // is synchronous.
   async function handleShare() {
+    const parsed = createListInviteSchema.safeParse({ listId, phone });
+    if (!parsed.success) {
+      setPhoneError(parsed.error.issues[0]?.message ?? "מספר טלפון לא תקין");
+      return;
+    }
+    setPhoneError(null);
     setSharing(true);
     setBlockedShareUrl(null);
     const popup = window.open("", "_blank");
     try {
-      const result = await createListInviteCode({ listId });
+      const result = await createListInviteCode({ listId, phone });
       if ("error" in result) {
         popup?.close();
         toast.error(result.error);
         return;
       }
 
-      const shareUrl = buildShareUrl(result.shareText);
+      // result.phone, not the field: the server normalized it, and the chat
+      // opened has to be the one the invite was actually bound to.
+      const shareUrl = buildShareUrl(result.phone, result.shareText);
       if (popup) {
         popup.location.href = shareUrl;
       } else {
         setBlockedShareUrl(shareUrl);
       }
+      setPhone("");
       await reloadInvites();
     } catch {
       popup?.close();
@@ -188,10 +221,44 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
         <DialogHeader>
           <DialogTitle>שיתוף הרשימה &quot;{listName}&quot;</DialogTitle>
           <DialogDescription>
-            כל שיתוף יוצר לינק חד-פעמי שתקף ל-48 שעות. מי שמקבל אותו מצטרף כצופה, ואפשר לשנות את
-            ההרשאה כאן אחרי ההצטרפות.
+            הזינו את מספר הטלפון של מי שאיתו תרצו לשתף. הלינק שייווצר משויך למספר הזה בלבד וניתן
+            לשימוש חד-פעמי תוך 48 שעות — גם אם הוא יגיע לגורם אחר, רק חשבון שמקושר למספר יוכל לאשר.
+            המצטרף מקבל הרשאת צופה, ואפשר לשנות אותה כאן אחרי ההצטרפות.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="space-y-2">
+          <Label htmlFor={phoneFieldId}>מספר הטלפון של הנמען</Label>
+          {/* dir="ltr" on the field only: the dialog is RTL, but a phone number
+              read right-to-left is a different number. type="tel" rather than
+              "number" — a number input strips the leading zero and offers
+              spinners that mean nothing here. */}
+          <Input
+            id={phoneFieldId}
+            value={phone}
+            onChange={(event) => {
+              setPhone(event.target.value);
+              setPhoneError(null);
+            }}
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel-national"
+            dir="ltr"
+            placeholder="0501234567"
+            disabled={sharing}
+            aria-invalid={phoneError !== null}
+            aria-describedby={phoneError ? `${phoneFieldId}-error` : `${phoneFieldId}-hint`}
+          />
+          {phoneError ? (
+            <p id={`${phoneFieldId}-error`} role="alert" className="text-sm text-destructive">
+              {phoneError}
+            </p>
+          ) : (
+            <p id={`${phoneFieldId}-hint`} className="text-sm text-muted-foreground">
+              10 ספרות, ללא קידומת מדינה וללא מקפים או רווחים.
+            </p>
+          )}
+        </div>
 
         {/* No green variant exists in ui/button.tsx and one brand-coloured
             button does not justify adding one. #128C7E is WhatsApp's dark brand
@@ -225,7 +292,7 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
             aria-live="polite"
           >
             <p className="text-sm text-muted-foreground">
-              הדפדפן חסם את פתיחת וואטסאפ. הלינק נוצר — לחצו כאן כדי לפתוח אותו ולבחור נמען.
+              הדפדפן חסם את פתיחת וואטסאפ. הלינק נוצר — לחצו כאן כדי לפתוח את הצ&apos;אט עם הנמען.
             </p>
             <Button asChild variant="outline" className="w-full">
               <a href={blockedShareUrl} target="_blank" rel="noopener noreferrer">
@@ -301,10 +368,11 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
                 </div>
                 <div className="flex items-center gap-1">
                   {/* Reopens the link that already exists instead of minting a
-                      second redeemable credential for the same recipient. */}
+                      second one, which would supersede it and kill a link the
+                      recipient may already be holding. */}
                   <Button asChild variant="ghost" size="icon-sm">
                     <a
-                      href={buildShareUrl(invite.shareText)}
+                      href={buildShareUrl(invite.phone, invite.shareText)}
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label="פתיחת הלינק בוואטסאפ"

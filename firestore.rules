@@ -89,11 +89,11 @@ service cloud.firestore {
         //
         // No client calls this any more: ADR #38 removed the email invite path
         // that wrote pending member docs, and the invite flow that replaced it
-        // writes straight to "accepted" from the Admin SDK, which bypasses Rules
-        // entirely. Kept rather than tightened to `if false` because the pending
-        // docs it created still exist and are still accepted through the
-        // `update` branch below — narrowing this now would only make the two
-        // halves disagree about a shape the data still has.
+        // (now ADR #39) writes straight to "accepted" from the Admin SDK, which
+        // bypasses Rules entirely. Kept rather than tightened to `if false`
+        // because the pending docs it created still exist and are still accepted
+        // through the `update` branch below — narrowing this now would only make
+        // the two halves disagree about a shape the data still has.
         allow create: if isListOwnerCaller()
           && request.resource.data.memberUid == memberUid
           && request.resource.data.listId == listId
@@ -234,7 +234,8 @@ service cloud.firestore {
     }
 
     match /listInviteCodes/{code} {
-      // Phone-number list invitations (docs/DECISIONS.md ADR #37, issue #58).
+      // Phone-number list invitations (docs/DECISIONS.md ADR #39, restoring
+      // ADR #37's binding; issue #58).
       // Same bearer-credential class as channelLinkCodes above: the doc id *is*
       // the secret carried in the WhatsApp message, so a client read would let
       // anyone enumerate live invites and accept one meant for someone else.

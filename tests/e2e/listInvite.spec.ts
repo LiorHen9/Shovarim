@@ -4,13 +4,13 @@ import { test, expect, type APIRequestContext, type Page } from "@playwright/tes
 import { signMetaBody } from "@/lib/whatsapp/signature";
 import { signInAsTestUser } from "./helpers/auth";
 
-// docs/DECISIONS.md ADR #38 (superseding parts of ADR #37) — sharing a list
-// with one click, to a recipient the owner never names. The invite code is now
-// the whole credential, so what these tests pin down is the boundary that
-// replaced the phone binding: a code is spent by its first use, a declined code
-// stays dead, and the invitee still has to sign in and prove a WhatsApp number
-// (as enrichment, not authorization) before joining. The linking half runs
-// through the real signed webhook, the same way whatsapp.spec.ts does it.
+// docs/DECISIONS.md ADR #39 (restoring ADR #37's binding over ADR #38) —
+// sharing a list with one number and one click. The code is only half the
+// credential, so what these tests pin down is the other half: a link that
+// reaches an account which has not proved the invited number is worthless, a
+// code is spent by its first use, and a declined code stays dead. The linking
+// half runs through the real signed webhook, the same way whatsapp.spec.ts
+// does it.
 const APP_SECRET = "e2e-local-app-secret";
 const WEBHOOK = "/api/whatsapp/webhook";
 
@@ -61,9 +61,13 @@ function postDelivery(request: APIRequestContext, body: string) {
 }
 
 // A distinct number per test — the channelKey is a doc id, so a shared number
-// would make parallel runs fight over one channelLinks document.
-function uniquePhone(): string {
-  return `+9725${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
+// would make parallel runs fight over one channelLinks document. Both spellings
+// come from one draw because the two halves of every test need them to describe
+// the same number: the share form takes the local Israeli form, while the
+// webhook, channelLinks and the owner's members list all speak E.164.
+function uniquePhone(): { local: string; e164: string } {
+  const local = `05${Math.floor(10_000_000 + Math.random() * 89_999_999)}`;
+  return { local, e164: `+972${local.slice(1)}` };
 }
 
 // The share button opens WhatsApp in a real popup (synchronously, to survive
@@ -102,18 +106,32 @@ async function createList(page: Page, listName: string): Promise<string> {
   return href!;
 }
 
-// Clicks the one share button and returns the invite URL, recovered from the
-// wa.me message of the link that then appears under "לינקים פתוחים" — the code
-// is never rendered on its own, same as the channel-link flow (issue #39).
-async function issueInvite(page: Page, listPath: string): Promise<string> {
+// Types the recipient's number, clicks share, and returns the invite URL —
+// read out of the popup the button opens rather than out of the dialog's list
+// of open links. The popup carries exactly the URL the owner is handed, which
+// makes it unambiguous even on a re-share, where the list still shows for a
+// moment the earlier link that this share is about to supersede.
+async function issueInvite(page: Page, listPath: string, localPhone: string): Promise<string> {
   await stubWhatsApp(page);
   await page.goto(listPath);
   await page.getByRole("button", { name: "שיתוף", exact: true }).click();
-  await page.getByRole("button", { name: "שיתוף בוואטסאפ" }).click();
+  await page.getByLabel("מספר הטלפון של הנמען").fill(localPhone);
 
-  const openLink = page.getByRole("link", { name: "פתיחת הלינק בוואטסאפ" }).first();
-  await expect(openLink).toBeVisible({ timeout: 15000 });
-  const shareText = new URL((await openLink.getAttribute("href"))!).searchParams.get("text");
+  const [popup] = await Promise.all([
+    page.waitForEvent("popup"),
+    page.getByRole("button", { name: "שיתוף בוואטסאפ" }).click(),
+  ]);
+  // Opened blank inside the click gesture, then navigated once the code comes
+  // back — so the wa.me URL is not there on the popup event itself.
+  await popup.waitForURL(/wa\.me/, { timeout: 15000 });
+  const shareUrl = new URL(popup.url());
+  await popup.close();
+
+  // The number is in the path, which is what skips WhatsApp's contact picker:
+  // the message can only land in the chat the invite is bound to (ADR #39).
+  expect(shareUrl.pathname).toBe(`/972${localPhone.slice(1)}`);
+
+  const shareText = shareUrl.searchParams.get("text");
   expect(shareText).toBeTruthy();
 
   const inviteUrl = shareText!.match(/https?:\/\/\S+\/invite\/\S+/)?.[0];
@@ -140,7 +158,7 @@ async function signIn(page: Page, uid: string, name: string): Promise<void> {
   await signInAsTestUser(page, { uid, email: `${uid}@example.com`, name });
 }
 
-test("an invited user links their number and joins the list", async ({ page, request }) => {
+test("an invited user proves the invited number and joins the list", async ({ page, request }) => {
   const ownerUid = `e2e-${randomUUID()}`;
   const inviteeUid = `e2e-${randomUUID()}`;
   const phone = uniquePhone();
@@ -148,19 +166,18 @@ test("an invited user links their number and joins the list", async ({ page, req
 
   await signIn(page, ownerUid, "בעל הרשימה");
   const listPath = await createList(page, listName);
-  const invitePath = new URL(await issueInvite(page, listPath)).pathname;
+  const invitePath = new URL(await issueInvite(page, listPath, phone.local)).pathname;
 
   // Second account, standing in for the recipient opening the link.
   await signIn(page, inviteeUid, "מוזמן");
 
-  // With no linked number the page must not offer acceptance yet — the number
-  // is what lets the owner see who joined, so it is collected before the
-  // decision, not after.
+  // Holding the link is not enough on its own: until the invited number is
+  // proved, acceptance is not even offered.
   await page.goto(invitePath);
   await expect(page.getByRole("link", { name: "פתיחת WhatsApp" })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole("button", { name: "אישור והצטרפות" })).not.toBeVisible();
 
-  await linkPhone(page, request, phone);
+  await linkPhone(page, request, phone.e164);
 
   // The accept/decline dialog opens by itself once nothing is in the way.
   await page.goto(invitePath);
@@ -172,42 +189,57 @@ test("an invited user links their number and joins the list", async ({ page, req
     timeout: 15000,
   });
 
-  // Back on the owner's side, the share the invitee accepted is now listed with
-  // the number they proved — the whole reason the linking step survived.
+  // Back on the owner's side, the share is listed against the number it was
+  // addressed to — the same number that had to be proved to redeem it.
   await signIn(page, ownerUid, "בעל הרשימה");
   await page.goto(listPath);
   await page.getByRole("button", { name: "שיתוף", exact: true }).click();
   await expect(page.getByText(`${inviteeUid}@example.com`)).toBeVisible({ timeout: 15000 });
-  await expect(page.getByText(phone)).toBeVisible();
+  await expect(page.getByText(phone.e164)).toBeVisible();
 });
 
-test("a link that has been used once cannot be used again", async ({ page, request }) => {
+test("a link that reaches a different number cannot be redeemed", async ({ page, request }) => {
   const ownerUid = `e2e-${randomUUID()}`;
-  const firstUid = `e2e-${randomUUID()}`;
-  const secondUid = `e2e-${randomUUID()}`;
+  const strangerUid = `e2e-${randomUUID()}`;
+  const inviteeUid = `e2e-${randomUUID()}`;
+  const invited = uniquePhone();
+  const stranger = uniquePhone();
   const listName = `רשימה ${randomUUID().slice(0, 8)}`;
 
   await signIn(page, ownerUid, "בעל הרשימה");
   const listPath = await createList(page, listName);
-  const invitePath = new URL(await issueInvite(page, listPath)).pathname;
+  const invitePath = new URL(await issueInvite(page, listPath, invited.local)).pathname;
 
-  await signIn(page, firstUid, "מוזמן ראשון");
-  await linkPhone(page, request, uniquePhone());
+  // The intended recipient proves the invited number first but does not accept
+  // yet, so the number is demonstrably taken by someone else when the stranger
+  // arrives — which is what makes the gate below "wrong account" rather than
+  // the ordinary "nobody has linked this yet".
+  await signIn(page, inviteeUid, "מוזמן");
+  await linkPhone(page, request, invited.e164);
+
+  // This is the point of the binding (ADR #39): a leaked or forwarded link in
+  // the hands of a fully legitimate account is still worth nothing, because
+  // that account cannot receive WhatsApp on the invited number.
+  await signIn(page, strangerUid, "מקבל הלינק בטעות");
+  await linkPhone(page, request, stranger.e164);
+  await page.goto(invitePath);
+  await expect(page.getByText("מקושר למספר WhatsApp אחר")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole("button", { name: "אישור והצטרפות" })).not.toBeVisible();
+  await page.goto("/cards");
+  await expect(page.getByText(listName)).not.toBeVisible();
+
+  // And the code survives that attempt intact — a stranger opening it must not
+  // burn the invite the intended recipient is still waiting to use.
+  await signIn(page, inviteeUid, "מוזמן");
   await page.goto(invitePath);
   await page.getByRole("button", { name: "אישור והצטרפות" }).click();
   await page.waitForURL(/\/cards\/lists\/[^/]+$/, { timeout: 15000 });
 
-  // The credential is the code itself now, so "single use" is the whole
-  // containment story for a link that gets forwarded: whoever comes second gets
-  // nothing, however legitimate they look.
-  await signIn(page, secondUid, "מוזמן שני");
-  await linkPhone(page, request, uniquePhone());
+  // Spent by that first use: reopening it offers nothing, so a link left in a
+  // chat history cannot be replayed later.
   await page.goto(invitePath);
   await expect(page.getByText("ההזמנה כבר טופלה.")).toBeVisible();
   await expect(page.getByRole("button", { name: "אישור והצטרפות" })).not.toBeVisible();
-
-  await page.goto("/cards");
-  await expect(page.getByText(listName)).not.toBeVisible();
 });
 
 test("a signed-out visitor is sent to sign in and back to the invite", async ({ page }) => {
@@ -216,7 +248,7 @@ test("a signed-out visitor is sent to sign in and back to the invite", async ({ 
 
   await signIn(page, ownerUid, "בעל הרשימה");
   const listPath = await createList(page, listName);
-  const invitePath = new URL(await issueInvite(page, listPath)).pathname;
+  const invitePath = new URL(await issueInvite(page, listPath, uniquePhone().local)).pathname;
 
   // The preview must render for someone with no session at all — a recipient
   // who has never used the app has to see what they were invited to first.
@@ -234,14 +266,15 @@ test("a signed-out visitor is sent to sign in and back to the invite", async ({ 
 test("an invite declined by the recipient cannot then be accepted", async ({ page, request }) => {
   const ownerUid = `e2e-${randomUUID()}`;
   const inviteeUid = `e2e-${randomUUID()}`;
+  const phone = uniquePhone();
   const listName = `רשימה ${randomUUID().slice(0, 8)}`;
 
   await signIn(page, ownerUid, "בעל הרשימה");
   const listPath = await createList(page, listName);
-  const invitePath = new URL(await issueInvite(page, listPath)).pathname;
+  const invitePath = new URL(await issueInvite(page, listPath, phone.local)).pathname;
 
   await signIn(page, inviteeUid, "מוזמן");
-  await linkPhone(page, request, uniquePhone());
+  await linkPhone(page, request, phone.e164);
 
   await page.goto(invitePath);
   await page.getByRole("button", { name: "דחייה" }).click();
@@ -257,22 +290,47 @@ test("an invite declined by the recipient cannot then be accepted", async ({ pag
   await expect(page.getByText(listName)).not.toBeVisible();
 });
 
-test("the owner can revoke a link before anyone uses it", async ({ page, request }) => {
+test("re-sharing with the same number supersedes the earlier link", async ({ page, request }) => {
   const ownerUid = `e2e-${randomUUID()}`;
   const inviteeUid = `e2e-${randomUUID()}`;
+  const phone = uniquePhone();
   const listName = `רשימה ${randomUUID().slice(0, 8)}`;
 
   await signIn(page, ownerUid, "בעל הרשימה");
   const listPath = await createList(page, listName);
-  const invitePath = new URL(await issueInvite(page, listPath)).pathname;
+  const firstPath = new URL(await issueInvite(page, listPath, phone.local)).pathname;
+  const secondPath = new URL(await issueInvite(page, listPath, phone.local)).pathname;
+  expect(secondPath).not.toBe(firstPath);
 
-  // Revocation is what the owner has instead of the phone binding: a link sent
-  // to the wrong chat has to be killable while it is still live.
+  // "Send it again" must not leave two redeemable codes behind for one
+  // recipient — the owner asked for one share, not two.
+  await signIn(page, inviteeUid, "מוזמן");
+  await linkPhone(page, request, phone.e164);
+  await page.goto(firstPath);
+  await expect(page.getByText("ההזמנה כבר טופלה.")).toBeVisible();
+
+  await page.goto(secondPath);
+  await page.getByRole("button", { name: "אישור והצטרפות" }).click();
+  await page.waitForURL(/\/cards\/lists\/[^/]+$/, { timeout: 15000 });
+});
+
+test("the owner can revoke a link before anyone uses it", async ({ page, request }) => {
+  const ownerUid = `e2e-${randomUUID()}`;
+  const inviteeUid = `e2e-${randomUUID()}`;
+  const phone = uniquePhone();
+  const listName = `רשימה ${randomUUID().slice(0, 8)}`;
+
+  await signIn(page, ownerUid, "בעל הרשימה");
+  const listPath = await createList(page, listName);
+  const invitePath = new URL(await issueInvite(page, listPath, phone.local)).pathname;
+
+  // Revocation is what the owner has for a link sent to the wrong number: the
+  // binding stops the wrong person redeeming it, but only this kills it.
   await page.getByRole("button", { name: "ביטול הלינק" }).click();
   await expect(page.getByRole("link", { name: "פתיחת הלינק בוואטסאפ" })).toHaveCount(0);
 
   await signIn(page, inviteeUid, "מוזמן");
-  await linkPhone(page, request, uniquePhone());
+  await linkPhone(page, request, phone.e164);
   await page.goto(invitePath);
   await expect(page.getByText("ההזמנה כבר טופלה.")).toBeVisible();
 });
