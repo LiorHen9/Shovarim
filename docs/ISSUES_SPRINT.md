@@ -101,21 +101,22 @@ https://github.com/LiorHen9/Shovarim/issues/30
 
 ---
 
-## 7. ☐ #44 — היסטוריית שיחה בעמוד צ'אט (persist בצד שרת)
+## 7. ✅ #44 — היסטוריית שיחה בעמוד צ'אט (persist בצד שרת)
 https://github.com/LiorHen9/Shovarim/issues/44
 
-**קבצים**: `src/lib/services/chatSessions.ts`, `src/app/api/chat/route.ts:45,67,72`.
+**קבצים**: `src/lib/validation/chat.ts`, `src/app/api/chat/route.ts`, `src/components/chat/ChatPanel.tsx`.
 
-**ממצא**: `chatSessions.ts` כבר מספק דפוס גנרי מלא — מפתח `channelKey`, `SESSION_MAX_IDLE_MS=24h`, `trimHistory` (מקסימום ~200KB), `loadChannelHistory`/`saveChannelHistory`/`deleteChannelHistory`. היום `route.ts` מקבל `history` מה-client ומעביר אותו הלאה בלי persist.
+**ממצא**: `chatSessions.ts` כבר סיפק דפוס גנרי מלא (`loadChannelHistory`/`saveChannelHistory`, `SESSION_MAX_IDLE_MS=24h`, `trimHistory`) — היה חסר רק החיווט מ-`route.ts`, שקיבל `history` מה-client ולא שמר אותו.
 
-**תוכנית**: להשתמש באותו collection עם מפתח כמו `web:{uid}` (לא `channelKey` כמו WhatsApp), ו-`route.ts` יטען/ישמור דרך `loadChannelHistory`/`saveChannelHistory` במקום להסתמך רק על מה שהלקוח שולח.
+**מימוש**: `route.ts` קיבל `GET` חדש (טוען היסטוריה דרך `loadChannelHistory("web:{uid}", uid)`, ממיר ל-`{role, text}` להצגה — מדלג על turns של tool_use/tool_result). `POST` הפסיק לקבל `history` מה-client (`chatRequestSchema` איבד את השדה): טוען מהשרת, מריץ את הסבב, ושומר דרך `saveChannelHistory` לפני שמחזיר `done`. `ChatPanel` מושך היסטוריה ב-`useEffect` בעת mount ומציג אותה, בלי לשלוח שום history ב-body של הבקשה.
 
-**החלטה שהתקבלה**: לאמץ בדיוק את ה-24h idle reset הקיים ב-WhatsApp — **אין שאלת retention חדשה לפתור**.
+**⚠️ באג שנתפס באימות (תוקן באותו סבב)**: race condition אמיתי — אם המשתמש שולח הודעה לפני שה-`GET` הראשוני חוזר, ה-response המאוחר (שעדיין ריק, כי הסבב הנוכחי לא נשמר עדיין) דרס את ה-state האופטימי המקומי ומחק את ההודעה שנשלחה. תוקן: `setMessages((prev) => (prev.length === 0 ? data.messages : prev))` — אם כבר יש state מקומי (המשתמש כבר התחיל), תוצאת ה-fetch מתעלמת מעצמה.
 
-- `chatSessions` נשאר server-only (Admin SDK) — אין צורך ב-Firestore rule חדש, ה-Route Handler הוא היחיד שקורא/כותב.
-- לוודא ש-`buildUserDataExport` ומחיקת חשבון (`accountDeletion.ts`) כוללים גם session `web:{uid}` (סביר שכן, כי המפתח עדיין `chatSessions/{channelKey}`) — לאמת בפועל, לא להניח.
+**אימות בפועל**: `typecheck`/`lint`/`build` (גם `functions/`) נקיים. הורץ spec Playwright חד-פעמי (נמחק בסיום) מול Firebase emulators + קריאת Claude אמיתית: שליחת הודעה → תשובה זרמה נכון → `page.reload()` → אותה הודעת משתמש ואותה תשובת עוזר חזרו מ-`GET /api/chat`, בדיוק אותו טקסט. זה מה שחשף וגם אימת את התיקון ל-race condition למעלה — בלי ריצה אמיתית בדפדפן הבאג הזה היה נשאר סמוי.
+- `buildUserDataExport`/`accountDeletion.ts` כבר שאלו את `chatSessions` לפי שדה `uid` (לא `channelKey`) — אומת בקריאת קוד: sessions `web:{uid}` נכללים אוטומטית בייצוא ובמחיקת חשבון בלי שום שינוי קוד נוסף.
+- `chatSessions` נשאר server-only, `firestore.rules` לא שונה.
 
-**Effort**: בינוני.
+**Effort בפועל**: בינוני, כמתוכנן.
 
 ---
 

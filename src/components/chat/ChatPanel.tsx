@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,18 +19,37 @@ const THINKING_STATUS = "חושב/ת...";
 type ChatStreamEvent =
   | { type: "text"; text: string }
   | { type: "tool_call"; name: string }
-  | { type: "done"; history: unknown[] }
+  | { type: "done" }
   | { type: "error"; message: string };
 
-// Raw Anthropic BetaMessageParam[] round-tripped opaquely to/from
-// /api/chat — the browser has no server-side chat session, so the full
-// history travels with every request (see docs/DECISIONS.md ADR #22).
+// History persists server-side in chatSessions (issue #44) — the browser only
+// ever holds it for display, never sends it back to /api/chat.
 export function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
-  const historyRef = useRef<unknown[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/chat");
+        if (!res.ok) return;
+        const data = (await res.json()) as { messages?: ChatMessage[] };
+        if (cancelled || !Array.isArray(data.messages)) return;
+        // A message sent while this fetch was in flight already put local
+        // state ahead of what was on the server when the request started —
+        // applying the fetch result now would wipe out that in-progress turn.
+        setMessages((prev) => (prev.length === 0 ? data.messages! : prev));
+      } catch {
+        // Restoring history is a nicety — a fresh conversation is a fine fallback.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function appendToLastAssistantMessage(chunk: string) {
     setMessages((prev) => {
@@ -56,7 +75,7 @@ export function ChatPanel() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed, history: historyRef.current }),
+        body: JSON.stringify({ message: trimmed }),
       });
 
       if (!res.ok || !res.body) {
@@ -87,8 +106,6 @@ export function ChatPanel() {
             appendToLastAssistantMessage(event.text);
           } else if (event.type === "tool_call") {
             setStatusText(THINKING_STATUS);
-          } else if (event.type === "done") {
-            historyRef.current = event.history;
           } else if (event.type === "error") {
             toast.error(event.message);
           }
