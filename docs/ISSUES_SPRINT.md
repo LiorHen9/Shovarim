@@ -1,6 +1,6 @@
-# ISSUES_SPRINT — מעקב ספרינט על 17 ה-issues הפתוחים (#26–#50)
+# ISSUES_SPRINT — מעקב ספרינט על 21 ה-issues הפתוחים (#26–#68)
 
-מסמך מעקב חי, ברוח `docs/ROADMAP.md`/`docs/FEATURES.md`. נכתב על בסיס סריקת קוד מלאה (2026-08-30). עדכן את הסטטוס (☐/🔶/✅) ואת ההערות בכל session שנוגע ב-issue מהרשימה.
+מסמך מעקב חי, ברוח `docs/ROADMAP.md`/`docs/FEATURES.md`. נכתב על בסיס סריקת קוד מלאה (2026-08-30; #62/#66/#67/#68 נוספו ותוארכו 2026-08-31). עדכן את הסטטוס (☐/🔶/✅) ואת ההערות בכל session שנוגע ב-issue מהרשימה.
 
 **כלל עבודה קבוע לספרינט הזה**: לפני שמתחילים לעבוד על issue חדש מהרשימה — **לעצור ולבקש מהמשתמש לפתוח branch חדש**. לא ליצור branch אוטומטית, ולא לעבור בין issues על אותו branch. זה חל על כל issue בנפרד (גם כשכמה issues קטנים נראים דומים).
 
@@ -250,6 +250,72 @@ https://github.com/LiorHen9/Shovarim/issues/35 · https://github.com/LiorHen9/Sh
 **ממצא נלווה ל-#36**: אין **בכלל** תשתית התראה (לא email, לא push, לא in-app) על הזמנה לרשימה משותפת היום — `src/actions/listShare.ts:15-58` (`inviteListMember`) רק כותב Firestore, בלי לעדכן איש. גם אם הערוץ הסופי יהיה WhatsApp, ייתכן שיידרש קודם baseline in-app/email.
 
 **Effort**: תלוי בהחלטה, לא ידוע.
+
+---
+
+## 18. ☐ #62 — לינק לאזור אישי בהודעות סיכום בווטסאפ
+https://github.com/LiorHen9/Shovarim/issues/62
+
+**קבצים**: `src/lib/services/channelChat.ts:131` (בניית ה-`reply`), `src/lib/appUrl.ts` (`getAppUrl`/`buildListInviteUrl`), `src/lib/whatsapp/graph.ts` (`sendWhatsAppText`, `MAX_BODY_LENGTH=4096`).
+
+**ממצא**: כשהבוט שולח הודעת סיכום (הוספה/מחיקה/עריכה/שיתוף רשימה/הרשמה וכו') — ה-reply הסופי נבנה ב-`channelChat.ts:131` (`const reply = chunks.join("\n\n").trim();`), **אחרי** ש-`runAgentTurn` (`agentLoop.ts`) כבר סיים לגמרי את הסבב מול ה-LLM. הוספת לינק בנקודה הזו היא concatenation טהור על מחרוזת — אין קריאת Anthropic API נוספת ואין השפעה על ה-context/הקרדיטים, בדיוק האילוץ המפורש ב-issue. אין כיום שום "אובייקט הודעת סיכום" נפרד מתשובת המודל עצמה (`mcpServer.ts` tools מחזירים טקסט רגיל ל-agent loop, שם המודל מנסח את הסיכום בעצמו) — כלומר "לינק בהודעת סיכום" בפועל = "לינק על כל תשובה סופית שיוצאת מ-`channelChat.ts:131`", לא רק על תת-קבוצה מזוהה של הודעות.
+
+יש כבר helper מוכן מ-issue #58/#61 לבניית URL ציבורי ל-WhatsApp: `src/lib/appUrl.ts` — `getAppUrl()` קורא `NEXT_PUBLIC_APP_URL`, ו-`buildListInviteUrl(code)` בונה `${getAppUrl()}/invite/...`. דרוש רק פונקציה מקבילה (למשל `buildSettingsUrl()` → `${getAppUrl()}/settings`).
+
+**מגבלה שצריך לזכור**: `sendWhatsAppText` (`graph.ts`) חותך בתגובה שחוצה `MAX_BODY_LENGTH=4096` תווים — תשובה ארוכה עם לינק בסוף עלולה לאבד את הלינק דווקא. עדיף לבנות את הלינק כשורה קצרה וקבועה, ואולי לבדוק/לקצר את גוף התשובה לפני הצירוף במקום אחרי.
+
+**החלטה נדרשת בזמן העיצוב המפורט**: האם הלינק מוצמד לכל תשובה, או רק כשזוהה tool call "משנה מצב" (create/update/delete/share) בסבב? האופציה השנייה דורשת להעביר סימון מ-`runAgentTurn`/tool handlers חזרה ל-`channelChat.ts` (שינוי קטן ב-`agentLoop.ts` — למשל return value בוליאני "בוצעה פעולת כתיבה"), בעוד האופציה הראשונה היא שינוי שורה אחת. לא להכריע מראש בלי אישור המשתמש.
+
+**Effort**: קטן (אופציה "על כל תשובה") עד קטן-בינוני (אופציה "רק אחרי פעולת כתיבה"). **Risk**: נמוך.
+
+---
+
+## 19. ☐ #66 — לינק לאזור אישי — ⚠️ אי-התאמה בין כותרת ה-issue לגוף
+https://github.com/LiorHen9/Shovarim/issues/66
+
+**⚠️ ממצא ראשון, לפני קוד**: כותרת ה-issue ("כשהבוט בווטסאפ מקבל הודעה ממשתמש שאינו מוכר") **לא תואמת** לגוף ה-issue ("אני רוצה שהבוט יצמיד לתגובה שלו לינק לאזור האישי באפליקציה") — הגוף כמעט זהה לניסוח #62 ולא מזכיר משתמש לא מוכר בכלל. **יש לוודא עם המשתמש לפני מימוש** לאיזו התנהגות בדיוק מתכוונים — שתי אפשרויות סבירות:
+
+1. **לפי הכותרת**: לינק על `REPLY_NOT_LINKED` — ההודעה הקבועה ל-**מספר לא מקושר** (`src/lib/services/channelChat.ts:33-35`, מוחזרת בשורה 92). כאן אין מעורבות LLM כלל — concatenation על מחרוזת סטטית, ללא עלות טוקנים מובנית מאליה. מכיוון שהשולח עדיין לא מאומת, הלינק ההגיוני הוא לעמוד הבית/התחברות (`getAppUrl()`), לא ל-`/settings` (הוא לא מחובר עדיין).
+2. **לפי הגוף**: כפילות מלאה עם #62 (לינק על תשובות רגילות מהבוט למשתמש מקושר).
+
+**קבצים** (לשתי האפשרויות): `src/lib/services/channelChat.ts:33-35,92` (אפשרות 1), `src/lib/services/channelChat.ts:131` + `src/lib/appUrl.ts` (אפשרות 2, זהה ל-#62).
+
+**Effort**: קטן (בשתי האפשרויות — concatenation בלבד). **Risk**: נמוך, אבל ממתין להבהרה.
+
+---
+
+## 20. ☐ #67 — פופאפ אחרי כניסה ראשונה: הצעה לחבר מספר טלפון
+https://github.com/LiorHen9/Shovarim/issues/67
+
+**קבצים**: `src/actions/auth.ts` (`createSession`, `ensureUserProfile`), `src/components/auth/SignInButtons.tsx:71-81`, `src/components/ui/dialog.tsx`, `src/components/lists/ShareListDialog.tsx` (דפוס Dialog לשימוש חוזר), `src/components/settings/ChannelLinksSection.tsx`, `src/app/(protected)/settings/page.tsx`.
+
+**ממצא**: `ensureUserProfile` (`src/actions/auth.ts`) כבר בודק `if (snap.exists) return;` לפני יצירת מסמך `users/{uid}` חדש — זו בדיוק ההפרדה "משתמש חדש לגמרי" מול "כניסה חוזרת", בלי שום צורך בשדה Firestore חדש: מספיק שה-server actions (`ensureUserProfile`/`createSession`, כרגע `void`) יחזירו boolean `isNewUser`. מכיוון שה-Firestore existence check הוא חד-פעמי במהותו (המסמך נוצר פעם אחת בלבד לכל uid), אין סיכון ש-boolean כזה "ידלוף" שוב בכניסה הבאה — לא נדרש שדה נוסף כמו `hasSeenPhoneLinkNudge` כדי למנוע הצגה חוזרת.
+
+`SignInButtons.tsx:71-81` הוא נקודת הקריאה היחידה ל-`createSession` מיד אחרי sign-in — שם אפשר לקבל את ה-flag ולהעלות state שמציג `Dialog` (יש כבר שני דפוסים מוכנים: `ShareListDialog.tsx` ו-`ChannelLinksSection.tsx`, שניהם עם `Dialog`/`DialogContent`/`DialogHeader` של shadcn). יעד ה-CTA בפופאפ: `/settings` (שם `ChannelLinksSection` מרונדר, שורה 37 בעמוד ההגדרות).
+
+**תוכנית**: (א) `ensureUserProfile`/`createSession` מחזירים `{ isNewUser: boolean }`; (ב) `SignInButtons.tsx` מציג `Dialog` מותנה ב-`isNewUser` עם כפתור "מעבר להגדרות" → `/settings`, ואפשרות "אולי מאוחר יותר"; (ג) לשקול גם לבדוק `listChannelLinksForUid` לפני הצגה — כדי לא להציע לחבר טלפון למי שכבר מחובר לערוץ WhatsApp (רלוונטי בעיקר אם/כש-issue #34 — הרשמה ראשונית דרך WhatsApp — ימומש; כרגע אין נתיב כזה אז זה לא תרחיש אמיתי היום).
+
+**Effort**: קטן-בינוני. **Risk**: נמוך.
+
+---
+
+## 21. ☐ #68 — מיחזור מספרי טלפון: סיכון זליגת נתונים למשתמש הבא ⚠️ דורש ADR
+https://github.com/LiorHen9/Shovarim/issues/68
+
+**קבצים**: `src/lib/services/channelLinks.ts:184-191` (`resolveUidForChannel`), `docs/DATA_MODEL.md` (`channelLinks/{channelKey}`), `docs/SECURITY.md` (threat model קיים סביב webhook/spoofing), `src/app/api/whatsapp/webhook/route.ts` (אימות חתימת Meta), `src/lib/mcp/mcpServer.ts` (10 tools נגישים דרך הבוט), `src/lib/mcp/config.ts` (rate limit buckets).
+
+**ממצא**: `channelLinks/{channelKey}` הוא מיפוי טלפון→uid **קבוע וללא תפוגה** — `resolveUidForChannel` היא `.get()` פשוטה לפי מפתח, בלי שום בדיקת "last verified"/staleness. `touchChannelLink` מעדכן `lastMessageAt` אחרי כל תור, אבל שום קוד לא קורא את זה חזרה לצורך החלטת freshness — זה שדה תצוגה בלבד ל-`/settings`. חתימת ה-webhook (`verifyMetaSignature`, מתועד ב-`docs/SECURITY.md`, ADR #30) מוכיחה שה-payload הגיע מ-Meta ולא זויף — **לא** שמי ששולח מהמספר הזה היום הוא עדיין בעל המספר המקורי. חיפוש ב-`docs/SECURITY.md`/`docs/DECISIONS.md`/`docs/PRIVACY.md` אחר "מיחזור/recycl/carrier" — אין אף אזכור. **זהו threat חדש שלא תועד עד כה בפרויקט**, לא כיסוי חלקי של threat קיים.
+
+**זרוע הסיכון**: מספר ממוחזר מקבל מיידית גישת קריאה/כתיבה מלאה, זהה לבעלים המקורי, לכל 10 ה-tools של הבוט — כולל צפייה/עריכה של `cvv`/`barcodeOrCode` (ADR #36), מחיקת כרטיסים, שיתוף רשימות. אין כיום שום שכבת step-up authentication על אף פעולה — הגנת ה-`confirmed:true` על מחיקות (`mcpServer.ts`) היא double-check שיחתי נגד טעויות, לא הוכחת זהות.
+
+**⚠️ דורש החלטת ADR לפני מימוש (בדומה לתבנית #50 במסמך זה) — לא לנחש**. אפשרויות שהמשתמש/הקוד מצביעים עליהן, ללא הכרעה:
+1. **Re-verification תקופתי**: לדרוש קוד קישור מחדש (כמו הזרימה הקיימת ל-linking) אחרי N ימים/חודשים של חוסר פעילות, או במרווח קבוע ללא תלות בפעילות.
+2. **Step-up auth לפעולות רגישות בלבד**: פעולות עם blast radius גבוה (צפייה ב-CVV/ברקוד, מחיקה, שיתוף) דורשות אישור טרי — למשל push/email לחשבון ה-Google המקושר עם כפתור אישור, לפני שהבוט מבצע.
+3. **שילוב Google + WhatsApp OTP** כפי שהמשתמש הציע במפורש בגוף ה-issue — מורכב יותר כי אין לבוט ערוץ ישיר "לדחוף" בקשת אימות Google לאמצע שיחת WhatsApp; דורש תיאום בין הערוצים (למשל דרך FCM/push לאתר).
+
+עד להחלטה: לתעד כ-ADR פתוח ב-`docs/DECISIONS.md` (לא לממש דבר).
+
+**Effort**: בינוני-גדול (תלוי בהחלטה). **Risk**: גבוה אם לא מטופל — אבל גם גבוה למימוש שגוי (UX חיכוך מיותר אם הסף שגוי).
 
 ---
 
