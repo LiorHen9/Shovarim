@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { adminAuth } from "@/lib/firebase/admin";
-import { requireUid, getSessionUid } from "@/lib/auth/session";
+import { requireUid } from "@/lib/auth/session";
 import { toActionResult, type ActionResult } from "@/lib/actions/errors";
 import { buildListInviteUrl } from "@/lib/appUrl";
 import {
@@ -106,14 +106,14 @@ export async function acceptInvite(input: unknown): Promise<ActionResult<{ listI
   });
 }
 
-// Declining does not require the channel link (refusing is not an identity
-// claim), and does not even require being signed in — someone who received a
-// link by mistake should be able to dismiss it. The uid, when present, is only
-// used for the audit entry.
+// Declining now requires a session, and the service requires that session to
+// have proved the invited number — the same bar as accepting. It used to accept
+// an anonymous caller, which under ADR #39's binding meant anyone holding a
+// forwarded link could burn an invite they were unable to use themselves.
 export async function declineInvite(input: unknown): Promise<ActionResult<{ success: true }>> {
   return toActionResult(async () => {
+    const uid = await requireUid();
     const { code } = listInviteCodeSchema.parse(input);
-    const uid = await getSessionUid();
     await declineListInvite(code, uid);
     return { success: true as const };
   });

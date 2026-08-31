@@ -262,6 +262,35 @@ async function getLinkedWhatsAppNumber(uid: string): Promise<string | null> {
   return links.find((link) => link.channel === "whatsapp")?.externalId ?? null;
 }
 
+// The proof that this account may act on this invite at all — ADR #39's second
+// fact. Shared by accept and decline so the two can never drift apart: both are
+// terminal acts on someone else's invitation, and both are re-derived here from
+// Firestore rather than trusted from the client (getListInviteGate is a UI hint
+// that a directly POSTed call skips entirely, ADR #25).
+//
+// Returns the number to record on the member doc: the invited one for a bound
+// invite, or whatever is linked for an ADR #38 bearer leftover, which has no
+// number to match and where the link is enrichment rather than a gate. That
+// branch must stay exactly as narrow as `phone === null`.
+async function assertMayRedeem(invite: ListInviteCode, uid: string): Promise<string | null> {
+  if (invite.phone !== null) {
+    const linkedUid = await resolveUidForChannel("whatsapp", invite.phone);
+    if (linkedUid !== uid) {
+      throw new ActionError(
+        "יש לקשר את מספר הוואטסאפ שאליו נשלחה ההזמנה לפני אישור או דחייה של ההצטרפות"
+      );
+    }
+    return invite.phone;
+  }
+
+  if (!whatsAppLinkingAvailable()) return null;
+  const linked = await getLinkedWhatsAppNumber(uid);
+  if (linked === null) {
+    throw new ActionError("יש לקשר מספר וואטסאפ לחשבון לפני אישור או דחייה של ההזמנה");
+  }
+  return linked;
+}
+
 // The invitee's view, resolved from the code alone — no auth. Safe because the
 // code is the secret; it returns nothing about the list beyond its name, and
 // never the full invited phone number.
@@ -316,7 +345,17 @@ export async function getListInviteGate(uid: string, code: string): Promise<List
   // has proved the invited number.
   const linkedUid = await resolveUidForChannel("whatsapp", invite.phone);
   if (linkedUid === uid) return "ready";
-  // The invited number belongs to nobody yet → this account can link it.
+
+  // Checked before anything about the invited number: this account has already
+  // proved some *other* number, and createLinkCodeForUid refuses to issue a
+  // second code while a channel is linked. Routing such a visitor into the
+  // linking flow is a dead end — the code never arrives, so the panel sits on
+  // "preparing the link" forever, which is exactly how this surfaced from
+  // production. What they need is to unlink first, which is what
+  // "linked_to_other_number" already tells them.
+  if ((await getLinkedWhatsAppNumber(uid)) !== null) return "linked_to_other_number";
+
+  // Nothing linked here. The invited number is free → this account can link it.
   // If it belongs to someone else, this account simply cannot accept.
   //
   // These are deliberately NOT collapsed into one blocked state, even though
@@ -349,30 +388,8 @@ export async function acceptListInvite(
   // creation and accept; createListInvite blocks the common case up front.
   if (invite.invitedBy === uid) throw new ActionError("אי אפשר לשתף רשימה עם עצמך");
 
-  // The load-bearing check, and the whole of ADR #39's second fact: holding the
-  // code proved an invite was addressed to a number; only channelLinks proves
-  // that number belongs to the account accepting. Re-derived here from
-  // Firestore and never taken from the client — getListInviteGate is a UI hint
-  // that a directly POSTed accept would skip entirely (ADR #25).
-  //
-  // Bearer codes from the ADR #38 window have no number to match, so for those
-  // the link is collected for the owner's benefit rather than as a gate. That
-  // branch must stay exactly as narrow as `phone === null`.
-  let memberPhone: string | null;
-  if (invite.phone !== null) {
-    const linkedUid = await resolveUidForChannel("whatsapp", invite.phone);
-    if (linkedUid !== uid) {
-      throw new ActionError("יש לקשר את מספר הוואטסאפ שאליו נשלחה ההזמנה לפני אישור ההצטרפות");
-    }
-    memberPhone = invite.phone;
-  } else if (whatsAppLinkingAvailable()) {
-    memberPhone = await getLinkedWhatsAppNumber(uid);
-    if (memberPhone === null) {
-      throw new ActionError("יש לקשר מספר וואטסאפ לחשבון לפני אישור ההצטרפות");
-    }
-  } else {
-    memberPhone = null;
-  }
+  // ADR #39's second fact, shared verbatim with decline — see assertMayRedeem.
+  const memberPhone = await assertMayRedeem(invite, uid);
 
   const memberRef = adminDb
     .collection("cardLists")
@@ -421,28 +438,38 @@ export async function acceptListInvite(
   return { listId: invite.listId };
 }
 
-// Declining needs no channel link: refusing an invite is not a claim about who
-// you are, and requiring proof of the number just to say "no" would strand
-// anyone who received a link meant for someone else.
-export async function declineListInvite(code: string, uid: string | null): Promise<void> {
+// Declining is exactly as privileged as accepting, and deliberately so.
+//
+// It used to be open to anyone holding the code, signed in or not, on the
+// reasoning that refusing is not a claim about who you are and that someone who
+// received a link by mistake should be able to dismiss it. Under ADR #39's
+// binding that reasoning inverts: a stranger holding a forwarded link cannot
+// join, but could still burn the invite — a denial of service on the real
+// recipient, from precisely the person the binding exists to shut out. Someone
+// who does not want an invite now simply ignores it; it expires in 48 hours.
+export async function declineListInvite(code: string, uid: string): Promise<void> {
   const inviteRef = adminDb.collection(INVITES).doc(code);
   const snap = await inviteRef.get();
   if (!snap.exists) throw new ActionError("ההזמנה אינה קיימת או שפג תוקפה");
 
   const invite = snap.data() as ListInviteCode;
+  const now = Timestamp.now();
   if (invite.status !== "pending") throw new ActionError("ההזמנה כבר טופלה");
+  // Was missing here while accept has always had it: an expired invite stayed
+  // declinable, writing a terminal status onto a doc that was already dead.
+  if (isExpired(invite, now)) throw new ActionError("ההזמנה אינה קיימת או שפג תוקפה");
 
-  await inviteRef.update({ status: "declined", usedAt: Timestamp.now() });
+  await assertMayRedeem(invite, uid);
 
-  if (uid) {
-    await writeAuditLog({
-      uid,
-      eventType: "list_invite_declined",
-      channel: "web",
-      paramsSummary: `list:${invite.listId}`,
-      result: "success",
-    });
-  }
+  await inviteRef.update({ status: "declined", usedAt: now });
+
+  await writeAuditLog({
+    uid,
+    eventType: "list_invite_declined",
+    channel: "web",
+    paramsSummary: `list:${invite.listId}`,
+    result: "success",
+  });
 }
 
 // The owner's view of the links still live on one of their lists. Each summary

@@ -51,6 +51,10 @@ export function InvitePanel({
   const [gate, setGate] = useState<ListInviteGate | null>(initialGate);
   const [pending, setPending] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  // Why the WhatsApp link never appeared. Without this the panel showed
+  // "preparing the link" indefinitely for every failure — which is how a
+  // production dead end went unreported until a real invitee hit it.
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [done, setDone] = useState<"accepted" | "declined" | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(initialGate === "ready");
 
@@ -98,11 +102,24 @@ export function InvitePanel({
     let cancelled = false;
     createChannelLinkCode({ channel: "whatsapp" })
       .then((result) => {
-        if (cancelled || "error" in result) return;
+        if (cancelled) return;
+        if ("error" in result) {
+          setLinkError(result.error);
+          return;
+        }
         const url = buildWhatsAppLinkCodeUrl(result.code);
-        if (url) setLinkUrl(url);
+        if (url) {
+          setLinkUrl(url);
+          return;
+        }
+        // null means NEXT_PUBLIC_WHATSAPP_BOT_PHONE was absent at build time.
+        // A deployment fault rather than anything this visitor can fix, so it
+        // points them at the one person who can.
+        setLinkError("שירות הקישור אינו זמין כרגע. פנו לבעל/ת הרשימה.");
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setLinkError("יצירת קישור הוואטסאפ נכשלה. רעננו את העמוד ונסו שוב.");
+      });
     return () => {
       cancelled = true;
     };
@@ -279,38 +296,37 @@ export function InvitePanel({
             )}
           </p>
 
-          {linkUrl ? (
-            <div className="space-y-2">
+          {/* "בדיקה מחדש" sits outside the conditional on purpose: when the
+              link could not be issued there was previously no control at all on
+              screen, so the page became a dead end rather than something the
+              visitor could retry. */}
+          <div className="space-y-2">
+            {linkUrl && (
               <Button asChild>
                 <a href={linkUrl} target="_blank" rel="noopener noreferrer">
                   <MessageCircle className="size-4" />
                   פתיחת WhatsApp
                 </a>
               </Button>
-              <Button variant="outline" onClick={() => void refreshGate()} disabled={pending}>
-                {pending ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )}
-                בדיקה מחדש
-              </Button>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">מכינים את הקישור...</p>
-          )}
+            )}
+            {!linkUrl && !linkError && (
+              <p className="text-sm text-muted-foreground">מכינים את הקישור...</p>
+            )}
+            {linkError && (
+              <p className="text-sm text-destructive" role="alert">
+                {linkError}
+              </p>
+            )}
+            <Button variant="outline" onClick={() => void refreshGate()} disabled={pending}>
+              {pending ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              בדיקה מחדש
+            </Button>
+          </div>
         </div>
-      )}
-
-      {signedIn && gate !== "ready" && gate !== "already_member" && gate !== "self_invite" && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void handleDecline()}
-          disabled={pending}
-        >
-          דחיית ההזמנה
-        </Button>
       )}
 
       {/* Opens by itself once nothing is in the way — on arrival for a visitor
