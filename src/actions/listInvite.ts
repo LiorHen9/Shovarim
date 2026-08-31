@@ -28,9 +28,9 @@ import type {
 } from "@/types/listInvite";
 
 // Thin actions over src/lib/services/listInvites.ts (ADR #18 pattern), for the
-// phone-number sharing flow of ADR #37. Inputs are re-parsed here because
-// Server Actions are directly POST-able with arbitrary payloads (ADR #25), and
-// uid always comes from the session — never as an argument.
+// list sharing flow of ADR #38. Inputs are re-parsed here because Server
+// Actions are directly POST-able with arbitrary payloads (ADR #25), and uid
+// always comes from the session — never as an argument.
 
 export async function createListInviteCode(
   input: unknown
@@ -48,7 +48,7 @@ export async function listMyListInvites(input: unknown): Promise<ActionResult<Li
   return toActionResult(async () => {
     const uid = await requireUid();
     const { listId } = listInvitesForListSchema.parse(input);
-    return listInvitesForList(uid, listId);
+    return listInvitesForList(uid, listId, buildListInviteUrl);
   });
 }
 
@@ -91,8 +91,8 @@ export async function acceptInvite(input: unknown): Promise<ActionResult<{ listI
     const { code } = listInviteCodeSchema.parse(input);
 
     // The member doc carries an email (ADR #15 shape, rendered by
-    // ShareListDialog/PendingInvitationsPanel). Unlike the email flow we start
-    // from a uid, so it is looked up here; the Admin SDK types it optional, and
+    // ShareListDialog/PendingInvitationsPanel). We start from a uid rather than
+    // an address, so it is looked up here; the Admin SDK types it optional, and
     // ensureUserProfile falls back the same way for the same reason.
     const user = await adminAuth.getUser(uid);
     const result = await acceptListInvite(uid, code, user.email ?? "");

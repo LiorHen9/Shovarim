@@ -85,8 +85,15 @@ service cloud.firestore {
         allow read: if isListOwnerCaller() || isSelf();
 
         // Owner invites a member — must target this doc's uid explicitly, with
-        // a valid role, always starting out pending (see src/actions/listShare.ts,
-        // which resolves the invite email to memberUid via the Admin SDK first).
+        // a valid role, always starting out pending.
+        //
+        // No client calls this any more: ADR #38 removed the email invite path
+        // that wrote pending member docs, and the invite flow that replaced it
+        // writes straight to "accepted" from the Admin SDK, which bypasses Rules
+        // entirely. Kept rather than tightened to `if false` because the pending
+        // docs it created still exist and are still accepted through the
+        // `update` branch below — narrowing this now would only make the two
+        // halves disagree about a shape the data still has.
         allow create: if isListOwnerCaller()
           && request.resource.data.memberUid == memberUid
           && request.resource.data.listId == listId
