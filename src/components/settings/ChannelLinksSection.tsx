@@ -131,18 +131,23 @@ export function ChannelLinksSection() {
     }
   }
 
-  // Issuing a code while the channel is already linked would hand the user a
-  // live bearer credential they have no use for (issue #26) — the way to swap
-  // numbers is to unlink first. Rendered only once the list has loaded, so the
-  // button does not flash in before a known link arrives; the server rejects
-  // the same case anyway (createLinkCodeForUid).
-  const hasWhatsAppLink = links.some((link) => link.channel === "whatsapp");
+  // Issuing a code while the channel has a still-active link would hand the
+  // user a live bearer credential they have no use for (issue #26) — the way
+  // to swap numbers is to unlink first. An *expired* link (issue #68, ADR
+  // #41) does not count here — that's exactly the renewal case, and this
+  // button doubling as "renew" reuses the connect flow with no separate
+  // button/dialog. Rendered only once the list has loaded, so the button does
+  // not flash in before a known link arrives; the server enforces the same
+  // rule anyway (createLinkCodeForUid).
+  const hasActiveWhatsAppLink = links.some(
+    (link) => link.channel === "whatsapp" && link.status === "active"
+  );
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
         {!loading &&
-          (hasWhatsAppLink ? (
+          (hasActiveWhatsAppLink ? (
             <p className="text-sm text-muted-foreground">
               חשבון WhatsApp כבר מקושר. כדי לקשר מספר אחר, נתקו תחילה את הקישור הקיים.
             </p>
@@ -153,7 +158,7 @@ export function ChannelLinksSection() {
             </Button>
           ))}
 
-        {issued && !hasWhatsAppLink && (
+        {issued && !hasActiveWhatsAppLink && (
           // The block appears in response to a click, so it is announced
           // (aria-live) and named (region) rather than dropped in silently.
           // It also disappears once a refresh shows the link landed — a
@@ -220,6 +225,20 @@ export function ChannelLinksSection() {
                   <p className="text-sm text-muted-foreground">
                     קושר בתאריך {formatDateTime(link.linkedAt)}
                   </p>
+                  <p className="text-sm text-muted-foreground">
+                    {link.lastMessageAt
+                      ? `פעילות אחרונה: ${formatDateTime(link.lastMessageAt)}`
+                      : "טרם נשלחה הודעה מאז הקישור"}
+                  </p>
+                  {link.status === "expired" ? (
+                    <p className="text-sm font-medium text-destructive">
+                      פג תוקף הקישור — לחצו על &quot;חיבור WhatsApp&quot; למעלה כדי לחדש אותו
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      נדרש אימות מחדש עד {formatDateTime(link.reverifyBy)}
+                    </p>
+                  )}
                 </div>
                 <Button
                   variant="outline"

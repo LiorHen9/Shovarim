@@ -265,6 +265,16 @@ issue #75, `docs/DECISIONS.md` ADR #40. `redeemLinkCode` (ADR #29) דרס בלי
 
 **נדחה**: re-verification תקופתי/step-up authentication כללי (זה threat שונה — מיחזור מספרים, issue #68, נשאר פתוח); חסימה מוחלטת של relink כשיש קישור אחר (הייתה שוברת את תרחיש ה"מעבר הלגיטימי" של ADR #29).
 
+## אימות מחדש תקופתי לקישור WhatsApp (issue #68) ✅ הושלם (2026-08-31)
+`docs/DECISIONS.md` ADR #41. סוגר את הפריט שנדחה בפריט הקודם: קישור `channelLinks/{channelKey}→uid` היה קבוע לצמיתות — מספר טלפון שעובר לבעלים חדש (מיחזור מספרים) היה ממשיך לזהות אותו כבעלים הקודם, בלי שהבעלים החדש צריך לנסות לקשר שום דבר.
+
+- **שני ספים בלתי-תלויים** (`CHANNEL_LINK_REVERIFY`, `src/lib/mcp/config.ts`, ליד `RATE_LIMITS`): 30 יום מאז ה-`linkedAt` האחרון כתקרה מוחלטת (גם עם שימוש רציף — אחרת בעלים חדש שממשיך "לדבר" עם הבוט היה מאפס לנצח את שעון חוסר-הפעילות), ו-14 יום מאז הפעילות האחרונה (`lastMessageAt`) כספה קצר יותר. מי שמגיע ראשון דורש אימות מחדש מלא (כניסה בגוגל + קוד קישור חדש בווטסאפ) — הזרימה הקיימת, בלי מנגנון נפרד.
+- **נגזר, לא נשמר**: אין שדה Firestore חדש, אין Cloud Function מתוזמן. `src/lib/services/channelLinkExpiry.ts` (מבודד מ-`firebase-admin`, טסטבילי כמו `fieldEncryptionCore.ts`) מחשב תוקף lazy מתוך `linkedAt`/`lastMessageAt` הקיימים. `resolveUidForChannel` מחזיר `null` לקישור שפג בדיוק כמו לקישור שלא קיים (אותה תשובת "לא מקושר", בלי oracle חדש), ו-`createLinkCodeForUid` מפסיק לחסום הנפקת קוד חדש כשהקישור הקיים פג (`status !== "active"`). חידוש עצמי כבר עבד בלי שינוי — `redeemLinkCode` תמיד דורס ומאפס `linkedAt` בטרנזקציה אחת, גם היום.
+- **UI**: `ChannelLinksSection` (`/settings`) מציג עכשיו `lastMessageAt` ("פעילות אחרונה") ודדליין אימות מחדש נגזר (`ChannelLinkSummary.status`/`reverifyBy`), וכפתור "חיבור WhatsApp" חוזר להיות זמין ברגע שהקישור הקיים פג.
+- אימות: `typecheck`/`lint`/`build` נקיים. `test:unit` — 67 (61 קיימים + 6 חדשים ל-`isChannelLinkStale`/`channelLinkReverifyDeadlineMs`). `test:rules` — 50/50 ללא שינוי (אין שינוי ב-`firestore.rules`). E2E — כל 18 הטסטים הרלוונטיים (`settings.spec.ts`, `whatsapp.spec.ts`, `listInvite.spec.ts`) עוברים ב-`--workers=1`, כולל שתי בדיקות סטטוס חדשות בטסט הקישור הקיים.
+
+**נשאר פתוח, במפורש מחוץ לסקופ**: תרחיש שני, קשור אך שונה — מחזיק חדש שכן פותח חשבון Shovarim משלו ומנסה **לקשר** את המספר מחדש. ADR #40 (issue #75) כבר דורש אישור כן/לא לפני הדריסה, אבל האישור נשאל מהמספר עצמו — כלומר המחזיק החדש יכול פשוט לענות "כן" לעצמו, לא הבעלים הקודם, שלעולם לא מקבל התראה. סגירה מלאה (למשל מייל לבעלים הקודם) דורשת תשתית מייל/push שעדיין לא קיימת — ראו Phase 7 למטה. `issue #68` נשאר רלוונטי לחלק הזה עד שהתשתית הזו תיבנה.
+
 ## Phase 6 — PWA & Polish
 manifest, service worker, offline indicators, ביצועים.
 (הערה: החלטת ה-hosting/deploy טופלה מוקדם יותר ב-Phase 3.3 — לא כאן, בניגוד למה שנרמז במקור ב-ADR #5.)

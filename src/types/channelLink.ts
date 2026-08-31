@@ -50,12 +50,19 @@ export interface ChatSession {
 // instances are not serializable across that boundary (same reason
 // requestAccountDeletion returns an ISO string), so dates are ISO strings and
 // the raw uid is dropped — the client already knows its own uid.
+//
+// status/reverifyBy are derived, not stored — see
+// src/lib/services/channelLinkExpiry.ts (issue #68, ADR #41). There is no
+// separate Firestore field for them; they're recomputed from linkedAt/
+// lastMessageAt every time a summary is built.
 export interface ChannelLinkSummary {
   channelKey: string;
   channel: ChannelKind;
   externalId: string;
   linkedAt: string;
   lastMessageAt: string | null;
+  status: "active" | "expired";
+  reverifyBy: string;
 }
 
 // Result of issuing a link code, as shown in the UI.

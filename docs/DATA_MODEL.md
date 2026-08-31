@@ -193,6 +193,8 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 
 אין אינדקס מרוכב: `listChannelLinksForUid` שולף `where("uid","==",uid)` בלבד וממיין בזיכרון (מספר ערוצים למשתמש הוא חד-ספרתי).
 
+**אימות מחדש תקופתי (issue #68, `docs/DECISIONS.md` ADR #41)**: אין שדה Firestore נפרד לתפוגה. `status`/`reverifyBy` ב-`ChannelLinkSummary` (מה שחוצה את גבול ה-Server Action ללקוח) הם **נגזרים** בכל קריאה מ-`linkedAt`/`lastMessageAt` הקיימים דרך `src/lib/services/channelLinkExpiry.ts`, מול שני ספים ב-`CHANNEL_LINK_REVERIFY` (`src/lib/mcp/config.ts` — המקום היחיד לעדכן אותם): `maxAgeDays` (30, תקרה מוחלטת מאז ה-`linkedAt` האחרון, גם עם פעילות רציפה) ו-`inactivityDays` (14, מאז `lastMessageAt`, או `linkedAt` אם עוד לא הייתה פעילות). קישור שחצה אחד מהשניים "פג" — `resolveUidForChannel` מחזיר `null` בדיוק כמו קישור שלא קיים בכלל (אותה הודעת "לא מקושר", בלי oracle חדש), ו-`createLinkCodeForUid` מפסיק לחסום הנפקת קוד חדש לאותו ערוץ (חידוש עצמי דרך `/settings`, לא מנגנון נפרד).
+
 ## `channelLinkCodes/{code}`
 `src/types/channelLink.ts`, נגיש דרך `src/lib/services/channelLinks.ts`
 ```ts
@@ -211,7 +213,7 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 
 יצירת קוד חדש מבטלת קודים קודמים שלא מומשו של אותו משתמש (`usedAt` מסומן) — כך שאף פעם לא תלוי באוויר יותר מ-credential אחד. `where("uid","==",uid)` בלבד, סינון בזיכרון, בלי אינדקס מרוכב.
 
-**קוד לא מונפק כלל למשתמש שכבר יש לו קישור פעיל באותו ערוץ** (issue #26): `createLinkCodeForUid` בודק `listChannelLinksForUid` לפני כל כתיבה ודוחה. הדרך לקשר מספר אחר היא ניתוק הקישור הקיים תחילה — כלומר גם **אין כיום שני מספרי WhatsApp על אותו חשבון**. הבדיקה יושבת בשכבת השירות ולא רק ב-UI כי ה-Server Action ניתן ל-POST ישיר (ADR #25). זרימת "מעבר מספר בין חשבונות" (ADR #29, `redeemLinkCode`) לא מושפעת: שם הקוד מונפק ע"י החשבון ה**אחר**, שאין לו קישור.
+**קוד לא מונפק כלל למשתמש שכבר יש לו קישור פעיל (`status:"active"`) באותו ערוץ** (issue #26): `createLinkCodeForUid` בודק `listChannelLinksForUid` לפני כל כתיבה ודוחה. הדרך לקשר מספר אחר היא ניתוק הקישור הקיים תחילה — כלומר גם **אין כיום שני מספרי WhatsApp על אותו חשבון**. הבדיקה יושבת בשכבת השירות ולא רק ב-UI כי ה-Server Action ניתן ל-POST ישיר (ADR #25). זרימת "מעבר מספר בין חשבונות" (ADR #29, `redeemLinkCode`) לא מושפעת: שם הקוד מונפק ע"י החשבון ה**אחר**, שאין לו קישור. קישור **שפג** (`status:"expired"`, issue #68) לא נחסם — זה בדיוק החידוש העצמי, וה-uid זהה כך ש-`redeemLinkCode` דורס בלי צורך באישור relink (ADR #40 חל רק על uid שונה).
 
 מומלץ להגדיר **TTL policy** על `expiresAt` (Firestore → TTL) כדי שמסמכים פגי-תוקף יימחקו אוטומטית; הלוגיקה לא נשענת על זה (קוד פג נדחה בקוד גם אם המסמך עדיין קיים) — זו היגיינת אחסון בלבד.
 
