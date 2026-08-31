@@ -225,6 +225,10 @@ test("a link that reaches a different number cannot be redeemed", async ({ page,
   await page.goto(invitePath);
   await expect(page.getByText("מקושר למספר WhatsApp אחר")).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole("button", { name: "אישור והצטרפות" })).not.toBeVisible();
+  // Nor may they burn it on the way past: declining is as privileged as
+  // accepting, or a forwarded link would still be a denial of service on the
+  // real recipient.
+  await expect(page.getByRole("button", { name: /דחי/ })).not.toBeVisible();
   await page.goto("/cards");
   await expect(page.getByText(listName)).not.toBeVisible();
 
@@ -364,6 +368,35 @@ test("sharing with a number that is already a member is blocked before submittin
 
   await expect(page.getByText("הרשימה כבר משותפת עם המספר הזה")).toBeVisible();
   await expect(page.getByRole("button", { name: "שיתוף בוואטסאפ" })).toBeDisabled();
+});
+
+test("an invitee who already linked a different number is told to unlink, not left waiting", async ({
+  page,
+  request,
+}) => {
+  const ownerUid = `e2e-${randomUUID()}`;
+  const inviteeUid = `e2e-${randomUUID()}`;
+  const invited = uniquePhone();
+  const theirOwn = uniquePhone();
+  const listName = `רשימה ${randomUUID().slice(0, 8)}`;
+
+  await signIn(page, ownerUid, "בעל הרשימה");
+  const listPath = await createList(page, listName);
+  const invitePath = new URL(await issueInvite(page, listPath, invited.local)).pathname;
+
+  // Nobody has claimed the invited number, but this visitor has already proved
+  // one of their own — and createChannelLinkCode refuses a second while a
+  // channel is linked. The gate used to send them to the linking screen anyway,
+  // where the code never arrived and the panel sat on "preparing the link"
+  // forever. Reported from production.
+  await signIn(page, inviteeUid, "מוזמן עם מספר אחר");
+  await linkPhone(page, request, theirOwn.e164);
+  await page.goto(invitePath);
+
+  await expect(page.getByText("מקושר למספר WhatsApp אחר")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText("מכינים את הקישור...")).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "אישור והצטרפות" })).not.toBeVisible();
+  await expect(page.getByRole("button", { name: /דחי/ })).not.toBeVisible();
 });
 
 test("the owner can revoke a link before anyone uses it", async ({ page, request }) => {
