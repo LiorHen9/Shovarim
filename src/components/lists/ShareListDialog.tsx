@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Loader2, MessageCircle, Share2, TrashIcon } from "lucide-react";
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { useListMembers } from "@/hooks/useListMembers";
 import { db } from "@/lib/firebase/client";
+import { ilPhoneSchema } from "@/lib/validation/channelLink";
 import { createListInviteSchema } from "@/lib/validation/listInvite";
 import {
   cancelMyListInvite,
@@ -80,6 +81,31 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
   const phoneFieldId = useId();
   // Only set when the popup blocker won that round — see handleShare.
   const [blockedShareUrl, setBlockedShareUrl] = useState<string | null>(null);
+
+  // Same normalization the server applies (ilPhoneSchema → E.164), so a typed
+  // number can be compared against the phone already stored on members/invites
+  // without waiting for a round trip. null while the field isn't a valid
+  // number yet — no duplicate check runs until it is.
+  const normalizedPhone = useMemo(() => {
+    const parsed = ilPhoneSchema.safeParse(phone);
+    return parsed.success ? parsed.data : null;
+  }, [phone]);
+
+  // Blocks the share: createListInvite (listInvites.ts) rejects this exact
+  // case server-side regardless, but member.phone is only set at accept time
+  // (CardListMember.phone) so this pre-check can miss older members who joined
+  // before that field existed — a false negative here just falls back to the
+  // server's toast, never a false positive that blocks a share the server
+  // would allow.
+  const isDuplicateMember = normalizedPhone !== null && members.some((member) => member.phone === normalizedPhone);
+
+  // Not a block — re-sharing the same number supersedes the existing link by
+  // design (ADR #37/#39, "resend" not "a second live code"). This is only a
+  // heads-up before that happens.
+  const duplicateInvite =
+    !isDuplicateMember && normalizedPhone !== null
+      ? invites.find((invite) => invite.phone === normalizedPhone)
+      : undefined;
 
   // Invites live in listInviteCodes, which is Admin-SDK-only (ADR #37) — so
   // unlike members there is no live subscription, and the list is refetched
@@ -246,16 +272,31 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
             dir="ltr"
             placeholder="0501234567"
             disabled={sharing}
-            aria-invalid={phoneError !== null}
-            aria-describedby={phoneError ? `${phoneFieldId}-error` : `${phoneFieldId}-hint`}
+            aria-invalid={phoneError !== null || isDuplicateMember}
+            aria-describedby={
+              phoneError || isDuplicateMember
+                ? `${phoneFieldId}-error`
+                : duplicateInvite
+                  ? `${phoneFieldId}-hint ${phoneFieldId}-notice`
+                  : `${phoneFieldId}-hint`
+            }
           />
-          {phoneError ? (
+          {phoneError || isDuplicateMember ? (
             <p id={`${phoneFieldId}-error`} role="alert" className="text-sm text-destructive">
-              {phoneError}
+              {phoneError ?? "הרשימה כבר משותפת עם המספר הזה"}
             </p>
           ) : (
             <p id={`${phoneFieldId}-hint`} className="text-sm text-muted-foreground">
               10 ספרות, ללא קידומת מדינה וללא מקפים או רווחים.
+            </p>
+          )}
+          {/* Non-blocking: re-sharing supersedes the existing link rather than
+              being refused (ADR #37/#39) — this just tells the owner what the
+              click is about to do before they make it. */}
+          {duplicateInvite && (
+            <p id={`${phoneFieldId}-notice`} className="text-sm text-muted-foreground">
+              כבר יש לינק פתוח למספר הזה, בתוקף עד {formatExpiry(duplicateInvite.expiresAt)}. שיתוף ישלח לינק
+              חדש במקומו.
             </p>
           )}
         </div>
@@ -272,7 +313,7 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
             contains the visible label. */}
         <Button
           onClick={() => void handleShare()}
-          disabled={sharing}
+          disabled={sharing || isDuplicateMember}
           aria-label="שיתוף בוואטסאפ"
           className="w-full bg-[#128C7E] text-white hover:bg-[#0f7168] focus-visible:ring-[#128C7E]"
         >

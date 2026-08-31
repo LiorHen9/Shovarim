@@ -314,6 +314,58 @@ test("re-sharing with the same number supersedes the earlier link", async ({ pag
   await page.waitForURL(/\/cards\/lists\/[^/]+$/, { timeout: 15000 });
 });
 
+test("sharing with a number that already has an open invite shows a notice, not a block", async ({
+  page,
+}) => {
+  const ownerUid = `e2e-${randomUUID()}`;
+  const phone = uniquePhone();
+  const listName = `רשימה ${randomUUID().slice(0, 8)}`;
+
+  await signIn(page, ownerUid, "בעל הרשימה");
+  const listPath = await createList(page, listName);
+  await issueInvite(page, listPath, phone.local);
+
+  // Dialog was closed by issueInvite's popup flow (navigation away); reopen it
+  // and type the same number again without submitting.
+  await page.goto(listPath);
+  await page.getByRole("button", { name: "שיתוף", exact: true }).click();
+  await page.getByLabel("מספר הטלפון של הנמען").fill(phone.local);
+
+  await expect(page.getByText("כבר יש לינק פתוח למספר הזה")).toBeVisible();
+  await expect(page.getByRole("button", { name: "שיתוף בוואטסאפ" })).toBeEnabled();
+});
+
+test("sharing with a number that is already a member is blocked before submitting", async ({
+  page,
+  request,
+}) => {
+  const ownerUid = `e2e-${randomUUID()}`;
+  const inviteeUid = `e2e-${randomUUID()}`;
+  const phone = uniquePhone();
+  const listName = `רשימה ${randomUUID().slice(0, 8)}`;
+
+  await signIn(page, ownerUid, "בעל הרשימה");
+  const listPath = await createList(page, listName);
+  const invitePath = new URL(await issueInvite(page, listPath, phone.local)).pathname;
+
+  await signIn(page, inviteeUid, "מוזמן");
+  await linkPhone(page, request, phone.e164);
+  await page.goto(invitePath);
+  await page.getByRole("button", { name: "אישור והצטרפות" }).click();
+  await page.waitForURL(/\/cards\/lists\/[^/]+$/, { timeout: 15000 });
+
+  // Back on the owner's side, typing the now-a-member's number must be caught
+  // in the dialog itself — before the server round trip ADR #39 already
+  // guards, not only after it via a toast.
+  await signIn(page, ownerUid, "בעל הרשימה");
+  await page.goto(listPath);
+  await page.getByRole("button", { name: "שיתוף", exact: true }).click();
+  await page.getByLabel("מספר הטלפון של הנמען").fill(phone.local);
+
+  await expect(page.getByText("הרשימה כבר משותפת עם המספר הזה")).toBeVisible();
+  await expect(page.getByRole("button", { name: "שיתוף בוואטסאפ" })).toBeDisabled();
+});
+
 test("the owner can revoke a link before anyone uses it", async ({ page, request }) => {
   const ownerUid = `e2e-${randomUUID()}`;
   const inviteeUid = `e2e-${randomUUID()}`;
