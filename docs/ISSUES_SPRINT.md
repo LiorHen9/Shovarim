@@ -275,6 +275,11 @@ https://github.com/LiorHen9/Shovarim/issues/66
 
 **⚠️ אי-התאמה בין כותרת ה-issue לגוף**: כותרת ה-issue ("כשהבוט בווטסאפ מקבל הודעה ממשתמש שאינו מוכר") לא תאמה לגוף ("לינק לאזור האישי") — הגוף כמעט זהה לניסוח #62. **הובהר מול המשתמש**: ההתנהגות הרצויה היא לפי הכותרת — לינק על ה-`REPLY_NOT_LINKED` (מספר לא מקושר), לא כפילות עם #62.
 
+**קבצים**: `src/lib/services/channelChat.ts` (`ChannelReply`, `REPLY_NOT_LINKED`), `src/lib/whatsapp/graph.ts` (`sendWhatsAppCtaUrl`), `src/app/api/whatsapp/webhook/route.ts`, `scripts/whatsapp-sim.ts`.
+
+**תיקון (עודכן — לינק כפתור, לא טקסט מוטמע)**: המשתמש ביקש במפורש שהלינק לא יהיה חלק ממחרוזת ההודעה אלא כפתור מוצמד. `handleInboundChannelMessage` משנה טיפוס החזרה מ-`string` ל-`ChannelReply` (`{ text, cta? }`) — `cta` מוגדר רק על ה-`REPLY_NOT_LINKED`, כל שאר הענפים מחזירים טקסט בלבד. `graph.ts` מקבל `sendWhatsAppCtaUrl` חדשה ששולחת הודעת `interactive`/`cta_url` (Meta Cloud API — כפתור קישור אמיתי בתוך WhatsApp, לא URL כתוב), עם מגבלת גוף נפרדת של הודעות אינטראקטיביות (1024 תווים, מוגדרת כ-`MAX_INTERACTIVE_BODY_LENGTH` לצד ה-4096 של הודעת טקסט רגילה). ה-webhook route בוחר בין `sendWhatsAppCtaUrl`/`sendWhatsAppText` לפי קיום `reply.cta`.
+
+**Effort**: קטן-בינוני. **Risk**: נמוך. **אימות**: `npm run typecheck && npm run lint && npm run build` עברו; `tests/unit/whatsappWebhook.test.ts` — 17/17 עברו. אין assertions ב-`tests/`/`scripts/` שהתבססו על `handleInboundChannelMessage` מחזיר `string` (רק `scripts/whatsapp-sim.ts`, עודכן).
 **קבצים**: `src/lib/services/channelChat.ts:33-37` (`REPLY_NOT_LINKED`), `src/lib/appUrl.ts` (`getAppUrl`).
 
 **תיקון**: הוספת `getAppUrl()` כשורה אחרונה ב-`REPLY_NOT_LINKED` — concatenation טהור על מחרוזת מודול קבועה, בלי מעורבות LLM ובלי עלות טוקנים. מכיוון שהשולח עדיין לא מאומת, הלינק הוא לעמוד הבית/התחברות (`/`), לא ל-`/settings`.

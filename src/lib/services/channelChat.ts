@@ -31,6 +31,16 @@ import { checkAndConsumeRateLimit, RateLimitExceededError } from "./rateLimit";
 import { getAppUrl } from "../appUrl";
 import type { ChannelKind } from "../../types/channelLink";
 
+// A reply's link rides as a WhatsApp CTA-URL button (interactive message),
+// never inlined into the body text — issue #66. `cta` is only ever set on
+// the not-linked reply below; every other branch returns text alone.
+export interface ChannelReply {
+  text: string;
+  cta?: { url: string; label: string };
+}
+
+const HOME_CTA = { url: getAppUrl(), label: "כניסה לאתר" };
+
 export const REPLY_NOT_LINKED =
   "היי! המספר הזה עדיין לא מקושר לחשבון Shovarim.\n" +
   "כדי לקשר: היכנסו לאתר → הגדרות → “חיבור WhatsApp”, ושלחו לכאן את הקוד בן 8 התווים שיוצג (תקף ל-10 דקות).\n" +
@@ -60,7 +70,7 @@ export async function handleInboundChannelMessage({
   channel,
   externalId,
   text,
-}: InboundChannelMessage): Promise<string> {
+}: InboundChannelMessage): Promise<ChannelReply> {
   const channelKey = buildChannelKey(channel, externalId);
   const uid = await resolveUidForChannel(channel, externalId);
 
@@ -70,7 +80,7 @@ export async function handleInboundChannelMessage({
   try {
     await checkAndConsumeRateLimit(uid ?? channelKey, "turns");
   } catch (error) {
-    if (error instanceof RateLimitExceededError) return error.message;
+    if (error instanceof RateLimitExceededError) return { text: error.message };
     throw error;
   }
 
@@ -84,14 +94,14 @@ export async function handleInboundChannelMessage({
   if (code.success) {
     try {
       await redeemLinkCode(channel, externalId, code.data);
-      return REPLY_LINKED;
+      return { text: REPLY_LINKED };
     } catch (error) {
       if (!(error instanceof ActionError)) throw error;
-      if (!uid) return error.message;
+      if (!uid) return { text: error.message };
     }
   }
 
-  if (!uid) return REPLY_NOT_LINKED;
+  if (!uid) return { text: REPLY_NOT_LINKED, cta: HOME_CTA };
 
   const history = await loadChannelHistory<Anthropic.Beta.BetaMessageParam>(channelKey, uid);
 
@@ -123,7 +133,7 @@ export async function handleInboundChannelMessage({
     // won't re-run this — the sender gets a sentence and can try again
     // themselves, which is the honest outcome.
     console.error(`[${channel}] agent turn failed`, error);
-    return REPLY_ERROR;
+    return { text: REPLY_ERROR };
   } finally {
     await mcp.close().catch(() => {});
   }
@@ -131,5 +141,5 @@ export async function handleInboundChannelMessage({
   await touchChannelLink(channel, externalId);
 
   const reply = chunks.join("\n\n").trim();
-  return reply || REPLY_EMPTY;
+  return { text: reply || REPLY_EMPTY };
 }

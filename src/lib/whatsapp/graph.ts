@@ -11,6 +11,9 @@ import { getOutboundConfig } from "./config";
 // tail of an answer; failing to send loses all of it.
 const MAX_BODY_LENGTH = 4096;
 
+// Interactive messages (buttons) cap the body far lower than plain text.
+const MAX_INTERACTIVE_BODY_LENGTH = 1024;
+
 export class WhatsAppSendError extends Error {
   constructor(status: number, body: string) {
     super(`WhatsApp send failed (${status}): ${body}`);
@@ -49,6 +52,49 @@ export async function sendWhatsAppText(to: string, body: string): Promise<boolea
   if (!response.ok) {
     // The response body carries Meta's error code but never our access token,
     // so it is safe to surface in logs.
+    throw new WhatsAppSendError(response.status, await response.text().catch(() => ""));
+  }
+
+  return true;
+}
+
+// Same reply text, but with a link attached as a tappable CTA button
+// (WhatsApp's "interactive" cta_url message) instead of a URL inside the
+// body — issue #66. Same drop-when-unconfigured contract as sendWhatsAppText.
+export async function sendWhatsAppCtaUrl(
+  to: string,
+  body: string,
+  cta: { url: string; label: string },
+): Promise<boolean> {
+  const config = getOutboundConfig();
+  if (!config) {
+    console.warn("[whatsapp] outbound not configured — reply dropped");
+    return false;
+  }
+
+  const response = await fetch(`${config.graphBaseUrl}/${config.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "cta_url",
+        body: { text: body.slice(0, MAX_INTERACTIVE_BODY_LENGTH) },
+        action: {
+          name: "cta_url",
+          parameters: { display_text: cta.label, url: cta.url },
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
     throw new WhatsAppSendError(response.status, await response.text().catch(() => ""));
   }
 
