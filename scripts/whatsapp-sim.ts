@@ -41,7 +41,8 @@ async function main() {
 
   const externalId = e164Schema.parse(target);
   const reply = await handleInboundChannelMessage({ channel: "whatsapp", externalId, text });
-  console.log(`\n>>> ${text}\n<<< ${reply}`);
+  const cta = reply.cta ? ` [button: ${reply.cta.label} -> ${reply.cta.url}]` : "";
+  console.log(`\n>>> ${text}\n<<< ${reply.text}${cta}`);
 }
 
 main()

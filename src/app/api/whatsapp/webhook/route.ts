@@ -9,7 +9,7 @@
 // silently and the caller gets HTML where it expected JSON.
 import { getInboundConfig } from "@/lib/whatsapp/config";
 import { verifyMetaSignature } from "@/lib/whatsapp/signature";
-import { sendWhatsAppText } from "@/lib/whatsapp/graph";
+import { sendWhatsAppText, sendWhatsAppCtaUrl } from "@/lib/whatsapp/graph";
 import { extractInboundMessages } from "@/lib/validation/whatsapp";
 import { claimInboundMessage } from "@/lib/services/channelMessages";
 import { buildChannelKey } from "@/lib/services/channelLinks";
@@ -17,6 +17,7 @@ import {
   handleInboundChannelMessage,
   REPLY_ERROR,
   REPLY_UNSUPPORTED_TYPE,
+  type ChannelReply,
 } from "@/lib/services/channelChat";
 
 export const runtime = "nodejs";
@@ -82,9 +83,9 @@ export async function POST(request: Request) {
     // run write tools a second time. See docs/DATA_MODEL.md channelMessages.
     if (!(await claimInboundMessage(channelKey, message.messageId))) continue;
 
-    let reply: string;
+    let reply: ChannelReply;
     if (message.text === null) {
-      reply = REPLY_UNSUPPORTED_TYPE;
+      reply = { text: REPLY_UNSUPPORTED_TYPE };
     } else {
       try {
         reply = await handleInboundChannelMessage({
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
         });
       } catch (error) {
         console.error("[whatsapp] failed to handle inbound message", error);
-        reply = REPLY_ERROR;
+        reply = { text: REPLY_ERROR };
       }
     }
 
@@ -102,7 +103,11 @@ export async function POST(request: Request) {
     // possibly wrote data), so a retry would be strictly worse than a lost
     // reply.
     try {
-      await sendWhatsAppText(message.from, reply);
+      if (reply.cta) {
+        await sendWhatsAppCtaUrl(message.from, reply.text, reply.cta);
+      } else {
+        await sendWhatsAppText(message.from, reply.text);
+      }
     } catch (error) {
       console.error("[whatsapp] failed to send reply", error);
     }
