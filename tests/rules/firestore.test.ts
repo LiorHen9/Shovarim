@@ -730,6 +730,79 @@ describe("messaging channels (channelLinks, channelLinkCodes, chatSessions)", ()
   });
 });
 
+// docs/DECISIONS.md ADR #37 (issue #58). Same bearer-credential class as
+// channelLinkCodes above: the doc id is the secret carried in a WhatsApp
+// message, so a readable collection would let anyone enumerate live invites
+// and accept one addressed to someone else. Asserted for the list owner too —
+// both the owner's and the invitee's views go through Server Actions.
+describe("listInviteCodes", () => {
+  const INVITE_CODE = "ABCD2345WXYZ";
+
+  function inviteDoc(listId: string, invitedBy: string) {
+    return {
+      code: INVITE_CODE,
+      listId,
+      role: "viewer",
+      phone: "+972501234567",
+      invitedBy,
+      status: "pending",
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 86400000),
+      usedAt: null,
+    };
+  }
+
+  it("list owner cannot create an invite from the client", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "cardLists/list-invite"), {
+        ownerId: USER_A,
+        name: "רשימה",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    });
+
+    await assertFails(
+      setDoc(doc(dbA, `listInviteCodes/${INVITE_CODE}`), inviteDoc("list-invite", USER_A))
+    );
+  });
+
+  it("nobody can read an invite code, not even the owner who issued it", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), `listInviteCodes/${INVITE_CODE}`),
+        inviteDoc("list-invite", USER_A)
+      );
+    });
+
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    const dbB = testEnv.authenticatedContext(USER_B).firestore();
+    const anon = testEnv.unauthenticatedContext().firestore();
+
+    await assertFails(getDoc(doc(dbA, `listInviteCodes/${INVITE_CODE}`)));
+    await assertFails(getDoc(doc(dbB, `listInviteCodes/${INVITE_CODE}`)));
+    await assertFails(getDoc(doc(anon, `listInviteCodes/${INVITE_CODE}`)));
+  });
+
+  it("an invitee cannot mark an invite accepted from the client", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(
+        doc(ctx.firestore(), `listInviteCodes/${INVITE_CODE}`),
+        inviteDoc("list-invite", USER_A)
+      );
+    });
+
+    // The whole point of the accept path living in a Server Action: the
+    // channelLinks check that proves the phone belongs to this account cannot
+    // be expressed here, so a client write would bypass it entirely.
+    const dbB = testEnv.authenticatedContext(USER_B).firestore();
+    await assertFails(
+      updateDoc(doc(dbB, `listInviteCodes/${INVITE_CODE}`), { status: "accepted" })
+    );
+  });
+});
+
 describe("consents", () => {
   it("owner can create their own consent record", async () => {
     const dbA = testEnv.authenticatedContext(USER_A).firestore();

@@ -9,7 +9,10 @@ export type AuditLogEventType =
   | "deletion_completed"
   | "permission_change"
   | "channel_linked"
-  | "channel_unlinked";
+  | "channel_unlinked"
+  | "list_invite_created"
+  | "list_invite_accepted"
+  | "list_invite_declined";
 
 export type AuditLogChannel = "cli" | "web" | "whatsapp" | "telegram";
 

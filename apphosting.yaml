@@ -201,3 +201,13 @@ env:
   - variable: NEXT_PUBLIC_WHATSAPP_BOT_PHONE
     value: "+15551845212"
     availability: [BUILD, RUNTIME]
+
+  # Absolute base URL of the app (ADR #37, issue #58). A list invite link is
+  # pasted into a WhatsApp message, so it has to be fully qualified — this is
+  # the only place in the app that needs an absolute self-URL, since every
+  # other link is same-origin. Deliberately NOT derived from
+  # NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: that one is the Auth redirect handler's
+  # domain (see ADR #35) and means something different. No trailing slash.
+  - variable: NEXT_PUBLIC_APP_URL
+    value: "https://shovarim-web--shovarim-prod.europe-west4.hosted.app"
+    availability: [BUILD, RUNTIME]
