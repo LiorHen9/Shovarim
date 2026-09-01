@@ -418,6 +418,20 @@ jsonPayload.event="auth_sign_in_failed"
 
 **מה עדיין לא נרשם**: כשלי התחברות בצד Firebase Auth עצמו. הקונסולה מציגה רק התחברויות מוצלחות; לרישום ניסיונות כושלים ברמת השירות צריך להפעיל Cloud Audit Logs (Data Access) ל-Identity Toolkit API ב-GCP — opt-in, עולה כסף, ובעל השלכות PII שצריך להצליב מול `docs/PRIVACY.md` לפני שמפעילים.
 
+## פוסט-מורטם: `storage.bucket()` נופל ב-Cloud Functions — env var שחי רק ב-App Hosting (2026-09-01, ADR #46)
+
+**מה קרה**: אדמין ניסה "מחיקה מיידית" של משתמש (`adminDeleteUserNow`, Phase 9.4) וקיבל שגיאת 500. הלוגים (`firebase functions:log --project shovarim-prod`) הראו `FirebaseError: Bucket name not specified or invalid` בתוך `deleteUserAccount()`, ב-`Storage.bucket()`.
+
+**הסיבה**: `functions/src/firebaseAdmin.ts` אתחל את ה-Admin SDK עם `storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`. המשתנה הזה **קיים רק ב-App Hosting** — `apphosting.yaml` מגדיר אותו עם `availability: [BUILD, RUNTIME]`, אבל זה חל אך ורק על ה-backend של Next.js. Cloud Functions הוא compute environment נפרד לגמרי; שום מנגנון לא מעביר אליו משתני `apphosting.yaml`. `GCLOUD_PROJECT` כן מוגדר אוטומטית ע"י ריצת ה-function עצמה (ולכן `projectId` תמיד עבד), אבל אין מקבילה אוטומטית לשם ה-bucket.
+
+**למה זה לא נתפס קודם**: `deleteUserAccount()` (Phase 4.2, ADR #24) קיים מזמן, אבל עד עכשיו אף אחד לא באמת קרא לו בפרודקשן — ה-sweep המתוזמן (`deleteExpiredAccounts`) דורש 30 יום grace period שעדיין לא חלפו על אף משתמש. `adminDeleteUserNow` (Phase 9.4) הוא קטע הקוד הראשון שבאמת הפעיל את הפונקציה בפרודקשן, וחשף באג ישן.
+
+**השלכה חמורה — מחיקה חלקית, לא רק כישלון**: הסדר בתוך `deleteUserAccount()` הוא: מחיקת מסמכי Firestore (כרטיסים/רשימות/חברויות/קישורי ערוץ/הזמנות) ← מחיקת קבצי Storage (**כאן זרק**) ← מחיקת `users/{uid}` ← מחיקת חשבון ה-Auth. כלומר קריאה שנכשלת כאן משאירה את המשתמש במצב ביניים: הנתונים שבבעלותו כבר נמחקו, אבל הפרופיל וחשבון ה-Auth עדיין קיימים. בגלל ש-`deleteUserAccount()` idempotent-safe מטבעו (כל שלב פשוט לא עושה כלום אם הנתונים כבר נעלמו), התיקון הנכון הוא לתקן את הבאג ולנסות שוב את אותה פעולה — לא לבנות ניקוי ידני נפרד.
+
+**התיקון**: `functions/src/firebaseAdmin.ts` קורא קודם ל-`process.env.STORAGE_BUCKET`, ורק אם הוא ריק נופל חזרה ל-`NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` (לתאימות עם אמולטור/סקריפטים מקומיים). `STORAGE_BUCKET` מוגדר ב-`functions/.env.shovarim-prod` — קובץ env-file לפי המוסכמה של Firebase Functions Gen 2 (`functions/.env.<project-id>`, נטען אוטומטית ונארז לתוך ה-deploy רק לפרויקט התואם). לא סוד — אותו ערך שכבר גלוי ב-`apphosting.yaml`.
+
+**אימות**: בדיקת בידוד (`storage.bucket()` נקרא בתוך תהליך Node טרי שמייבא **רק** את `functions/src/firebaseAdmin.ts`, בלי `src/lib/firebase/adminApp.ts`) — כי בדיקת עשן קודמת (Phase 9.4) עברה בטעות: היא ייבאה גם את `adminApp.ts` (ל-`adminAuth`/`adminDb`) **וגם** ישירות את ה-handler מ-`functions/src/adminActions.ts` **באותו תהליך**, כך ש-`getApps()[0]` ב-`firebaseAdmin.ts` מצא את ה-app שכבר אותחל ע"י `adminApp.ts` (עם bucket תקין מ-`.env.local`) ומעולם לא ניסה לאתחל בעצמו — false positive. לקח: כשבודקים קוד ש-`functions/` מייבא, לוודא בידוד תהליך אמיתי, לא רק ש"זה עבד באמולטור".
+
 ## Rollback
 
 - **אפליקציה**: `firebase apphosting:rollouts:create shovarim-web --project shovarim-prod --git-commit <sha-קודם>` (backendId פוזיציוני). שימו לב: ל-CLI המותקן **אין** `apphosting:rollouts:list` — רשימת ה-rollouts הקודמים זמינה רק ב-Firebase Console → App Hosting → Rollouts, או ב-Cloud Build history.

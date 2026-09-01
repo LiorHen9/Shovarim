@@ -17,7 +17,15 @@ import { getStorage } from "firebase-admin/storage";
 // docs/DECISIONS.md #24), so fall back to the same env vars .env.local
 // already defines for the emulator.
 const projectId = process.env.GCLOUD_PROJECT ?? process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+// STORAGE_BUCKET comes from functions/.env.<project-id> (Firebase Functions
+// Gen 2's own env-file convention — bundled into the deploy) and is the only
+// reliable source in the real Cloud Functions runtime: unlike GCLOUD_PROJECT,
+// nothing sets a bucket name automatically there. NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+// is App Hosting/emulator-only — apphosting.yaml only reaches the Next.js
+// backend, never Cloud Functions, which is a separate compute environment
+// (see docs/DECISIONS.md #46: storage.bucket() threw "Bucket name not
+// specified" in production because this fell through to undefined).
+const storageBucket = process.env.STORAGE_BUCKET ?? process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
 const app = getApps()[0] ?? initializeApp({ projectId, storageBucket });
 
 export const db = getFirestore(app);

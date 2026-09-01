@@ -37,6 +37,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+# Firebase Functions Gen 2 env-file convention (docs/DECISIONS.md #46) — no
+# secret in it, just the production Storage bucket name, and it must be
+# committed for the deploy pipeline to bundle it into the function.
+!functions/.env.shovarim-prod
 
 # vercel
 .vercel
