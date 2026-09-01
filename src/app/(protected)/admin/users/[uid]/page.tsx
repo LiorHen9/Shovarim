@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { UserModerationSection } from "@/components/admin/UserModerationSection";
+import { UserDeletionSection } from "@/components/admin/UserDeletionSection";
 import { getUserDetail } from "@/lib/services/adminUsers";
 import { adminUserSearchUidSchema } from "@/lib/validation/adminUsers";
 
@@ -85,6 +86,8 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
         emailBlocked={emailBlocked}
         channelLinks={channelLinks}
       />
+
+      <UserDeletionSection uid={profile.uid} email={profile.email} deletionRequestedAt={profile.deletionRequestedAt} />
     </div>
   );
 }

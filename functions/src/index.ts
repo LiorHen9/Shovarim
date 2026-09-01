@@ -7,6 +7,8 @@ import { sweepExpiredAccountDeletions } from "./accountDeletion";
 // to avoid cross-region latency between Firestore/Storage and Cloud Functions.
 setGlobalOptions({ region: "europe-west4" });
 
+export { adminDeleteUserNow } from "./adminActions";
+
 // Right-to-erasure, stage 2 (docs/PRIVACY.md § "זכות מחיקה", docs/DECISIONS.md #24).
 // Runs daily; deleteUserAccount is idempotent-safe per user (a failure just
 // gets retried on the next run since deletionRequestedAt isn't cleared until

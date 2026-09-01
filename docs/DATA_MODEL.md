@@ -362,6 +362,9 @@ Append-only, נכתב רק מ-Admin SDK. נפרד במכוון מ-`auditLog` ה�
 ```
 חסימה פרואקטיבית של מספר — נבדק ב-`redeemLinkCode` (`src/lib/services/channelLinks.ts`) לפני יצירת קישור חדש, עם אותה הודעת כישלון גנרית כמו כל דחייה אחרת בפונקציה הזו (uniform-failure — שולח אנונימי לא יכול להבחין "קוד לא תקין" מ"מספר חסום"). `allow read, write: if false`. לא נוגע בחשבון Auth קיים — מספר טלפון לבדו אינו מזהה חשבון (ADR #29), רק `channelLinks` עושה זאת.
 
+## מחיקה יזומה ע"י אדמין (Phase 9.4, ADR #45)
+אין collection חדש. מחיקה מתוזמנת (`src/lib/services/adminDeletion.ts`, `scheduleUserDeletion`/`cancelUserDeletion`) כותבת לאותו שדה קיים `users/{uid}.deletionRequestedAt` (Phase 4.2, ראו למעלה) דרך ה-Admin SDK — אותו grace period, אותו `deleteExpiredAccounts` sweep, בלי מנגנון תזמון מקביל. מחיקה מיידית קוראת ישירות ל-`deleteUserAccount()` הקיים (`functions/src/accountDeletion.ts`) מתוך Cloud Function `onCall` חדש (`functions/src/adminActions.ts`, `adminDeleteUserNow`) — שני נתיבי המחיקה (sweep מתוזמן ומחיקה מיידית ע"י אדמין) מתכנסים לאותה פונקציית cascade-delete יחידה, בלי שכפול לוגיקה. שלוש הפעולות (`delete_scheduled`/`delete_cancelled`/`delete_immediate`) נכתבות ל-`adminAuditLog` לפני הפעולה עצמה.
+
 ## אינדקסים מרוכבים (`firestore.indexes.json`)
 - `cards`: `ownerId ASC, expiryDate ASC` — דוחות "עומד לפוג"
 - `cards`: `ownerId ASC, status ASC, createdAt DESC` — רשימת כרטיסים לפי סטטוס
