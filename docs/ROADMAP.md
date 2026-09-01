@@ -294,8 +294,9 @@ Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Fireba
 
 **נשאר לבדוק ידנית**: הרצת `npm run grant-admin -- <uid>` נגד production עם ה-uid של המשתמש, ואימות שהניווט ל-`/admin` עובד (ונחסם למשתמש לא-אדמין).
 
-### שלב 9.2 — צפייה במשתמשים (מתוכנן)
-`/admin/users`: רשימה עם pagination בסמן (`createdAt`), חיפוש לפי email (`adminAuth.getUserByEmail` — לא index Firestore חדש) ולפי uid, עמוד פרטי משתמש (פרופיל, ספירת כרטיסים/רשימות דרך Firestore `count()` aggregation, סטטוס מחיקה קיים אם יש).
+### שלב 9.2 — צפייה במשתמשים ✅ הושלם (2026-09-01)
+`/admin/users`: רשימה עם pagination בסמן (Server Component, `listUsersPage()` ב-`src/lib/services/adminUsers.ts` — `orderBy("createdAt","desc")` + `startAfter(docSnapshot)`, סמן = `uid` של המסמך האחרון בעמוד הקודם, מועבר ב-`?cursor=`). חיפוש בשדה חופשי אחד ב-`?q=` (זוהה client-side לפי "@" — אימייל דרך `adminAuth.getUserByEmail`, אחרת `uid`, `UserSearchForm.tsx`). עמוד פרטי משתמש `/admin/users/[uid]` (`getUserDetail()`): פרופיל, `disabled`/`emailVerified`/כניסה אחרונה מ-`adminAuth.getUser`, ספירת כרטיסים/רשימות דרך Firestore `count()` aggregation (`where("ownerId","==",uid)` — שדה בודד, לא נדרש אינדקס מרוכב חדש), סטטוס מחיקה קיים (`deletionRequestedAt`). קריאה בלבד — אין mutation, אין collection Firestore חדש, ולכן אין שינוי ב-`firestore.rules`/טסטים חדשים ב-`test:rules`; ההגנה על הנתיב היא `app/(protected)/admin/layout.tsx` הקיים (Phase 9.1). ראו `docs/DECISIONS.md` ADR #43.
+- אימות: `typecheck`/`lint`/`build` נקיים. נבדק ידנית מול Firebase Emulators + Playwright (לא נשמר כטסט קבוע): אדמין רואה רשימה/חיפוש/עמוד פרטים עם ספירות נכונות, ומשתמש לא-אדמין מופנה מ-`/admin/users` ל-`/dashboard`.
 
 ### שלב 9.3 — חסימה (מתוכנן)
 `userModeration/{uid}` (נפרד מ-`users/{uid}` בכוונה — ה-update rule הקיים על `users` לא מגביל שדות, אז שדה חסימה שם היה מאפשר למשתמש חסום לבטל את עצמו). מנגנון אכיפה ראשי: `adminAuth.updateUser(uid, {disabled:true})` + `revokeRefreshTokens` (OOTB — `verifySessionCookie(cookie, true)` הקיים כבר בודק disabled/revocation). הגנת-משנה ל-WhatsApp (uid נגזר מ-`channelLinks` בלי Auth token בכלל): `assertNotBlocked` ב-3 נקודות הכניסה ל-`runAgentTurn`. `blockedEmails`/`blockedPhones` לחסימה פרואקטיבית לפני שקיים חשבון, נבדקים ב-`createSession`/`redeemLinkCode` בהתאמה.

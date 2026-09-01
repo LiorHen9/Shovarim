@@ -1,15 +1,21 @@
-// Foundations shell (docs/DECISIONS.md ADR #42, docs/ROADMAP.md Phase 9.1).
-// Access is already gated by admin/layout.tsx; this page is the landing spot
-// until later phases (user directory, blocking, deletion, usage/analytics
-// dashboards) add real content here.
+import Link from "next/link";
+
+// Foundations shell (docs/DECISIONS.md ADR #42, docs/ROADMAP.md Phase 9.1),
+// now linking into the user directory (Phase 9.2). Access is already gated
+// by admin/layout.tsx.
 export default function AdminHomePage() {
   return (
-    <div className="space-y-2">
-      <h1 className="text-xl font-bold">ניהול מערכת</h1>
-      <p className="text-sm text-muted-foreground">
-        פאנל הניהול בבנייה — ראו docs/ROADMAP.md Phase 9 לשלבים הבאים (צפייה במשתמשים, חסימה,
-        מחיקה, מעקב שימוש).
-      </p>
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-xl font-bold">ניהול מערכת</h1>
+        <p className="text-sm text-muted-foreground">
+          ראו docs/ROADMAP.md Phase 9 לשלבים הבאים (חסימה, מחיקה, מעקב שימוש).
+        </p>
+      </div>
+
+      <Link href="/admin/users" className="underline underline-offset-2">
+        משתמשים
+      </Link>
     </div>
   );
 }
