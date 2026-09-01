@@ -554,3 +554,17 @@ for collection members and field memberUid
 **החלטה (5) — אין collection Firestore חדש בשלב זה.** בניגוד לשלבים 9.3/9.4/9.5 הבאים, צפייה בלבד לא דורשת שום מסמך חדש — כל הנתונים כבר קיימים ב-`users`/`cards`/`cardLists`/Firebase Auth. משמעות: אין שינוי ב-`firestore.rules`, ואין טסטים חדשים ל-`tests/rules/firestore.test.ts` (אין מה לבדוק — לא נוסף `match` block).
 
 **נדחה**: (א) חיפוש עם שני שדות/toggle נפרדים — נדחה לטובת שדה חופשי אחד עם זיהוי לפי צורה, פשוט יותר ומספיק; (ב) ספירות בעמוד הרשימה — נדחה מטעמי עלות שאילתות (החלטה 4); (ג) `requireAdmin()` חוזר בתוך כל עמוד — מיותר כש-layout כבר אוכף, ראו החלטה 1.
+
+## 47. `deleteUserAccount()` הופך ל-idempotent באמת גם על מחיקת ה-Auth account, ועמוד פרטי המשתמש מפסיק לקרוס על חשבון חלקית-נמחק
+**תאריך**: 2026-09-01
+
+**רקע**: המשך ישיר ל-ADR #46. אחרי שהתיקון שם נפרס, ניסיון לפתוח את `/admin/users/[uid]` עבור המשתמש שנפגע מהבאג הקודם (`liorh@hms.co.il`, שלושה ניסיונות מחיקה כושלים לפני התיקון) קרס בשגיאת שרת לא-מטופלת (Next.js error digest), במקום להציג את העמוד.
+
+**הסיבה**: `getUserDetail()` (`src/lib/services/adminUsers.ts`) קרא ל-`adminAuth.getUser(uid)` בלי טיפול בשגיאה. עבור משתמש שה-Firestore doc שלו (`users/{uid}`) עדיין קיים אבל חשבון ה-Auth שלו כבר לא (בין אם ממחיקה חלקית מהבאג הקודם ובין אם מכל סיבה אחרת) — `getUser()` זורק `auth/user-not-found`, וזה הפיל את כל ה-Server Component render. תוך כדי אבחון התגלה גם באג תאום ב-`deleteUserAccount()` עצמו (`functions/src/accountDeletion.ts`): הקוד כבר היה **מתועד** בהערה כ"idempotent-safe — כל שלב לא עושה כלום אם הנתונים כבר נמחקו", אבל זה לא נכון בפועל לשלב האחרון — `auth.deleteUser(uid)` נזרק גם הוא אם החשבון כבר נמחק, כך שניסיון חוזר על מחיקה עבור בדיוק המקרה הזה (הפרופיל קיים, ה-Auth כבר לא) היה נכשל שוב ב-500 באותה נקודה, לא משנה כמה פעמים מנסים.
+
+**החלטה — טיפול מפורש ב-`auth/user-not-found` בשני המקומות, לא ניקוי ידני חד-פעמי.** תואם את הקביעה הקיימת ב-ADR #46 ("נדחה: ניקוי ידני") — אם הפונקציה טוענת שהיא idempotent, זה צריך להיות נכון בפועל, לא רק בתיעוד:
+- `functions/src/accountDeletion.ts`: `auth.deleteUser(uid)` עטוף ב-`.catch()` שבולע `auth/user-not-found` וזורק הלאה כל שגיאה אחרת. אותו helper `isAuthUserNotFoundError` שכבר קיים ב-`src/lib/services/adminModeration.ts`/`adminUsers.ts`, משוכפל מקומית (functions/ לא יכול לייבא מ-src/, ADR #24).
+- `src/lib/services/adminUsers.ts`: `adminAuth.getUser(uid)` עבר ל-helper `getAuthRecordSafe()` שמחזיר `null` באותו מקרה במקום לזרוק. `AdminUserDetail` קיבל שדה חדש `authAccountExists: boolean`; `disabled`/`emailVerified`/`lastSignInAt` נופלים לברירת מחדל בטוחה (`false`/`false`/`null`) כשה-Auth record חסר, במקום להתפוצץ.
+- `src/app/(protected)/admin/users/[uid]/page.tsx`: Badge חדש ("מחיקה חלקית — חשבון Auth כבר נמחק, פרופיל עדיין קיים") מוצג כש-`!authAccountExists`, כדי שהמצב הזה יהיה גלוי לאדמין ולא רק "לא קורס יותר" — זה בדיוק המידע שדרוש כדי להחליט לנסות שוב "מחיקה מיידית".
+
+**נדחה**: קריאה ישירה ל-`adminDeleteUserNow` (ה-Cloud Function) בעקיפין דרך Firebase Console כפתרון מיידי, בלי לתקן את הקוד קודם — נדחה כי `auth.deleteUser` הבלתי-מטופל היה גורם לאותה קריאה עצמה להיכשל שוב ב-500 עבור בדיוק המשתמש הזה (הפרופיל קיים, ה-Auth לא), כך שזה לא היה workaround אמין.

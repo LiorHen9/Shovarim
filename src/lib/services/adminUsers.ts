@@ -5,6 +5,8 @@
 // that check themselves (unlike Server Actions, a Server Component page
 // can't be reached without its layout running first). Uses relative imports
 // for adminApp, matching every other file in this directory (see cards.ts).
+import type { UserRecord } from "firebase-admin/auth";
+
 import { adminAuth, adminDb } from "../firebase/adminApp";
 import { getUserModerationStatus, isEmailBlocked, isPhoneBlocked, type ModerationStatus } from "./moderation";
 import { listChannelLinksForUid } from "./channelLinks";
@@ -66,8 +68,23 @@ function isAuthUserNotFoundError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "auth/user-not-found";
 }
 
+// A users/{uid} profile doc can outlive its Auth account — e.g. a deletion
+// that got partway through deleteUserAccount() before a transient failure
+// (docs/DECISIONS.md #46's storage.bucket() bug was one such case). Without
+// this guard, adminAuth.getUser(uid) throwing "auth/user-not-found" crashed
+// this whole page instead of just showing that the account is in that state.
+async function getAuthRecordSafe(uid: string): Promise<UserRecord | null> {
+  try {
+    return await adminAuth.getUser(uid);
+  } catch (error) {
+    if (isAuthUserNotFoundError(error)) return null;
+    throw error;
+  }
+}
+
 export interface AdminUserDetail {
   profile: UserProfile;
+  authAccountExists: boolean;
   disabled: boolean;
   emailVerified: boolean;
   lastSignInAt: string | null;
@@ -90,7 +107,7 @@ export async function getUserDetail(uid: string): Promise<AdminUserDetail | null
   if (!profile) return null;
 
   const [authRecord, cardCountSnap, listCountSnap, moderation, emailBlocked, links] = await Promise.all([
-    adminAuth.getUser(uid),
+    getAuthRecordSafe(uid),
     adminDb.collection("cards").where("ownerId", "==", uid).count().get(),
     adminDb.collection("cardLists").where("ownerId", "==", uid).count().get(),
     getUserModerationStatus(uid),
@@ -104,9 +121,10 @@ export async function getUserDetail(uid: string): Promise<AdminUserDetail | null
 
   return {
     profile,
-    disabled: authRecord.disabled,
-    emailVerified: authRecord.emailVerified,
-    lastSignInAt: authRecord.metadata.lastSignInTime ?? null,
+    authAccountExists: authRecord !== null,
+    disabled: authRecord?.disabled ?? false,
+    emailVerified: authRecord?.emailVerified ?? false,
+    lastSignInAt: authRecord?.metadata.lastSignInTime ?? null,
     cardCount: cardCountSnap.data().count,
     listCount: listCountSnap.data().count,
     moderation,
