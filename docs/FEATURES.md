@@ -36,4 +36,5 @@
 | התראות תפוגה (push/email) | ⏳ מתוכנן | Phase 7 |
 | דוחות וסטטיסטיקות | ⏳ מתוכנן | Phase 8 |
 | פאנל ניהול — יסודות (הרשאת אדמין, `/admin` shell) | ✅ הושלם | 2026-09-01, Phase 9.1 — `adminRoles`/`adminAuditLog` (Admin SDK בלבד), `scripts/grant-admin.ts`, `requireAdmin()`/`isAdminUid()` (`src/lib/auth/session.ts`), `app/(protected)/admin/` (layout מגן + עמוד placeholder). ראו `docs/DECISIONS.md` ADR #42 |
-| פאנל ניהול — צפייה במשתמשים/חסימה/מחיקה/מעקב Claude/אנליטיקס | ⏳ מתוכנן | Phase 9.2–9.6, ראו `docs/ROADMAP.md` |
+| פאנל ניהול — צפייה במשתמשים | ✅ הושלם | 2026-09-01, Phase 9.2 — `/admin/users` (רשימה עם pagination בסמן לפי `createdAt`, חיפוש לפי אימייל/`uid`), `/admin/users/[uid]` (פרופיל + ספירת כרטיסים/רשימות דרך Firestore `count()`). `src/lib/services/adminUsers.ts` (Admin SDK בלבד, ללא collection חדש). ראו `docs/DECISIONS.md` ADR #43 |
+| פאנל ניהול — חסימה/מחיקה/מעקב Claude/אנליטיקס | ⏳ מתוכנן | Phase 9.3–9.6, ראו `docs/ROADMAP.md` |

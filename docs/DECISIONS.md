@@ -486,3 +486,20 @@ for collection members and field memberUid
 **נדחה**: (א) custom claims — ראו החלטה 1; (ב) RBAC מלא (מספר תפקידים/הרשאות פרטניות) כבר בשלב זה — המשתמש ביקש מפורשות "רק אני כרגע", ושדה `role` הבודד (`"super_admin"`) פתוח להרחבה בלי migration כשיידרש; (ג) route/אפליקציה נפרדת לפאנל — נדחה לטובת נתיב מוגן בתוך האפליקציה הקיימת, כדי לא לשכפל תשתית auth/deploy (בחירת המשתמש המפורשת).
 
 **מה עוד נשאר (שלבים הבאים, לא בשלב זה)**: צפייה במשתמשים, חסימה (`userModeration`/`blockedEmails`/`blockedPhones`), מחיקה יזומה ע"י אדמין (מתוזמנת/מיידית — האחרונה דורשת Cloud Function `onCall` נפרד בגלל מגבלת `functions/tsconfig.json`'s `rootDir` שתועדה ב-ADR #24), מעקב שימוש/עלות Claude API (`response.usage` לא נאסף היום כלל), ואנליטיקס (Firestore aggregation queries → Firebase Extension ל-BigQuery → GA4). ראו `docs/ROADMAP.md` Phase 9.
+
+## 43. פאנל ניהול — צפייה במשתמשים, קריאה בלבד דרך Server Components (Phase 9.2)
+**תאריך**: 2026-09-01
+
+**רקע**: שלב 9.1 (ADR #42) סגר את שאלת ה-authorization. שלב זה הוא הפיצ'ר הראשון בפועל: `/admin/users` (רשימה + חיפוש) ו-`/admin/users/[uid]` (פרטי משתמש). אין כאן שום mutation — קריאה בלבד.
+
+**החלטה (1) — Server Components, לא Server Actions.** `users/{uid}` ב-`firestore.rules` הוא `allow read: if isOwner(uid)` בלבד, כך שאדמין לא יכול לקרוא מסמך של משתמש אחר דרך ה-client SDK בשום מצב — כל קריאה חייבת Admin SDK. מכיוון שמדובר בקריאה (לא כתיבה) ואין טופס לשלוח, `/admin/users` ו-`/admin/users/[uid]` הם `async` Server Components רגילים שקוראים ל-`src/lib/services/adminUsers.ts` ישירות (בדיוק כמו ש-`(protected)/admin/layout.tsx` כבר עושה `isAdminUid()`), ולא Server Actions. ההגנה נשארת רק ב-`admin/layout.tsx` הקיים (Phase 9.1): בניגוד ל-Server Action שהוא endpoint שאפשר לתקוף ישירות מבלי לעבור דרך ה-UI, עמוד תחת layout לא נגיש בלי שה-layout ירוץ קודם — אין צורך לחזור ולבדוק `requireAdmin()` בכל עמוד.
+
+**החלטה (2) — pagination בסמן דרך `startAfter(DocumentSnapshot)`, לא ערך createdAt גולמי ב-URL.** `listUsersPage()` (`src/lib/services/adminUsers.ts`) מקבל רק `uid` של המסמך האחרון בעמוד הקודם (`?cursor=<uid>`), שולף אותו (`doc(cursor).get()`) ומעביר את ה-snapshot ל-`startAfter`. Firestore ממשיך מהערכים בפועל של אותו מסמך על השדה שה-query ממוין לפיו — אין צורך לקודד/לפענח `Timestamp` ב-URL, וה-URL נשאר קריא. "עמוד קודם" לא מומש בצד שרת בכוונה: כל עמוד הוא URL נפרד (`?cursor=...`), כך שכפתור ה-back של הדפדפן כבר עושה את זה.
+
+**החלטה (3) — חיפוש בשדה חופשי אחד, מסווג לפי צורה (`@` → אימייל, אחרת `uid`), לא שני שדות/toggle.** תואם את התיאור בתכנון המקורי ("חיפוש לפי email... ולפי uid") בלי להוסיף בקרת UI שנייה. `adminAuth.getUserByEmail` (לא שאילתת Firestore) לאיתור לפי אימייל — Auth כבר אוכף ייחודיות אימייל, כך שאין צורך בשדה `email` מפוזר על `users/{uid}` ואין אינדקס Firestore חדש.
+
+**החלטה (4) — ספירות בעמוד הפרטים בלבד, לא ברשימה.** ספירת כרטיסים/רשימות (Firestore `count()` aggregation, `where("ownerId","==",uid)`) רצה רק בעמוד `/admin/users/[uid]`, לא בעמוד הרשימה — כדי לא להכפיל N שאילתות aggregation על כל טעינת עמוד (25 שורות × 2 = 50 שאילתות). שני הפילטרים הם equality בודד על `ownerId`, שכבר מכוסה באינדקסים הקיימים (`docs/DATA_MODEL.md`) — אין אינדקס מרוכב חדש.
+
+**החלטה (5) — אין collection Firestore חדש בשלב זה.** בניגוד לשלבים 9.3/9.4/9.5 הבאים, צפייה בלבד לא דורשת שום מסמך חדש — כל הנתונים כבר קיימים ב-`users`/`cards`/`cardLists`/Firebase Auth. משמעות: אין שינוי ב-`firestore.rules`, ואין טסטים חדשים ל-`tests/rules/firestore.test.ts` (אין מה לבדוק — לא נוסף `match` block).
+
+**נדחה**: (א) חיפוש עם שני שדות/toggle נפרדים — נדחה לטובת שדה חופשי אחד עם זיהוי לפי צורה, פשוט יותר ומספיק; (ב) ספירות בעמוד הרשימה — נדחה מטעמי עלות שאילתות (החלטה 4); (ג) `requireAdmin()` חוזר בתוך כל עמוד — מיותר כש-layout כבר אוכף, ראו החלטה 1.
