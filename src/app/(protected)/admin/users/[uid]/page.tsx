@@ -27,6 +27,7 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
 
   const {
     profile,
+    authAccountExists,
     disabled,
     emailVerified,
     lastSignInAt,
@@ -49,10 +50,13 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
           <p className="text-sm text-muted-foreground">{profile.email}</p>
         </div>
         <div className="flex gap-2">
+          {!authAccountExists && (
+            <Badge variant="destructive">מחיקה חלקית — חשבון Auth כבר נמחק, פרופיל עדיין קיים</Badge>
+          )}
           {moderation.blocked && <Badge variant="destructive">חסום</Badge>}
-          {disabled && <Badge variant="destructive">חשבון מושבת</Badge>}
+          {authAccountExists && disabled && <Badge variant="destructive">חשבון מושבת</Badge>}
           {profile.deletionRequestedAt && <Badge variant="destructive">מחיקה ממתינה</Badge>}
-          {!emailVerified && <Badge variant="outline">אימייל לא מאומת</Badge>}
+          {authAccountExists && !emailVerified && <Badge variant="outline">אימייל לא מאומת</Badge>}
         </div>
       </div>
 

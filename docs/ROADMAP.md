@@ -308,6 +308,8 @@ Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Fireba
 
 **באג בפרודקשן (2026-09-01)**: "מחיקה מיידית" ראשונה בפועל נכשלה ב-500 — `storage.bucket()` בתוך `deleteUserAccount()` נשען על משתנה סביבה שקיים רק ב-App Hosting, לא ב-Cloud Functions. תוקן (`functions/.env.shovarim-prod`), אומת בבידוד תהליך אמיתי (בדיקת העשן הקודמת נתנה false positive). ראו `docs/DECISIONS.md` ADR #46 ופוסט-מורטם מלא ב-`docs/DEPLOYMENT.md`.
 
+**באג המשך (2026-09-01)**: המשתמש שנפגע מהבאג הקודם (פרופיל `users/{uid}` קיים, חשבון Auth כבר נמחק/חסר) גרם לקריסת `/admin/users/[uid]` (`adminAuth.getUser` נזרק בלי טיפול), וגם ל-`deleteUserAccount()` עצמו נכשל שוב על אותו מקרה (`auth.deleteUser` לא באמת idempotent כפי שתועד). שני המקומות תוקנו לטפל ב-`auth/user-not-found` בפועל. ראו `docs/DECISIONS.md` ADR #47.
+
 ### שלב 9.5 — מעקב שימוש/עלות Claude API (מתוכנן)
 `response.usage` לא נאסף היום כלל (`src/lib/mcp/agentLoop.ts`). `claudeUsageLog/{entryId}` ילכוד input/output/cache tokens לכל קריאת `messages.create()` + עלות משוערת מטבלת תמחור. **לטעון את ה-skill `claude-api` לפני מימוש** לאימות תמחור/שמות שדות usage עדכניים.
 

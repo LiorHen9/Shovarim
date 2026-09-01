@@ -11,6 +11,13 @@ import { auth, db, storage } from "./firebaseAdmin";
 
 export const GRACE_PERIOD_DAYS = 30;
 
+// Duplicated from src/lib/services/adminUsers.ts's own copy — functions/
+// can't import from src/ (see the note in ./firebaseAdmin.ts), so this
+// three-line check is kept in sync manually rather than shared.
+function isAuthUserNotFoundError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "auth/user-not-found";
+}
+
 // Deletes everything owned by uid, in an order that never leaves the account
 // data-orphaned-but-still-signed-in: Firestore/Storage data first, the Auth
 // user last. The auditLog entry is written before any of it, so a partial
@@ -79,7 +86,16 @@ export async function deleteUserAccount(uid: string): Promise<void> {
   await storage.bucket().deleteFiles({ prefix: `users/${uid}/` });
 
   await db.collection("users").doc(uid).delete();
-  await auth.deleteUser(uid);
+  // "auth/user-not-found" here means the Auth account was already gone
+  // (e.g. an earlier attempt's storage.bucket() call threw and got retried,
+  // or the account was removed by some other path) — the deletion this call
+  // is meant to perform is already done, not a failure. Without this catch
+  // the function's own "idempotent-safe, every step a no-op if already gone"
+  // claim (see the comment above) was false for this one step, and a retry
+  // for such an account would 500 forever instead of completing.
+  await auth.deleteUser(uid).catch((error) => {
+    if (!isAuthUserNotFoundError(error)) throw error;
+  });
 }
 
 export async function sweepExpiredAccountDeletions(
