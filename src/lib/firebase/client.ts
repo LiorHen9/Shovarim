@@ -2,6 +2,7 @@ import { getApps, initializeApp, type FirebaseOptions } from "firebase/app";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
+import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 
 import { initAppCheck } from "./appCheck";
 
@@ -19,6 +20,9 @@ export const firebaseApp = getApps()[0] ?? initializeApp(firebaseConfig);
 export const auth = getAuth(firebaseApp);
 export const db = getFirestore(firebaseApp);
 export const storage = getStorage(firebaseApp);
+// Same region as functions/src/index.ts's setGlobalOptions — a mismatched
+// region here would make httpsCallable resolve to a URL nothing is deployed at.
+export const functions = getFunctions(firebaseApp, "europe-west4");
 
 // Connect to local emulators in development so no real Firebase project data
 // is touched while iterating locally. See docs/ARCHITECTURE.md.
@@ -32,6 +36,7 @@ if (useEmulators) {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
     connectFirestoreEmulator(db, "127.0.0.1", 8080);
     connectStorageEmulator(storage, "127.0.0.1", 9199);
+    connectFunctionsEmulator(functions, "127.0.0.1", 5001);
     g.__shovarimEmulatorsConnected = true;
   }
 }

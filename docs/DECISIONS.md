@@ -511,6 +511,27 @@ for collection members and field memberUid
 
 **מה עוד נשאר (שלבים הבאים, לא בשלב זה)**: מחיקה יזומה ע"י אדמין (מתוזמנת/מיידית), מעקב שימוש/עלות Claude API, אנליטיקס. ראו `docs/ROADMAP.md` Phase 9.
 
+## 45. פאנל ניהול — מחיקה יזומה ע"י אדמין: Server Action למתוזמנת, Cloud Function `onCall` למיידית (Phase 9.4)
+**תאריך**: 2026-09-01
+
+**רקע**: הפרויקט כבר מממש מחיקה דו-שלבית מלאה ע"י המשתמש עצמו (Phase 4.2, ADR #24): `deletionRequestedAt` על `users/{uid}` + `deleteExpiredAccounts` (Cloud Function מתוזמן) שקורא ל-`deleteUserAccount()`/`sweepExpiredAccountDeletions()` ב-`functions/src/accountDeletion.ts`. שלב זה מוסיף שני נתיבי מחיקה יזומים ע"י אדמין — מתוזמנת ומיידית — בלי לבנות מנגנון cascade-delete מקביל.
+
+**החלטה (1) — מחיקה מתוזמנת היא Server Action רגיל שמשתמש באותו שדה קיים.** `scheduleUserDeletion`/`cancelUserDeletion` (`src/lib/services/adminDeletion.ts`, נקראים דרך `src/actions/adminDeletion.ts`) כותבים/מנקים את `users/{uid}.deletionRequestedAt` דרך ה-Admin SDK — בדיוק אותו grace period ואותו sweep כמו `requestAccountDeletion`/`cancelAccountDeletion` (`src/actions/privacy.ts`) של המשתמש עצמו. אין collection/שדה חדש, ולכן אין שינוי ב-`firestore.rules`.
+
+**החלטה (2) — מחיקה מיידית היא Cloud Function `onCall` חדש, לא Server Action, כדי לקרוא ל-`deleteUserAccount()` בלי לשכפל אותו.** `functions/tsconfig.json`'s `rootDir: "src"` מונע מ-`src/actions/` (חלק מבניית Next.js) לייבא מ-`functions/src/` (ADR #24) — כלומר אין דרך ל-Server Action לקרוא ישירות לפונקציית ה-cascade-delete הקיימת. הפתרון: `functions/src/adminActions.ts` (`adminDeleteUserNow`) חי באותו package כמו `accountDeletion.ts` וקורא אליו ישירות, בלי שכפול שורת קוד. המחיר: callable הוא endpoint ציבורי (לא מוגן ע"י `app/(protected)/admin/layout.tsx` ולא ע"י `firestore.rules`) — הפונקציה **חייבת** לאמת הרשאת אדמין בעצמה בצד שרת (`adminRoles/{caller uid}`), ולא לסמוך על כך שרק ה-UI קורא לה. נקראת מ-`UserDeletionSection.tsx` (client component) ישירות דרך `httpsCallable`, לא Server Action.
+
+**החלטה (3) — לוגיקת ההרשאה מופרדת מה-`onCall` wrapper (`adminDeleteUserNowHandler`).** אותו רציונל כמו הפרדת Server Action ↔ שכבת שירות בכל שאר הקוד (`src/actions/*.ts` ↔ `src/lib/services/*.ts`): מאפשר להפעיל את הבדיקות (לא-מאומת/לא-אדמין/self-delete/מחיקה בפועל) ישירות מסקריפט אימות, בלי transport אמיתי (App Check כלול) — ראו "אימות" ב-`docs/ROADMAP.md` Phase 9.4.
+
+**החלטה (4) — `enforceAppCheck: true` ברמת הפונקציה, לא Console-level Enforce.** ה-Enforce שכבר פעיל בפרודקשן (`docs/DEPLOYMENT.md`) חל רק על Firestore/Storage — Cloud Functions callables לא מכוסים על ידו. `enforceAppCheck` הוא אופציה על `onCall` עצמו: ה-SDK מוודא טוקן App Check ומחזיר 401 אוטומטית אם הוא חסר/לא תקין, לפני שה-handler רץ בכלל.
+
+**החלטה (5) — הגנה עצמית בשני הנתיבים.** גם `scheduleUserDeletion` (uid) וגם `adminDeleteUserNowHandler` (uid של הקורא) דוחים ניסיון של אדמין לפעול על עצמו — אותו רציונל lockout כמו חסימה עצמית (ADR #44 החלטה 4): עם אדמין יחיד, מחיקה עצמית (אחרי גרייס פריוד או מיידית) הייתה בלתי הפיכה בלי גישה ישירה ל-Firebase Console.
+
+**החלטה (6) — UI: type-to-confirm (אימייל המשתמש) למחיקה מיידית, כפתור חד-לחיצתי למתוזמנת/ביטול.** `UserDeletionSection.tsx` — מחיקה מיידית היא בלתי הפיכה ומיידית (הפעולה המסוכנת ביותר בפאנל עד כה), ומקבלת את אותה רמת חיכוך כמו `DeleteAccountSection` הקיים (הקלדת המחרוזת המזהה כתנאי לכפתור). תזמון/ביטול תזמון הם הפיכים בקלות (30 יום להיפתר, `cancelUserDeletion` מבטל בכל רגע) — לחיצה אחת מספיקה.
+
+**נדחה**: (א) callable נפרד ל-`adminCancelScheduledDeletion` — נדחה לטובת Server Action רגיל (`adminCancelUserDeletionAction`), כי מחיקה מתוזמנת לא נוגעת בכלל ב-`deleteUserAccount()` ואין סיבה ל-callable; (ב) `enforceAppCheck` גם על מחיקה מתוזמנת — לא רלוונטי, זו Server Action רגילה שכבר מוגנת ע"י `requireAdmin()` ו-`admin/layout.tsx`, לא endpoint ציבורי.
+
+**מה עוד נשאר**: מעקב שימוש/עלות Claude API, אנליטיקס. ראו `docs/ROADMAP.md` Phase 9.
+
 **החלטה (1) — Server Components, לא Server Actions.** `users/{uid}` ב-`firestore.rules` הוא `allow read: if isOwner(uid)` בלבד, כך שאדמין לא יכול לקרוא מסמך של משתמש אחר דרך ה-client SDK בשום מצב — כל קריאה חייבת Admin SDK. מכיוון שמדובר בקריאה (לא כתיבה) ואין טופס לשלוח, `/admin/users` ו-`/admin/users/[uid]` הם `async` Server Components רגילים שקוראים ל-`src/lib/services/adminUsers.ts` ישירות (בדיוק כמו ש-`(protected)/admin/layout.tsx` כבר עושה `isAdminUid()`), ולא Server Actions. ההגנה נשארת רק ב-`admin/layout.tsx` הקיים (Phase 9.1): בניגוד ל-Server Action שהוא endpoint שאפשר לתקוף ישירות מבלי לעבור דרך ה-UI, עמוד תחת layout לא נגיש בלי שה-layout ירוץ קודם — אין צורך לחזור ולבדוק `requireAdmin()` בכל עמוד.
 
 **החלטה (2) — pagination בסמן דרך `startAfter(DocumentSnapshot)`, לא ערך createdAt גולמי ב-URL.** `listUsersPage()` (`src/lib/services/adminUsers.ts`) מקבל רק `uid` של המסמך האחרון בעמוד הקודם (`?cursor=<uid>`), שולף אותו (`doc(cursor).get()`) ומעביר את ה-snapshot ל-`startAfter`. Firestore ממשיך מהערכים בפועל של אותו מסמך על השדה שה-query ממוין לפיו — אין צורך לקודד/לפענח `Timestamp` ב-URL, וה-URL נשאר קריא. "עמוד קודם" לא מומש בצד שרת בכוונה: כל עמוד הוא URL נפרד (`?cursor=...`), כך שכפתור ה-back של הדפדפן כבר עושה את זה.

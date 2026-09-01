@@ -6,6 +6,7 @@ export type AdminAuditAction =
   | "block"
   | "unblock"
   | "delete_scheduled"
+  | "delete_cancelled"
   | "delete_immediate";
 
 // Append-only, written only via the Admin SDK. Deliberately separate from
