@@ -324,6 +324,44 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 ```
 Append-only, נכתב רק מ-Admin SDK. נפרד במכוון מ-`auditLog` הקיים למעלה: `auditLog` הוא per-user (מיוצא עם המשתמש, נשאר גם אחרי מחיקתו) ולא בנוי לשאילתות חוצות-משתמשים; `adminAuditLog` הוא הלדג'ר הייעודי לפעולות שאדמין מבצע **על** משתמשים — נכתב לפני כל mutation (כמו `deleteUserAccount` הקיים). `firestore.rules` חוסם קריאה וכתיבה מ-client לחלוטין, כולל לאדמין (תצוגה עתידית בפאנל תעבור דרך Server Action).
 
+## `userModeration/{uid}`
+`src/types/userModeration.ts`, נגיש דרך `src/lib/services/moderation.ts` (קריאה/אכיפה) ו-`src/lib/services/adminModeration.ts` (מוטציות), `docs/DECISIONS.md` ADR #44
+```ts
+{
+  uid: string;
+  blocked: boolean;
+  blockedReason: string | null;
+  blockedAt: Timestamp | null;
+  blockedBy: string | null;   // uid של האדמין שביצע את הפעולה האחרונה
+  updatedAt: Timestamp;
+}
+```
+נפרד במכוון מ-`users/{uid}`: ה-`update` rule הקיים על `users` לא מגביל שדות (`allow update: if isOwner(uid)`), אז שדה `blocked` שם היה מאפשר למשתמש חסום לבטל את עצמו בכתיבת client רגילה. `allow read, write: if false` לחלוטין, כולל לאדמין עצמו. מנגנון האכיפה הראשי הוא ברמת Firebase Auth (`adminAuth.updateUser(uid, {disabled:true})` + `revokeRefreshTokens`) — `verifySessionCookie(cookie, true)` הקיים (`src/lib/auth/session.ts`) כבר בודק `disabled`/revocation, כך שכל נתיב מבוסס-session (web, `mcp:cli`) נחסם אוטומטית ברגע החסימה. מסמך זה הוא ה-fallback לערוץ WhatsApp, שבו ה-`uid` נגזר מ-`channelLinks` בלי Firebase ID token בכלל (ADR #29) — `assertNotBlocked(uid)` נבדק שם (וגם ב-`POST /api/chat`/`mcp-cli.ts`, כהגנת-משנה) מיד לפני כל קריאת Claude.
+
+## `blockedEmails/{email}`
+`src/types/blockedEmail.ts`, נגיש דרך `src/lib/services/moderation.ts`/`adminModeration.ts`, `docs/DECISIONS.md` ADR #44
+```ts
+{
+  email: string;        // lowercased, doc id זהה
+  blockedReason: string | null;
+  blockedAt: Timestamp;
+  blockedBy: string;
+}
+```
+חסימה פרואקטיבית של כתובת — לפני שקיים חשבון בכלל בשבילה. נבדק ב-`createSession` (`src/actions/auth.ts`) לפני מתן session cookie, כך שכתובת חסומה לא יכולה לקבל session אפילו בכניסה ראשונה. `allow read, write: if false` — קריאה מ-client הייתה הופכת את ה-collection ל-oracle ל"אילו כתובות חסומות". חסימת אימייל לחשבון קיים גם מבצעת עליו `disabled:true`+`revokeRefreshTokens` (superset שחוסם גם את החשבון הקיים).
+
+## `blockedPhones/{e164}`
+`src/types/blockedPhone.ts`, נגיש דרך `src/lib/services/moderation.ts`/`adminModeration.ts`, `docs/DECISIONS.md` ADR #44
+```ts
+{
+  phone: string;         // E.164, doc id זהה — אותה צורה כמו channelLinks.externalId
+  blockedReason: string | null;
+  blockedAt: Timestamp;
+  blockedBy: string;
+}
+```
+חסימה פרואקטיבית של מספר — נבדק ב-`redeemLinkCode` (`src/lib/services/channelLinks.ts`) לפני יצירת קישור חדש, עם אותה הודעת כישלון גנרית כמו כל דחייה אחרת בפונקציה הזו (uniform-failure — שולח אנונימי לא יכול להבחין "קוד לא תקין" מ"מספר חסום"). `allow read, write: if false`. לא נוגע בחשבון Auth קיים — מספר טלפון לבדו אינו מזהה חשבון (ADR #29), רק `channelLinks` עושה זאת.
+
 ## אינדקסים מרוכבים (`firestore.indexes.json`)
 - `cards`: `ownerId ASC, expiryDate ASC` — דוחות "עומד לפוג"
 - `cards`: `ownerId ASC, status ASC, createdAt DESC` — רשימת כרטיסים לפי סטטוס

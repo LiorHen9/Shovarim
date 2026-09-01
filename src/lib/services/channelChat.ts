@@ -37,6 +37,7 @@ import {
 } from "./channelRelinkConfirmations";
 import { loadChannelHistory, saveChannelHistory } from "./chatSessions";
 import { checkAndConsumeRateLimit, RateLimitExceededError } from "./rateLimit";
+import { assertNotBlocked } from "./moderation";
 import { getAppUrl } from "../appUrl";
 import type { ChannelKind } from "../../types/channelLink";
 
@@ -63,6 +64,8 @@ export const REPLY_UNSUPPORTED_TYPE =
   "אני יודע לקרוא רק הודעות טקסט כרגע — אפשר לכתוב לי מה תרצו לעשות.";
 
 export const REPLY_ERROR = "אירעה שגיאה בעיבוד ההודעה. אפשר לנסות שוב בעוד רגע.";
+
+export const REPLY_BLOCKED = "החשבון הזה חסום ואינו יכול להשתמש בבוט. פנו לתמיכה אם לדעתכם מדובר בטעות.";
 
 const REPLY_EMPTY = "לא הצלחתי לנסח תשובה. אפשר לנסח את השאלה אחרת?";
 
@@ -188,6 +191,16 @@ export async function handleInboundChannelMessage({
   }
 
   if (!uid) return { text: REPLY_NOT_LINKED, cta: HOME_CTA };
+
+  // Auth disable+revoke has no effect here — the WhatsApp uid is derived from
+  // channelLinks, not an Auth token (ADR #29) — so this is the enforcement
+  // for a blocked account on this channel, checked before any Claude call.
+  try {
+    await assertNotBlocked(uid);
+  } catch (error) {
+    if (error instanceof ActionError) return { text: REPLY_BLOCKED };
+    throw error;
+  }
 
   const history = await loadChannelHistory<Anthropic.Beta.BetaMessageParam>(channelKey, uid);
 

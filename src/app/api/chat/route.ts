@@ -22,6 +22,8 @@ import { runAgentTurn, toAnthropicTools } from "@/lib/mcp/agentLoop";
 import { createAnthropicClient } from "@/lib/mcp/anthropicClient";
 import { buildSystemPrompt } from "@/lib/mcp/systemPrompt";
 import { loadChannelHistory, saveChannelHistory } from "@/lib/services/chatSessions";
+import { assertNotBlocked } from "@/lib/services/moderation";
+import { ActionError } from "@/lib/actions/errors";
 
 export const runtime = "nodejs";
 
@@ -68,6 +70,16 @@ export async function POST(request: Request) {
     uid = await requireUid();
   } catch {
     return Response.json({ error: "התחברות נדרשת" }, { status: 401 });
+  }
+
+  // Defense-in-depth alongside Auth disable+revoke (which already invalidates
+  // the session cookie requireUid() just verified) — see
+  // src/lib/services/moderation.ts.
+  try {
+    await assertNotBlocked(uid);
+  } catch (error) {
+    const message = error instanceof ActionError ? error.message : "אירעה שגיאה";
+    return Response.json({ error: message }, { status: 403 });
   }
 
   const body = await request.json().catch(() => null);

@@ -18,6 +18,7 @@ import { adminAuth } from "../src/lib/firebase/adminApp";
 import { runAgentTurn, toAnthropicTools } from "../src/lib/mcp/agentLoop";
 import { createAnthropicClient } from "../src/lib/mcp/anthropicClient";
 import { buildSystemPrompt } from "../src/lib/mcp/systemPrompt";
+import { assertNotBlocked } from "../src/lib/services/moderation";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,13 +33,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // app + the Auth Emulator UI at http://127.0.0.1:4000/auth, or Firestore) and
 // exchanges it client-side, which still yields a real, Firebase-issued ID
 // token that mcp-server/index.ts verifies exactly as before.
-async function signIn(): Promise<string> {
-  const [, , uid] = process.argv;
-  if (!uid) {
-    console.error("Usage: npm run mcp:cli -- <uid>");
-    process.exit(1);
-  }
-
+async function signIn(uid: string): Promise<string> {
   const app = initializeApp({
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -69,7 +64,17 @@ async function connectMcp(idToken: string): Promise<Client> {
 }
 
 async function main() {
-  const idToken = await signIn();
+  const [, , uid] = process.argv;
+  if (!uid) {
+    console.error("Usage: npm run mcp:cli -- <uid>");
+    process.exit(1);
+  }
+
+  // Checked before minting any credential — a blocked uid shouldn't get a
+  // working session here either (see src/lib/services/moderation.ts).
+  await assertNotBlocked(uid);
+
+  const idToken = await signIn(uid);
   const mcp = await connectMcp(idToken);
   const tools = await toAnthropicTools(mcp);
   const client = createAnthropicClient();

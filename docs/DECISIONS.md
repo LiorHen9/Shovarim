@@ -492,6 +492,25 @@ for collection members and field memberUid
 
 **רקע**: שלב 9.1 (ADR #42) סגר את שאלת ה-authorization. שלב זה הוא הפיצ'ר הראשון בפועל: `/admin/users` (רשימה + חיפוש) ו-`/admin/users/[uid]` (פרטי משתמש). אין כאן שום mutation — קריאה בלבד.
 
+## 44. פאנל ניהול — חסימת משתמשים: `userModeration`/`blockedEmails`/`blockedPhones`, Auth disable כמנגנון ראשי (Phase 9.3)
+**תאריך**: 2026-09-01
+
+**רקע**: שלב הפיצ'ר הראשון עם mutation אמיתי בפאנל. שלוש רמות חסימה כפי שתוכנן ב-design doc המקורי (Phase 9): לפי uid (חשבון קיים), לפי email (כתובת שאולי אין לה עוד חשבון), ולפי טלפון (מספר WhatsApp).
+
+**החלטה (1) — `userModeration/{uid}` נפרד מ-`users/{uid}`, לא שדה נוסף על המסמך הקיים.** `firestore.rules`'s `allow update: if isOwner(uid)` על `users` לא מגביל שדות — שדה `blocked` שם היה מאפשר למשתמש חסום לבטל את עצמו בכתיבת client רגילה, בדיוק כמו שהתכנון המקורי זיהה. `allow read, write: if false` לחלוטין, כולל לאדמין עצמו — אותו פטרן כמו `adminRoles`.
+
+**החלטה (2) — Auth `disabled`+`revokeRefreshTokens` הוא מנגנון האכיפה הראשי, לא בדיקת `userModeration` בכל בקשה.** `getSessionUid()` (`src/lib/auth/session.ts`) כבר קורא ל-`verifySessionCookie(cookie, true)`, שבודק `disabled`/revocation מובנה — כלומר כל נתיב מבוסס-session (`/api/chat`, `mcp:cli`) נחסם אוטומטית ברגע החסימה, בלי קוד אכיפה חדש בשכבת ה-session עצמה. `assertNotBlocked(uid)` (`src/lib/services/moderation.ts`) הוא הגנת-משנה בשלוש נקודות הכניסה שקוראות ל-`runAgentTurn` — קריטי בפרט לוואטסאפ, שבו ה-`uid` נגזר מ-`channelLinks` בלי Auth token בכלל (ADR #29) ו-Auth disable לא נוגע בו ישירות; לגבי web/`mcp-cli` זו הגנה כפולה שגם חוסכת קריאת Claude מיותרת אם יש חלון מירוץ בין disable לתפוגת ה-session.
+
+**החלטה (3) — `blockedEmails`/`blockedPhones` נבדקים *לפני* שקיים חשבון/קישור, לא אחרי.** `createSession` (`src/actions/auth.ts`) בודק `isEmailBlocked` לפני מתן session cookie — כתובת חסומה לא מקבלת session אפילו בכניסה ראשונה, כשעוד אין `users/{uid}` שאפשר לחסום ישירות. `redeemLinkCode` (`src/lib/services/channelLinks.ts`) בודק `isPhoneBlocked` לפני יצירת `channelLinks` חדש, עם אותה הודעת כישלון גנרית כמו כל דחייה אחרת שם (uniform-failure, ADR #29) — שולח אנונימי לא לומד אם המספר חסום או שהקוד סתם לא תקין. חסימת אימייל שכבר יש לו חשבון קיים גם מבצעת עליו disable+revoke באותה פעולה (superset).
+
+**החלטה (4) — הגנה עצמית: אדמין לא יכול לחסום את עצמו (uid או email).** קריטי כשיש אדמין יחיד — חסימה עצמית הייתה מנעלת (lock out) גם מהאתר וגם מהפאנל עצמו, בלי דרך חזרה מלבד גישה ישירה ל-Firebase Console. הבדיקה יושבת ב-`adminModeration.ts` (לא רק ב-Server Action) כדי לכסות כל קורא עתידי. **לא** נבדק לחסימת טלפון עצמית — חסימת מספר לא משביתה חשבון Auth קיים, ולכן אין lockout מהאתר; רק מונעת קישור/רה-קישור עתידי לאותו מספר.
+
+**החלטה (5) — UI: אישור עם סיבה (dialog) לחסימת uid, פעולה חד-לחיצתית עם סיבה קבועה לחסימת email/phone.** חסימת uid היא הפעולה בעלת ההשפעה הגבוהה ביותר (משבית חשבון קיים לגמרי) ומקבלת דיאלוג אישור + שדה סיבה חופשי (`UserModerationSection.tsx`), אותו pattern כמו `DeleteAccountSection`. חסימת email/phone נקודתית היא הפיכה ונמוכת-סיכון יותר — לחיצה אחת מספיקה, כדי לא לשכפל דיאלוג כמעט-זהה לכל פעולת משנה.
+
+**נדחה**: (א) בדיקת `assertNotBlocked` גם ב-`GET /api/chat` — הנתיב הזה רק טוען היסטוריה קיימת ולא קורא ל-Claude, כך שאין עלות API לחסוך ואין mutation למנוע; (ב) re-verification תקופתי או rate limiting נפרד לחסימה — מכסה threat אחר (ADR #41), לא רלוונטי כאן.
+
+**מה עוד נשאר (שלבים הבאים, לא בשלב זה)**: מחיקה יזומה ע"י אדמין (מתוזמנת/מיידית), מעקב שימוש/עלות Claude API, אנליטיקס. ראו `docs/ROADMAP.md` Phase 9.
+
 **החלטה (1) — Server Components, לא Server Actions.** `users/{uid}` ב-`firestore.rules` הוא `allow read: if isOwner(uid)` בלבד, כך שאדמין לא יכול לקרוא מסמך של משתמש אחר דרך ה-client SDK בשום מצב — כל קריאה חייבת Admin SDK. מכיוון שמדובר בקריאה (לא כתיבה) ואין טופס לשלוח, `/admin/users` ו-`/admin/users/[uid]` הם `async` Server Components רגילים שקוראים ל-`src/lib/services/adminUsers.ts` ישירות (בדיוק כמו ש-`(protected)/admin/layout.tsx` כבר עושה `isAdminUid()`), ולא Server Actions. ההגנה נשארת רק ב-`admin/layout.tsx` הקיים (Phase 9.1): בניגוד ל-Server Action שהוא endpoint שאפשר לתקוף ישירות מבלי לעבור דרך ה-UI, עמוד תחת layout לא נגיש בלי שה-layout ירוץ קודם — אין צורך לחזור ולבדוק `requireAdmin()` בכל עמוד.
 
 **החלטה (2) — pagination בסמן דרך `startAfter(DocumentSnapshot)`, לא ערך createdAt גולמי ב-URL.** `listUsersPage()` (`src/lib/services/adminUsers.ts`) מקבל רק `uid` של המסמך האחרון בעמוד הקודם (`?cursor=<uid>`), שולף אותו (`doc(cursor).get()`) ומעביר את ה-snapshot ל-`startAfter`. Firestore ממשיך מהערכים בפועל של אותו מסמך על השדה שה-query ממוין לפיו — אין צורך לקודד/לפענח `Timestamp` ב-URL, וה-URL נשאר קריא. "עמוד קודם" לא מומש בצד שרת בכוונה: כל עמוד הוא URL נפרד (`?cursor=...`), כך שכפתור ה-back של הדפדפן כבר עושה את זה.
