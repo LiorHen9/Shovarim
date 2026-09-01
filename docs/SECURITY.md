@@ -20,7 +20,8 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 4. **Abuse/spam על כתיבות** (יצירת אלפי כרטיסים/entries) → Firebase App Check (`src/lib/firebase/appCheck.ts`, Phase 4) + GCP quotas מובנות על Cloud Functions. ✅ **נסגר 2026-08-29**: הקוד (provider: reCAPTCHA Enterprise, ADR #28) והמפתח ב-`apphosting.yaml` חיים בפרודקשן, verified requests אומתו בקונסולה, ו-**Enforce הופעל על Firestore ו-Storage**. כתיבה ישירה ל-REST API בלי טוקן App Check תקין נדחית עכשיו ברמת השירות, לפני `firestore.rules`. הסדר המחייב שהוביל לכאן (rollout → אימות verified requests → Enforce) מתועד ב-`docs/DEPLOYMENT.md`.
    ⚠️ **מה שה-Enforce לא מכסה**: Server Actions ו-Route Handlers (`/api/chat`, ובהמשך `/api/whatsapp/webhook`) פועלים דרך Admin SDK, שעוקף גם את הכללים וגם את App Check. משטח התקיפה שם נאכף בנפרד — session cookie/חתימת webhook + rate limiting (`src/lib/services/rateLimit.ts`), ראו #6 למטה.
 5. **דליפת Admin credentials** → Admin SDK תמיד server-only (`import "server-only"` ב-`admin.ts`), secrets ב-Secret Manager/`.env.local` שלא מחובר לגיט.
-6. **צ'אטבוט/CLI (Phase 5) פועל בשם משתמש שגוי** — prompt injection או הזיית מודל שמנסה "לבקש" לפעול על נתוני משתמש אחר → נחסם מבנית: ה-`uid` הפועל נגזר תמיד בצד שרת (session cookie / מיפוי ערוץ מאומת) ולעולם אינו שדה בסכימת ה-tool שה-LLM יכול לספק. ראו הרחבה למטה ו-`docs/DECISIONS.md` #17.
+6. **הענקת/ניצול הרשאת אדמין לא-מורשית (Phase 9, ADR #42)** → `adminRoles/{uid}` הוא `allow read, write: if false` לגמרי — אין נתיב client לכתוב את הרשאת האדמין של עצמו או של אחר; ההענקה היחידה היא `scripts/grant-admin.ts` שרץ ידנית נגד production. כל admin Server Action פותח ב-`requireAdmin()` (זורק אם `adminRoles/{uid}` לא קיים) ולעולם לא סומך על flag שמגיע מה-client. ראו הרחבה למטה.
+7. **צ'אטבוט/CLI (Phase 5) פועל בשם משתמש שגוי** — prompt injection או הזיית מודל שמנסה "לבקש" לפעול על נתוני משתמש אחר → נחסם מבנית: ה-`uid` הפועל נגזר תמיד בצד שרת (session cookie / מיפוי ערוץ מאומת) ולעולם אינו שדה בסכימת ה-tool שה-LLM יכול לספק. ראו הרחבה למטה ו-`docs/DECISIONS.md` #17.
 
 ## הצפנה
 - Firestore/Storage: הצפנה at-rest כברירת מחדל של Google Cloud — מספיקה לרוב השדות.
@@ -82,6 +83,16 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 - **`src/proxy.ts` לא מגן על `/api/*` ואסור שיגן**: redirect של endpoint JSON לדף HTML שובר את הקוראים שלו (המלכודת מקומיט `ff99bb8`). ההגנה כאן היא החתימה, לא ה-proxy.
 
 **מה שנשאר פתוח**: תוכן ההודעות והתשובות עובר דרך שרתי Meta (ראו `docs/PRIVACY.md`) — כולל `cvv`/`barcodeOrCode` עצמם מ-ADR #36 אם המשתמש/ת בוחר/ת להזין אותם דרך וואטסאפ — ואין עדיין מגננה ייעודית ל-prompt injection על טקסט חופשי מעבר להפרדה המבנית של ה-`uid`.
+
+## פאנל ניהול (Phase 9, ADR #42) — מודל הרשאות
+
+**מקור האמת הוא Firestore, לא Firebase Auth custom claims**: `adminRoles/{uid}` (`docs/DATA_MODEL.md`), נבדק דרך `exists()` (`isAdmin()` ב-`firestore.rules`, `isAdminUid()`/`requireAdmin()` בצד שרת) — לא custom claim, כדי להימנע מעיכוב ריענון טוקן (עד שעה) שהיה דורש UX/תיעוד נפרד. `adminRoles` עצמו `allow read, write: if false` לחלוטין, כולל לאדמין עצמו — אין שום נתיב client לכתוב אליו, כדי שלא תיפתח אפשרות self-grant. ההענקה היחידה היום היא `scripts/grant-admin.ts`, מריצים ידנית נגד production (Admin SDK מקומי).
+
+**כל admin Server Action/Cloud Function מאמת הרשאה בעצמו, בצד שרת** — `requireAdmin()` (זורק `ActionError`, לא `Error` רגיל — ראו ADR #18) בתחילת כל Server Action; כשיתווסף Cloud Function `onCall` למחיקה מיידית (שלב עתידי, ADR #42 מפרט את האילוץ), הוא יבדוק את `adminRoles/{caller uid}` בעצמו ולא יסתמך על כך ש-UI הוא הבודק היחיד — callable functions הם endpoint ציבורי.
+
+**`/admin` הוא שכבת הגנה שנייה מעל `(protected)`**: `app/(protected)/admin/layout.tsx` דורש גם session תקין וגם `isAdminUid()`, ומפנה (לא error) למי שלא אדמין. אין שינוי ב-`src/proxy.ts` — הנתיב כבר מכוסה ב-fast-path הקיים (בדיקת cookie בלבד), הבדיקה המלאה קורית ב-layout (ADR #8).
+
+**`adminAuditLog`** (נפרד מ-`auditLog` הקיים) מתעד כל פעולת אדמין **לפני** שהיא מתבצעת — אותו סדר "audit לפני mutation" כמו `deleteUserAccount`. גם הוא `allow read, write: if false` לגמרי.
 
 ## Testing
 `@firebase/rules-unit-testing` מול Firestore Emulator (דורש Java מותקן מקומית — ראה `docs/ARCHITECTURE.md`). טסטים נדרשים לפני Phase 1 sign-off:

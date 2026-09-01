@@ -284,3 +284,27 @@ Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Fireba
 
 ## Phase 8 — Reports & Analytics
 דשבורד יתרות/תפוגות/מגמות, אגרגציות מחושבות server-side (לא client-side על datasets גדולים).
+
+## Phase 9 — פאנל ניהול (Admin Panel)
+`docs/DECISIONS.md` ADR #42. צפייה במשתמשים, חסימה (uid/email/טלפון), מחיקה (מתוזמנת/מיידית) יזומה ע"י אדמין, מעקב שימוש/עלות Claude API, אנליטיקס. חד-אדמין כרגע (המשתמש עצמו), מעוצב להרחבה עתידית ל-RBAC בלי re-architecture.
+
+### שלב 9.1 — יסודות (הרשאות + shell) ✅ הושלם (2026-09-01)
+`adminRoles/{uid}` (Firestore doc, לא custom claim — נמנע מעיכוב ריענון טוקן; `exists()` באותו פטרן כמו `isAcceptedListMember`), `allow read, write: if false` לחלוטין (כולל לאדמין עצמו — אין נתיב client, גם לא ל-self-grant). הענקה ראשונה ויחידה דרך `scripts/grant-admin.ts` (`npm run grant-admin -- <uid>`, אותו pattern כמו סקריפטי Admin SDK קיימים). `isAdminUid()`/`requireAdmin()` ב-`src/lib/auth/session.ts` (לצד `requireUid()`; `requireAdmin` זורק `ActionError` כמו ADR #18). `app/(protected)/admin/layout.tsx` — שכבת הגנה שנייה מעל `(protected)` (session + admin, מפנה ל-`/dashboard` ולא error), `app/(protected)/admin/page.tsx` — placeholder. `adminAuditLog/{entryId}` (נפרד מ-`auditLog` הקיים — לדג'ר ייעודי לפעולות אדמין, נכתב לפני כל mutation, שורד מחיקת המשתמש). `firestore.rules`: helper `isAdmin()` + שני match blocks חדשים (`if false`).
+- אימות: `typecheck`/`lint` נקיים. `test:rules` — טסטים חדשים ל-`adminRoles`/`adminAuditLog` (client נדחה תמיד, כולל לאדמין עצמו וללא אימות).
+
+**נשאר לבדוק ידנית**: הרצת `npm run grant-admin -- <uid>` נגד production עם ה-uid של המשתמש, ואימות שהניווט ל-`/admin` עובד (ונחסם למשתמש לא-אדמין).
+
+### שלב 9.2 — צפייה במשתמשים (מתוכנן)
+`/admin/users`: רשימה עם pagination בסמן (`createdAt`), חיפוש לפי email (`adminAuth.getUserByEmail` — לא index Firestore חדש) ולפי uid, עמוד פרטי משתמש (פרופיל, ספירת כרטיסים/רשימות דרך Firestore `count()` aggregation, סטטוס מחיקה קיים אם יש).
+
+### שלב 9.3 — חסימה (מתוכנן)
+`userModeration/{uid}` (נפרד מ-`users/{uid}` בכוונה — ה-update rule הקיים על `users` לא מגביל שדות, אז שדה חסימה שם היה מאפשר למשתמש חסום לבטל את עצמו). מנגנון אכיפה ראשי: `adminAuth.updateUser(uid, {disabled:true})` + `revokeRefreshTokens` (OOTB — `verifySessionCookie(cookie, true)` הקיים כבר בודק disabled/revocation). הגנת-משנה ל-WhatsApp (uid נגזר מ-`channelLinks` בלי Auth token בכלל): `assertNotBlocked` ב-3 נקודות הכניסה ל-`runAgentTurn`. `blockedEmails`/`blockedPhones` לחסימה פרואקטיבית לפני שקיים חשבון, נבדקים ב-`createSession`/`redeemLinkCode` בהתאמה.
+
+### שלב 9.4 — מחיקה ע"י אדמין (מתוכנן)
+מתוזמנת: שימוש חוזר מלא במנגנון ה-grace-period הקיים (`deletionRequestedAt`, Phase 4.2) — Server Action בלבד, לא מנגנון מקביל. מיידית: Cloud Function `onCall` חדש (`functions/src/adminActions.ts`) שקורא ישירות ל-`deleteUserAccount()` הקיים ב-`accountDeletion.ts` — נדרש כי `functions/tsconfig.json`'s `rootDir` מונע מ-`src/actions/` לייבא מ-`functions/src/` (ADR #24). מאמת הרשאת אדמין בעצמו בצד שרת (callable הוא endpoint ציבורי), מכוסה ע"י App Check הקיים.
+
+### שלב 9.5 — מעקב שימוש/עלות Claude API (מתוכנן)
+`response.usage` לא נאסף היום כלל (`src/lib/mcp/agentLoop.ts`). `claudeUsageLog/{entryId}` ילכוד input/output/cache tokens לכל קריאת `messages.create()` + עלות משוערת מטבלת תמחור. **לטעון את ה-skill `claude-api` לפני מימוש** לאימות תמחור/שמות שדות usage עדכניים.
+
+### שלב 9.6 — אנליטיקס בקנה מידה (מתוכנן)
+שכבתי: (1) Firestore aggregation queries (`count()`/`sum()`) לטייל-ים בסיסיים בדשבורד — אפס תשתית חדשה; (2) Firebase Extension הרשמי "Stream Firestore to BigQuery" כשנפח גדל — אפס קוד ETL; (3) GA4 (`src/lib/firebase/analytics.ts`, אותו pattern כמו `appCheck.ts`) לאנליטיקס מוצר סטנדרטי (DAU/MAU, funnels) — נצפה ב-GA4/Firebase Console, לא משוכפל ב-UI.

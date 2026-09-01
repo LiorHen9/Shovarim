@@ -298,6 +298,32 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 
 מומלץ להגדיר **TTL policy** על `expiresAt` (כמו ב-`channelLinkCodes`) — הלוגיקה לא נשענת על זה, קוד פג נדחה בקוד גם אם המסמך קיים.
 
+## `adminRoles/{uid}`
+`src/types/adminRole.ts`, נגיש דרך `isAdminUid`/`requireAdmin` (`src/lib/auth/session.ts`), `docs/DECISIONS.md` ADR #42
+```ts
+{
+  uid: string;
+  role: "super_admin";   // עתידי: "support" | "read_only" — RBAC, לא בשימוש עדיין
+  grantedBy: string;     // uid של המעניק, "system" ל-bootstrap
+  grantedAt: Timestamp;
+}
+```
+מסמך פנימי בלבד: `firestore.rules` חוסם קריאה וכתיבה מ-client לחלוטין, **כולל לאדמין עצמו** — אין נתיב client לכתוב אליו בכלל (כתיבת client הייתה מאפשרת self-grant). הענקה ראשונה (ולעת עתה יחידה) נעשית דרך `scripts/grant-admin.ts` (`npm run grant-admin -- <uid>`, Admin SDK). `isAdminUid(uid)` ב-`src/lib/auth/session.ts` עושה `get()` על doc זה — לא custom claim, כדי להימנע מעיכוב ריענון טוקן; ראו ADR #42 לרציונל המלא. `firestore.rules` כולל helper `isAdmin()` (`exists()` על doc זה) לשימוש עתידי, לא נצרך עדיין בשום match block אחר.
+
+## `adminAuditLog/{entryId}`
+`src/types/adminAuditLog.ts`, נכתב דרך `writeAdminAuditLog` (`src/lib/audit/adminLog.ts`), `docs/DECISIONS.md` ADR #42
+```ts
+{
+  id: string;
+  adminUid: string;
+  targetUid: string | null;
+  action: "role_grant" | "role_revoke" | "block" | "unblock" | "delete_scheduled" | "delete_immediate";
+  reason: string | null;
+  createdAt: Timestamp;
+}
+```
+Append-only, נכתב רק מ-Admin SDK. נפרד במכוון מ-`auditLog` הקיים למעלה: `auditLog` הוא per-user (מיוצא עם המשתמש, נשאר גם אחרי מחיקתו) ולא בנוי לשאילתות חוצות-משתמשים; `adminAuditLog` הוא הלדג'ר הייעודי לפעולות שאדמין מבצע **על** משתמשים — נכתב לפני כל mutation (כמו `deleteUserAccount` הקיים). `firestore.rules` חוסם קריאה וכתיבה מ-client לחלוטין, כולל לאדמין (תצוגה עתידית בפאנל תעבור דרך Server Action).
+
 ## אינדקסים מרוכבים (`firestore.indexes.json`)
 - `cards`: `ownerId ASC, expiryDate ASC` — דוחות "עומד לפוג"
 - `cards`: `ownerId ASC, status ASC, createdAt DESC` — רשימת כרטיסים לפי סטטוס

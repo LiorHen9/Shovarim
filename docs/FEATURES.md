@@ -35,3 +35,5 @@
 | PWA (installable, offline) | ⏳ מתוכנן | Phase 6 |
 | התראות תפוגה (push/email) | ⏳ מתוכנן | Phase 7 |
 | דוחות וסטטיסטיקות | ⏳ מתוכנן | Phase 8 |
+| פאנל ניהול — יסודות (הרשאת אדמין, `/admin` shell) | ✅ הושלם | 2026-09-01, Phase 9.1 — `adminRoles`/`adminAuditLog` (Admin SDK בלבד), `scripts/grant-admin.ts`, `requireAdmin()`/`isAdminUid()` (`src/lib/auth/session.ts`), `app/(protected)/admin/` (layout מגן + עמוד placeholder). ראו `docs/DECISIONS.md` ADR #42 |
+| פאנל ניהול — צפייה במשתמשים/חסימה/מחיקה/מעקב Claude/אנליטיקס | ⏳ מתוכנן | Phase 9.2–9.6, ראו `docs/ROADMAP.md` |

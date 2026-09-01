@@ -14,6 +14,7 @@
     "seed:categories": "tsx --env-file=.env.local scripts/seed-categories.ts",
     "mcp:cli": "tsx --env-file=.env.local scripts/mcp-cli.ts",
     "sweep:account-deletions": "tsx --env-file=.env.local scripts/sweep-account-deletions.ts",
+    "grant-admin": "tsx --env-file=.env.local scripts/grant-admin.ts",
     "migrate:encrypt-fields": "tsx --env-file=.env.local scripts/migrate-encrypt-sensitive-fields.ts",
     "whatsapp:sim": "tsx --env-file=.env.local scripts/whatsapp-sim.ts",
     "chat:scenario": "tsx --env-file=.env.local scripts/run-chat-scenario.ts",

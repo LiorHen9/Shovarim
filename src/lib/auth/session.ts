@@ -2,7 +2,7 @@ import "server-only";
 
 import { cookies } from "next/headers";
 
-import { adminAuth } from "@/lib/firebase/admin";
+import { adminAuth, adminDb } from "@/lib/firebase/admin";
 import { ActionError } from "@/lib/actions/errors";
 
 // "__session" is the one cookie name Firebase Hosting's CDN forwards to
@@ -35,5 +35,26 @@ export async function getSessionUid(): Promise<string | null> {
 export async function requireUid(): Promise<string> {
   const uid = await getSessionUid();
   if (!uid) throw new ActionError("ההתחברות פגה, יש להתחבר מחדש");
+  return uid;
+}
+
+// docs/DECISIONS.md ADR #42: admin status lives in adminRoles/{uid}, not a
+// custom claim — exists() gives an immediate answer with no token-refresh
+// propagation delay, the same get()-based pattern firestore.rules already
+// uses for list-sharing (isAcceptedListMember). A boolean check (rather than
+// folding this into requireAdmin below) so page components like
+// app/(protected)/admin/layout.tsx can redirect cleanly instead of hitting an
+// error boundary.
+export async function isAdminUid(uid: string): Promise<boolean> {
+  const roleDoc = await adminDb.doc(`adminRoles/${uid}`).get();
+  return roleDoc.exists;
+}
+
+// ActionError, not a plain Error — same ADR #18 reasoning as requireUid:
+// "not an admin" is an expected condition every admin Server Action should
+// surface as a value via toActionResult, not a redacted 500.
+export async function requireAdmin(): Promise<string> {
+  const uid = await requireUid();
+  if (!(await isAdminUid(uid))) throw new ActionError("אין הרשאת ניהול");
   return uid;
 }

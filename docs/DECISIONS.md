@@ -467,3 +467,22 @@ for collection members and field memberUid
 **נדחה**: sweep מתוזמן (`functions/`) שמנקה/מסמן קישורים פגי-תוקף באופן יזום — מיותר, כי אין "ניקוי" נדרש: המסמך עצמו נשאר קיים ושימושי לחידוש, וכל צרכן (webhook, `/settings`) כבר מחשב תוקף lazy בכל קריאה.
 
 **נדחה**: (א) re-verification תקופתי/step-up authentication כללי — זה מכסה threat שונה (מיחזור מספרים, issue #68, שנשאר פתוח ב-`docs/ISSUES_SPRINT.md` #21) ולא את מה ש-#75 מבקש; (ב) חסימה מוחלטת של relink כשיש קישור אחר — הייתה שוברת את תרחיש ה"מעבר הלגיטימי" ש-ADR #29 בנה בכוונה.
+
+## 42. פאנל ניהול — מודל הרשאות `adminRoles` (Firestore doc, לא custom claim), שלב יסודות (Phase 9.1)
+**תאריך**: 2026-09-01
+
+**רקע**: בקשה לפאנל ניהול מלא (צפייה במשתמשים, חסימה לפי uid/email/טלפון, מחיקה מיידית/מתוזמנת, מעקב שימוש/עלות Claude, אנליטיקס) — ראה design doc מלא ב-plan שהוביל ל-ADR זה. שלב זה (9.1, "יסודות") סוגר רק את שאלת ה-authorization הבסיסית: איך המערכת יודעת מי אדמין, ואיך `/admin` נחסם למי שאינו.
+
+**החלטה (1) — מודל הרשאות: `adminRoles/{uid}` ב-Firestore, לא Firebase Auth custom claims.** custom claims דורשים ריענון טוקן (עד שעה, או sign-out/in מפורש) כדי להתעדכן אצל המשתמש שקיבל את ההרשאה — gotcha ידוע שהיה דורש UX/תיעוד מיוחד ("התחבר/י מחדש אחרי קבלת הרשאה"). לעומת זאת הפרויקט כבר משתמש בדיוק באותו פטרן (`get()`/`exists()` על מסמך subcollection כדי לקבוע הרשאה) עבור שיתוף רשימות — `isAcceptedListMember`/`memberDoc()` ב-`firestore.rules`. `adminRoles/{uid}` הוא אותו רעיון ברמת top-level: `exists()` עונה מיידית, בלי תלות בריענון טוקן, וה-doc כבר כולל שדה `role` שפתוח ל-RBAC עתידי (`"support"`/`"read_only"` וכו') בלי לגעת ב-Auth בכלל ובלי migration.
+
+**החלטה (2) — bootstrap דרך סקריפט חד-פעמי, לא UI.** `adminRoles` הוא `allow read, write: if false` לגמרי (Admin SDK בלבד, אותו פטרן כמו `rateLimits`/`auditLog`) — אין נתיב client לכתוב אליו בכלל, גם לא לאדמין עצמו. הענקת ההרשאה הראשונה (ולעת עתה, היחידה) נעשית דרך `scripts/grant-admin.ts` (`npm run grant-admin -- <uid>`), אותו pattern בדיוק כמו `scripts/migrate-encrypt-sensitive-fields.ts`/`scripts/sweep-account-deletions.ts` — Admin SDK מקומי, מריצים פעם אחת נגד production.
+
+**החלטה (3) — `isAdminUid()`/`requireAdmin()` ב-`src/lib/auth/session.ts`, לצד `requireUid()`.** שתי פונקציות, לא אחת: `isAdminUid(uid): Promise<boolean>` (קריאה בלבד, לשימוש ב-`app/(protected)/admin/layout.tsx` — page component שצריך `redirect()` נקי ולא error boundary), ו-`requireAdmin(): Promise<string>` שזורק `ActionError` (לא `Error` רגיל) כשאין הרשאה — אותה הבחנה בדיוק כמו ADR #18 (`requireUid`): "אין הרשאת ניהול" הוא תנאי צפוי שכל admin Server Action אמור להחזיר כערך דרך `toActionResult`, לא 500 מרוסק.
+
+**החלטה (4) — `/admin` חי בתוך `(protected)/`, שכבת הגנה שנייה על גבי הקיימת.** `app/(protected)/admin/layout.tsx` בודק `getSessionUid()` (כמו `(protected)/layout.tsx` העוטף) **וגם** `isAdminUid()`, ומפנה ל-`/dashboard` (לא error) כשלא אדמין. אין שינוי ב-`src/proxy.ts` — `/admin` כבר מכוסה ב-fast-path של `(protected)` (בדיקת קיום cookie בלבד), והבדיקה המלאה (session + admin) קורית ב-layout כמו כל שאר האפליקציה (ADR #8).
+
+**החלטה (5) — `adminAuditLog` נפרד מ-`auditLog` הקיים, מיום ראשון.** `auditLog` הוא per-user (מיוצא עם המשתמש, נשאר גם אחרי מחיקתו — `docs/PRIVACY.md`) ולא בנוי לשאילתת "כל פעולות האדמינים על פני כל המשתמשים". `adminAuditLog/{entryId}` (`{adminUid, targetUid, action, reason, createdAt}`) הוא הלדג'ר הייעודי לכך — גם הוא `allow read, write: if false`, ונכתב **לפני** כל mutation אדמיניסטרטיבית (אותו סדר "audit לפני פעולה" כמו `deleteUserAccount` הקיים ב-`functions/src/accountDeletion.ts`).
+
+**נדחה**: (א) custom claims — ראו החלטה 1; (ב) RBAC מלא (מספר תפקידים/הרשאות פרטניות) כבר בשלב זה — המשתמש ביקש מפורשות "רק אני כרגע", ושדה `role` הבודד (`"super_admin"`) פתוח להרחבה בלי migration כשיידרש; (ג) route/אפליקציה נפרדת לפאנל — נדחה לטובת נתיב מוגן בתוך האפליקציה הקיימת, כדי לא לשכפל תשתית auth/deploy (בחירת המשתמש המפורשת).
+
+**מה עוד נשאר (שלבים הבאים, לא בשלב זה)**: צפייה במשתמשים, חסימה (`userModeration`/`blockedEmails`/`blockedPhones`), מחיקה יזומה ע"י אדמין (מתוזמנת/מיידית — האחרונה דורשת Cloud Function `onCall` נפרד בגלל מגבלת `functions/tsconfig.json`'s `rootDir` שתועדה ב-ADR #24), מעקב שימוש/עלות Claude API (`response.usage` לא נאסף היום כלל), ואנליטיקס (Firestore aggregation queries → Firebase Extension ל-BigQuery → GA4). ראו `docs/ROADMAP.md` Phase 9.

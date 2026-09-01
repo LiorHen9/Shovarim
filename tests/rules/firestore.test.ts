@@ -829,6 +829,59 @@ describe("consents", () => {
   });
 });
 
+// docs/DECISIONS.md ADR #42. Both collections are Admin-SDK-only, even for
+// the caller's own uid — adminRoles has no legitimate client write path at
+// all (a self-write would be a self-grant of admin), and adminAuditLog is an
+// append-only ledger read only through an admin Server Action.
+describe("admin (adminRoles, adminAuditLog)", () => {
+  it("client cannot read or write their own adminRoles doc", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, `adminRoles/${USER_A}`), {
+        uid: USER_A,
+        role: "super_admin",
+        grantedBy: "system",
+        grantedAt: serverTimestamp(),
+      })
+    );
+    await assertFails(getDoc(doc(dbA, `adminRoles/${USER_A}`)));
+  });
+
+  it("an existing admin still cannot read their own adminRoles doc via the client SDK", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(context.firestore().doc(`adminRoles/${USER_A}`), {
+        uid: USER_A,
+        role: "super_admin",
+        grantedBy: "system",
+        grantedAt: new Date(),
+      });
+    });
+
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(getDoc(doc(dbA, `adminRoles/${USER_A}`)));
+  });
+
+  it("client cannot read or write adminAuditLog", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, "adminAuditLog/entry1"), {
+        adminUid: USER_A,
+        targetUid: USER_B,
+        action: "block",
+        reason: null,
+        createdAt: serverTimestamp(),
+      })
+    );
+    await assertFails(getDoc(doc(dbA, "adminAuditLog/entry1")));
+  });
+
+  it("unauthenticated client cannot touch either collection", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, `adminRoles/${USER_A}`)));
+    await assertFails(getDoc(doc(db, "adminAuditLog/entry1")));
+  });
+});
+
 // Sanity check that the suite itself is wired up correctly.
 describe("environment", () => {
   it("has a test environment", () => {
