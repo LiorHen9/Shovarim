@@ -285,5 +285,27 @@ service cloud.firestore {
     match /adminAuditLog/{entryId} {
       allow read, write: if false;
     }
+
+    // --- Blocking (docs/ROADMAP.md Phase 9.3, docs/DECISIONS.md ADR #44) ---
+    // All three Admin-SDK-only, same "if false" pattern as the rest of this
+    // section. userModeration is separate from users/{uid} on purpose (see
+    // that match block above): the update rule there does not restrict
+    // fields, so a `blocked` flag stored on the user's own doc would let a
+    // blocked user un-block themselves with an ordinary client write.
+    match /userModeration/{uid} {
+      allow read, write: if false;
+    }
+
+    // Doc id is the lowercased email/E.164 phone itself — checked before a
+    // session exists (createSession) or a channel link is created
+    // (redeemLinkCode), so client readability would let anyone probe which
+    // addresses/numbers are blocked.
+    match /blockedEmails/{email} {
+      allow read, write: if false;
+    }
+
+    match /blockedPhones/{phone} {
+      allow read, write: if false;
+    }
   }
 }

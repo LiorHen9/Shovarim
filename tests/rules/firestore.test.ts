@@ -882,6 +882,77 @@ describe("admin (adminRoles, adminAuditLog)", () => {
   });
 });
 
+// docs/DECISIONS.md ADR #44. All three Admin-SDK-only, same reasoning as
+// adminRoles/adminAuditLog above — not even an admin reads/writes these
+// through the client SDK, only through Server Actions/service functions that
+// already ran requireAdmin() or the enforcement checks in moderation.ts.
+describe("user blocking (userModeration, blockedEmails, blockedPhones)", () => {
+  it("client cannot read or write their own userModeration doc", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, `userModeration/${USER_A}`), {
+        uid: USER_A,
+        blocked: false,
+        blockedReason: null,
+        blockedAt: null,
+        blockedBy: null,
+        updatedAt: serverTimestamp(),
+      })
+    );
+    await assertFails(getDoc(doc(dbA, `userModeration/${USER_A}`)));
+  });
+
+  it("a blocked user still cannot read or clear their own userModeration doc via the client SDK", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(context.firestore().doc(`userModeration/${USER_A}`), {
+        uid: USER_A,
+        blocked: true,
+        blockedReason: "test",
+        blockedAt: serverTimestamp(),
+        blockedBy: USER_B,
+        updatedAt: serverTimestamp(),
+      });
+    });
+
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(getDoc(doc(dbA, `userModeration/${USER_A}`)));
+    await assertFails(updateDoc(doc(dbA, `userModeration/${USER_A}`), { blocked: false }));
+  });
+
+  it("client cannot read or write blockedEmails", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, "blockedEmails/blocked@example.com"), {
+        email: "blocked@example.com",
+        blockedReason: null,
+        blockedAt: serverTimestamp(),
+        blockedBy: USER_A,
+      })
+    );
+    await assertFails(getDoc(doc(dbA, "blockedEmails/blocked@example.com")));
+  });
+
+  it("client cannot read or write blockedPhones", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, "blockedPhones/+972501234567"), {
+        phone: "+972501234567",
+        blockedReason: null,
+        blockedAt: serverTimestamp(),
+        blockedBy: USER_A,
+      })
+    );
+    await assertFails(getDoc(doc(dbA, "blockedPhones/+972501234567")));
+  });
+
+  it("unauthenticated client cannot touch any of the three collections", async () => {
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, `userModeration/${USER_A}`)));
+    await assertFails(getDoc(doc(db, "blockedEmails/blocked@example.com")));
+    await assertFails(getDoc(doc(db, "blockedPhones/+972501234567")));
+  });
+});
+
 // Sanity check that the suite itself is wired up correctly.
 describe("environment", () => {
   it("has a test environment", () => {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
+import { UserModerationSection } from "@/components/admin/UserModerationSection";
 import { getUserDetail } from "@/lib/services/adminUsers";
 import { adminUserSearchUidSchema } from "@/lib/validation/adminUsers";
 
@@ -23,7 +24,17 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
   const detail = await getUserDetail(parsedUid.data);
   if (!detail) notFound();
 
-  const { profile, disabled, emailVerified, lastSignInAt, cardCount, listCount } = detail;
+  const {
+    profile,
+    disabled,
+    emailVerified,
+    lastSignInAt,
+    cardCount,
+    listCount,
+    moderation,
+    emailBlocked,
+    channelLinks,
+  } = detail;
 
   return (
     <div className="space-y-4">
@@ -37,6 +48,7 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
           <p className="text-sm text-muted-foreground">{profile.email}</p>
         </div>
         <div className="flex gap-2">
+          {moderation.blocked && <Badge variant="destructive">חסום</Badge>}
           {disabled && <Badge variant="destructive">חשבון מושבת</Badge>}
           {profile.deletionRequestedAt && <Badge variant="destructive">מחיקה ממתינה</Badge>}
           {!emailVerified && <Badge variant="outline">אימייל לא מאומת</Badge>}
@@ -65,6 +77,14 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
           </dl>
         </div>
       </div>
+
+      <UserModerationSection
+        uid={profile.uid}
+        email={profile.email}
+        moderation={moderation}
+        emailBlocked={emailBlocked}
+        channelLinks={channelLinks}
+      />
     </div>
   );
 }

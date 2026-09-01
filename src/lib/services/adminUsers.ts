@@ -6,7 +6,10 @@
 // can't be reached without its layout running first). Uses relative imports
 // for adminApp, matching every other file in this directory (see cards.ts).
 import { adminAuth, adminDb } from "../firebase/adminApp";
+import { getUserModerationStatus, isEmailBlocked, isPhoneBlocked, type ModerationStatus } from "./moderation";
+import { listChannelLinksForUid } from "./channelLinks";
 import type { UserProfile } from "../../types/user";
+import type { ChannelLinkSummary } from "../../types/channelLink";
 
 const PAGE_SIZE = 25;
 
@@ -70,6 +73,9 @@ export interface AdminUserDetail {
   lastSignInAt: string | null;
   cardCount: number;
   listCount: number;
+  moderation: ModerationStatus;
+  emailBlocked: boolean;
+  channelLinks: (ChannelLinkSummary & { phoneBlocked: boolean })[];
 }
 
 // Counts use Firestore's count() aggregation (billed as a small fixed number
@@ -83,11 +89,18 @@ export async function getUserDetail(uid: string): Promise<AdminUserDetail | null
   const profile = await findUserByUid(uid);
   if (!profile) return null;
 
-  const [authRecord, cardCountSnap, listCountSnap] = await Promise.all([
+  const [authRecord, cardCountSnap, listCountSnap, moderation, emailBlocked, links] = await Promise.all([
     adminAuth.getUser(uid),
     adminDb.collection("cards").where("ownerId", "==", uid).count().get(),
     adminDb.collection("cardLists").where("ownerId", "==", uid).count().get(),
+    getUserModerationStatus(uid),
+    isEmailBlocked(profile.email),
+    listChannelLinksForUid(uid),
   ]);
+
+  const channelLinks = await Promise.all(
+    links.map(async (link) => ({ ...link, phoneBlocked: await isPhoneBlocked(link.externalId) }))
+  );
 
   return {
     profile,
@@ -96,5 +109,8 @@ export async function getUserDetail(uid: string): Promise<AdminUserDetail | null
     lastSignInAt: authRecord.metadata.lastSignInTime ?? null,
     cardCount: cardCountSnap.data().count,
     listCount: listCountSnap.data().count,
+    moderation,
+    emailBlocked,
+    channelLinks,
   };
 }

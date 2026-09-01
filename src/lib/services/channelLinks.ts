@@ -14,6 +14,7 @@ import { ActionError } from "../actions/errorsCore";
 import { writeAuditLog } from "../audit/log";
 import { deleteChannelHistory } from "./chatSessions";
 import { channelLinkReverifyDeadlineMs, isChannelLinkStale } from "./channelLinkExpiry";
+import { isPhoneBlocked } from "./moderation";
 import { LINK_CODE_ALPHABET, LINK_CODE_LENGTH } from "../validation/channelLink";
 import type {
   ChannelKind,
@@ -147,6 +148,14 @@ export async function redeemLinkCode(
   code: string,
   options?: { confirmed?: boolean }
 ): Promise<ChannelLinkSummary> {
+  // Same uniform-failure message as every other rejection this function can
+  // throw (see the comment inside the transaction below): a blocked number
+  // must be indistinguishable from an expired/unknown code to an
+  // unauthenticated sender.
+  if (await isPhoneBlocked(externalId)) {
+    throw new ActionError("קוד הקישור אינו תקין או שפג תוקפו");
+  }
+
   const channelKey = buildChannelKey(channel, externalId);
   const codeRef = adminDb.collection(CODES).doc(code);
   const linkRef = adminDb.collection(LINKS).doc(channelKey);
