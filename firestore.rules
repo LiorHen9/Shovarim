@@ -49,6 +49,16 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/cardLists/$(listId)).data.ownerId;
     }
 
+    // --- Admin (docs/DECISIONS.md ADR #42) ---
+    // adminRoles/{uid} is the source of truth for admin status — not a
+    // custom claim, so exists() below answers immediately with no
+    // token-refresh propagation delay. Same get()/exists() pattern as
+    // isAcceptedListMember above, just at top level instead of a
+    // list-scoped subcollection.
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/adminRoles/$(request.auth.uid));
+    }
+
     // Deny everything by default; every collection below is an explicit exception.
     match /{document=**} {
       allow read, write: if false;
@@ -252,6 +262,27 @@ service cloud.firestore {
       // — at creation time the owner knows only a phone number, and the uid
       // does not exist yet for a user who has not signed up. Both the owner's
       // and the invitee's views go through Server Actions.
+      allow read, write: if false;
+    }
+
+    // --- Admin (docs/DECISIONS.md ADR #42) ---
+    // Both Admin-SDK-only, same "if false" pattern as rateLimits/auditLog
+    // above — even the admin themself never reads these through the client
+    // SDK, only through Server Actions/Cloud Functions that already checked
+    // isAdminUid() server-side. adminRoles has no UI-facing reason to be
+    // client-readable at all (grants happen via scripts/grant-admin.ts), and
+    // a client able to write its own doc would be able to self-grant admin.
+    match /adminRoles/{uid} {
+      allow read, write: if false;
+    }
+
+    // Append-only ledger of admin actions taken on users (block/unblock,
+    // scheduled/immediate deletion, role grants) — kept separate from the
+    // per-user auditLog above so it survives the target account's deletion
+    // and supports "all admin activity" queries. Never client-readable, not
+    // even by an admin: reads go through an admin Server Action, same as
+    // every other admin-only collection here.
+    match /adminAuditLog/{entryId} {
       allow read, write: if false;
     }
   }
