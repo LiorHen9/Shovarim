@@ -21,7 +21,6 @@ import { adminScheduleUserDeletionAction, adminCancelUserDeletionAction } from "
 import { functions } from "@/lib/firebase/client";
 import { GRACE_PERIOD_DAYS, getDeletionEligibleAt } from "@/lib/services/accountDeletion";
 import type { ActionResult } from "@/lib/actions/errors";
-import type { UserProfile } from "@/types/user";
 
 // Immediate deletion goes straight from this client component to the Cloud
 // Function (docs/ROADMAP.md Phase 9.4, docs/DECISIONS.md ADR #45) — not a
@@ -37,7 +36,14 @@ export function UserDeletionSection({
 }: {
   uid: string;
   email: string;
-  deletionRequestedAt: UserProfile["deletionRequestedAt"];
+  // ISO string, not a Timestamp: this is a Server Component prop crossing
+  // into a "use client" component, and a Firestore Timestamp is a class
+  // instance — Next.js refuses to serialize those across that boundary
+  // ("Only plain objects... can be passed to Client Components"). The page
+  // converts profile.deletionRequestedAt with .toDate().toISOString() before
+  // passing it down, same as channelLinks.ts's toSummary() already does for
+  // its own Timestamp fields.
+  deletionRequestedAt: string | null;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -94,7 +100,7 @@ export function UserDeletionSection({
           {deletionRequestedAt && (
             <p className="text-sm text-muted-foreground">
               יימחק לצמיתות בתאריך{" "}
-              {getDeletionEligibleAt(deletionRequestedAt.toDate()).toLocaleDateString("he-IL")}
+              {getDeletionEligibleAt(new Date(deletionRequestedAt)).toLocaleDateString("he-IL")}
             </p>
           )}
         </div>
