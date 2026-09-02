@@ -201,6 +201,19 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /claudeUsageLog/{entryId} {
+      // One entry per Claude messages.create() call, written from
+      // src/lib/mcp/agentLoop.ts via the Admin SDK only (docs/ROADMAP.md
+      // Phase 9.5, docs/DECISIONS.md ADR #49). Unlike auditLog above, no
+      // owner read: this is cost/token telemetry for the admin panel, not a
+      // user-facing feature yet, and there is no existing use case to weigh
+      // against keeping it closed — same "if false" as rateLimits/adminAuditLog.
+      // The admin summary reads it via a Server Component with the Admin SDK
+      // (src/lib/services/adminClaudeUsage.ts), same pattern as every other
+      // admin-only collection.
+      allow read, write: if false;
+    }
+
     // --- Messaging channels (docs/ROADMAP.md Phase 5.5, docs/DECISIONS.md
     // ADR #29) ---
     // All three are Admin-SDK-only, in the same `if false` pattern as

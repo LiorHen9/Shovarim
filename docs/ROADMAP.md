@@ -312,8 +312,16 @@ Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Fireba
 
 **באג המשך #2 (2026-09-02)**: התיקון הקודם לא פתר את הקריסה בפועל ב-`/admin/users/[uid]` עבור `liorh@hms.co.il` — הסיבה האמיתית הייתה לא קשורה ל-Auth כלל: `deletionRequestedAt` (Firestore `Timestamp`, מופע class) הועבר כ-prop משרת ל-`UserDeletionSection` (`"use client"`), שאסור ב-React Server Components. תוקן בהמרה ל-ISO string לפני חציית הגבול. ראו `docs/DECISIONS.md` ADR #48.
 
-### שלב 9.5 — מעקב שימוש/עלות Claude API (מתוכנן)
-`response.usage` לא נאסף היום כלל (`src/lib/mcp/agentLoop.ts`). `claudeUsageLog/{entryId}` ילכוד input/output/cache tokens לכל קריאת `messages.create()` + עלות משוערת מטבלת תמחור. **לטעון את ה-skill `claude-api` לפני מימוש** לאימות תמחור/שמות שדות usage עדכניים.
+### שלב 9.5 — מעקב שימוש/עלות Claude API ✅ הושלם (2026-09-02)
+`claudeUsageLog/{entryId}` (`src/types/claudeUsageLog.ts`) — רשומה אחת לכל קריאת `messages.create()` (לא לכל הודעת משתמש), נכתבת מנקודה משותפת יחידה בתוך `runAgentTurn` (`src/lib/mcp/agentLoop.ts`, `logClaudeUsage` ב-`src/lib/mcp/claudeUsageLog.ts`) — כל שלושת/ארבעת הקוראים (`channelChat.ts`/`route.ts`/`mcp-cli.ts`/`run-chat-scenario.ts`) עברו רק להעביר `uid`/`channel`, בלי שכפול לוגיקה. `docs/DECISIONS.md` ADR #49 מתעד את הדיון המלא לפני המימוש, כולל:
+- **נבדק ונדחה קודם**: הישענות על ה-Admin API הרשמי של Anthropic לפילוח פר-משתמש — אומת (WebFetch על התיעוד הרשמי) שהוא **לא רואה את ה-`uid` שלנו בכלל** (ממדי הסינון שם הם `api_key_id`/`workspace_id`/`model` וכו', לא תיוג מותאם), וגם ה-FAQ הרשמי שם מפנה לפתרון API-key-per-user שלא מתאים לארכיטקטורת WIF של הפרויקט (ADR #20).
+- **latency**: הכתיבה מופעלת (לא `await`-ת) מיד אחרי כל תשובת מודל כדי לא לעכב טקסט שכבר זורם ל-`/api/chat`'s NDJSON stream, ונאספת ב-`Promise.all` שרץ ב-`finally` (כל נתיב יציאה, כולל שגיאה) לפני שהפונקציה חוזרת — קריטי לנתיב ה-webhook, סביבת Cloud Function serverless שעלולה להקפיא תהליך אחרי שהתשובה כבר נשלחה.
+- **כתיבה לעולם לא זורקת** (בניגוד ל-`writeAuditLog` הקיים) — לדג'ר חשבונאי, לא ביטחוני, ותקלת רישום לא אמורה להפיל שיחה עם משתמש.
+- `estimatedCostUsd` הוא הערכה מטבלת תמחור סטטית (`src/lib/mcp/pricing.ts`) + מכפילי cache read/write מתועדים — טוקנים גולמיים הם מקור האמת.
+- תצוגת אדמין: הרחבת הכרטיס הקיים "שימוש" ב-`/admin/users/[uid]` (לא עמוד נפרד) עם `count()`+`sum()` aggregation (`src/lib/services/adminClaudeUsage.ts`), אותו עיקרון כמו ספירת כרטיסים/רשימות הקיימת (ADR #43).
+- `firestore.rules`: `allow read, write: if false` לחלוטין — כולל לבעלים, בשונה מ-`auditLog`.
+
+אימות: `typecheck`/`lint`/`build` נקיים. `test:rules` — 60/60 (59 קיימים + 1 חדש). `test:unit` — 72 (67 קיימים + 5 חדשים ל-`estimateCostUsd`). אימות מקצה-לקצה אמיתי מול Firestore/Auth emulators + קריאת Claude API אמיתית (סקריפט חד-פעמי, לא נשמר): סבב שיחה יחיד כתב בדיוק רשומה אחת עם טוקנים תואמים בפועל (כולל `cacheCreationInputTokens`), ו-`getClaudeUsageSummaryForUid` החזיר סיכום תואם.
 
 ### שלב 9.6 — אנליטיקס בקנה מידה (מתוכנן)
 שכבתי: (1) Firestore aggregation queries (`count()`/`sum()`) לטייל-ים בסיסיים בדשבורד — אפס תשתית חדשה; (2) Firebase Extension הרשמי "Stream Firestore to BigQuery" כשנפח גדל — אפס קוד ETL; (3) GA4 (`src/lib/firebase/analytics.ts`, אותו pattern כמו `appCheck.ts`) לאנליטיקס מוצר סטנדרטי (DAU/MAU, funnels) — נצפה ב-GA4/Firebase Console, לא משוכפל ב-UI.

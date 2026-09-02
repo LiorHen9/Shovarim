@@ -10,6 +10,7 @@ import type { UserRecord } from "firebase-admin/auth";
 import { adminAuth, adminDb } from "../firebase/adminApp";
 import { getUserModerationStatus, isEmailBlocked, isPhoneBlocked, type ModerationStatus } from "./moderation";
 import { listChannelLinksForUid } from "./channelLinks";
+import { getClaudeUsageSummaryForUid, type ClaudeUsageSummary } from "./adminClaudeUsage";
 import type { UserProfile } from "../../types/user";
 import type { ChannelLinkSummary } from "../../types/channelLink";
 
@@ -90,6 +91,7 @@ export interface AdminUserDetail {
   lastSignInAt: string | null;
   cardCount: number;
   listCount: number;
+  claudeUsage: ClaudeUsageSummary;
   moderation: ModerationStatus;
   emailBlocked: boolean;
   channelLinks: (ChannelLinkSummary & { phoneBlocked: boolean })[];
@@ -106,10 +108,11 @@ export async function getUserDetail(uid: string): Promise<AdminUserDetail | null
   const profile = await findUserByUid(uid);
   if (!profile) return null;
 
-  const [authRecord, cardCountSnap, listCountSnap, moderation, emailBlocked, links] = await Promise.all([
+  const [authRecord, cardCountSnap, listCountSnap, claudeUsage, moderation, emailBlocked, links] = await Promise.all([
     getAuthRecordSafe(uid),
     adminDb.collection("cards").where("ownerId", "==", uid).count().get(),
     adminDb.collection("cardLists").where("ownerId", "==", uid).count().get(),
+    getClaudeUsageSummaryForUid(uid),
     getUserModerationStatus(uid),
     isEmailBlocked(profile.email),
     listChannelLinksForUid(uid),
@@ -127,6 +130,7 @@ export async function getUserDetail(uid: string): Promise<AdminUserDetail | null
     lastSignInAt: authRecord?.metadata.lastSignInTime ?? null,
     cardCount: cardCountSnap.data().count,
     listCount: listCountSnap.data().count,
+    claudeUsage,
     moderation,
     emailBlocked,
     channelLinks,
