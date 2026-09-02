@@ -91,7 +91,11 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
         channelLinks={channelLinks}
       />
 
-      <UserDeletionSection uid={profile.uid} email={profile.email} deletionRequestedAt={profile.deletionRequestedAt} />
+      <UserDeletionSection
+        uid={profile.uid}
+        email={profile.email}
+        deletionRequestedAt={profile.deletionRequestedAt ? profile.deletionRequestedAt.toDate().toISOString() : null}
+      />
     </div>
   );
 }
