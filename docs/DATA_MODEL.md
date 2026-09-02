@@ -362,6 +362,36 @@ Append-only, נכתב רק מ-Admin SDK. נפרד במכוון מ-`auditLog` ה�
 ```
 חסימה פרואקטיבית של מספר — נבדק ב-`redeemLinkCode` (`src/lib/services/channelLinks.ts`) לפני יצירת קישור חדש, עם אותה הודעת כישלון גנרית כמו כל דחייה אחרת בפונקציה הזו (uniform-failure — שולח אנונימי לא יכול להבחין "קוד לא תקין" מ"מספר חסום"). `allow read, write: if false`. לא נוגע בחשבון Auth קיים — מספר טלפון לבדו אינו מזהה חשבון (ADR #29), רק `channelLinks` עושה זאת.
 
+## `claudeUsageLog/{entryId}`
+`src/types/claudeUsageLog.ts`, נכתב דרך `logClaudeUsage` (`src/lib/mcp/claudeUsageLog.ts`), `docs/DECISIONS.md` ADR #49
+```ts
+{
+  id: string;
+  uid: string;
+  channel: "cli" | "web" | "whatsapp" | "telegram";  // AuditLogChannel
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  estimatedCostUsd: number;   // תמיד נגזר-מחדש-ניתן מהטוקנים — ראו למטה
+  createdAt: Timestamp;
+}
+```
+Append-only, **רשומה אחת לכל קריאת `messages.create()`** — לא רשומה אחת לכל הודעת משתמש: סבב עם tool calls מבצע כמה קריאות מודל בתוך אותו לולאת `runAgentTurn` (`src/lib/mcp/agentLoop.ts`), וכל אחת מהן מחויבת בנפרד. נכתב מנקודה משותפת יחידה בתוך `runAgentTurn` עצמו (לא משוכפל בשלושת קוראיו — `channelChat.ts`/`route.ts`/`mcp-cli.ts`), אותו עיקרון כמו `withToolExecution` ל-audit log של tool calls.
+
+**למה בכלל — Anthropic לא רואה את ה-`uid` שלנו**: ה-Admin API הרשמי של Anthropic (Usage & Cost reports) שובר לפי `api_key_id`/`workspace_id`/`model`, לא לפי מזהה אפליקטיבי מותאם — ואומת ישירות מול המסמכים הרשמיים לפני המימוש. הפרויקט ניגש ל-Claude דרך WIF (service account אחד, לא API key per user — ADR #20), כך שגם אין שם "פרוקסי" של key-per-user לנצל. פילוח פר-`uid` חייב תיעוד עצמי בצד שלנו; אין דרך לקבל אותו מ-Anthropic בשום צורה.
+
+**`estimatedCostUsd` הוא הערכה, לא חשבונית**: מחושב ב-`src/lib/mcp/pricing.ts` מטבלת תמחור סטטית (מחיר ל-1M טוקן לפי המודל, `MODEL_ID`) + מכפילי cache read/write מתועדים (~0.1x / ~1.25x ממחיר ה-input) — קירוב שמתועד ככזה, לא תעריף רשמי פר-מודל. שדות הטוקנים הגולמיים הם מקור האמת; `estimatedCostUsd` הוא תמונת מצב שנחשבה בזמן הכתיבה ועלולה לסטות אם התמחור ישתנה — לא לסמוך עליה למשהו מעבר לקריאה מהירה. הצלבה מול העלות האמיתית (אם נדרש) עוברת דרך ה-Admin API הרשמי של Anthropic (curl-only, לא ב-SDK), לא דרך המספר הזה.
+
+**כתיבה שלעולם לא זורקת**: `logClaudeUsage` בולעת שגיאות כתיבה (`console.error` בלבד) — בניגוד ל-`writeAuditLog` הקיים, שהכישלון שלו כן מפיל את קריאת ה-tool שקראה לו. זהו לדג'ר חשבונאי, לא לדג'ר אבטחה/ציות; הפסקת שיחה עם משתמש בגלל תקלת רישום עלות היא עלות גבוהה יותר מרשומת עלות חסרה.
+
+**כתיבה לא-חוסמת ביחס לתשובה למשתמש**: הכתיבה **מופעלת** (לא `await`-ת) מיד אחרי כל `response = await client.beta.messages.create()`, לפני `onText`/המשך הלולאה — כך שהיא לא מעכבת את הטקסט שמגיע למשתמש (רלוונטי בעיקר ב-`/api/chat`, ששולח כל בלוק טקסט ל-NDJSON stream ברגע שהוא זמין). כל הכתיבות הממתינות נאספות ו-`await`-ות יחד ב-`finally` של `runAgentTurn`, לפני שהפונקציה חוזרת — גם בנתיב שגיאה — כדי שכתיבה לא תיזרק "בשקט" ברקע בסביבת serverless (Cloud Functions ל-webhook הוואטסאפ) שעלולה להקפיא את התהליך ברגע שהתשובה כבר נשלחה.
+
+`firestore.rules`: `allow read, write: if false` לחלוטין — כולל לבעלים, בשונה מ-`auditLog` (`allow read: if isExistingOwner()`) — אין כרגע פיצ'ר משתמש שצריך לראות את זה, ותצוגת האדמין עוברת Admin SDK ממילא.
+
+**אין אינדקס מרוכב**: `getClaudeUsageSummaryForUid` (`src/lib/services/adminClaudeUsage.ts`) עושה `where("uid","==",uid)` בלבד עם `aggregate()` (`count()`+`sum("estimatedCostUsd")`) — שדה בודד, מכוסה אוטומטית.
+
 ## מחיקה יזומה ע"י אדמין (Phase 9.4, ADR #45)
 אין collection חדש. מחיקה מתוזמנת (`src/lib/services/adminDeletion.ts`, `scheduleUserDeletion`/`cancelUserDeletion`) כותבת לאותו שדה קיים `users/{uid}.deletionRequestedAt` (Phase 4.2, ראו למעלה) דרך ה-Admin SDK — אותו grace period, אותו `deleteExpiredAccounts` sweep, בלי מנגנון תזמון מקביל. מחיקה מיידית קוראת ישירות ל-`deleteUserAccount()` הקיים (`functions/src/accountDeletion.ts`) מתוך Cloud Function `onCall` חדש (`functions/src/adminActions.ts`, `adminDeleteUserNow`) — שני נתיבי המחיקה (sweep מתוזמן ומחיקה מיידית ע"י אדמין) מתכנסים לאותה פונקציית cascade-delete יחידה, בלי שכפול לוגיקה. שלוש הפעולות (`delete_scheduled`/`delete_cancelled`/`delete_immediate`) נכתבות ל-`adminAuditLog` לפני הפעולה עצמה.
 

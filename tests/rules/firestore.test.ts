@@ -635,6 +635,27 @@ describe("server-managed collections (reminders, auditLog)", () => {
     );
     await assertFails(getDoc(doc(dbA, `rateLimits/${USER_A}`)));
   });
+
+  // docs/ROADMAP.md Phase 9.5, docs/DECISIONS.md ADR #49. Same "if false"
+  // both ways as rateLimits above — unlike auditLog, the uid the entry
+  // belongs to has no owner-read path either (see the ADR for why).
+  it("client cannot read or write claudeUsageLog, even their own uid's entry", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, "claudeUsageLog/entry1"), {
+        uid: USER_A,
+        channel: "web",
+        model: "claude-sonnet-5",
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        estimatedCostUsd: 0.001,
+        createdAt: serverTimestamp(),
+      })
+    );
+    await assertFails(getDoc(doc(dbA, "claudeUsageLog/entry1")));
+  });
 });
 
 // docs/ROADMAP.md Phase 5.5, docs/DECISIONS.md ADR #29. These three are

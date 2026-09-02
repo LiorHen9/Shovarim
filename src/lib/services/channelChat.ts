@@ -224,6 +224,8 @@ export async function handleInboundChannelMessage({
       tools: await toAnthropicTools(mcp),
       history,
       userMessage: text,
+      uid,
+      channel,
       onText: (chunk) => chunks.push(chunk),
     });
     await saveChannelHistory(channelKey, uid, result.history);

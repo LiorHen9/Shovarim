@@ -17,6 +17,19 @@ function formatIsoDate(value: string | null): string {
   return new Intl.DateTimeFormat("he-IL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
+// Estimated, not a bill — see docs/DATA_MODEL.md's claudeUsageLog section
+// (docs/DECISIONS.md ADR #49) for why this number can drift from the real
+// Anthropic invoice. 4 fraction digits: per-user totals can be well under a
+// cent at low usage, where 2 digits would just show "$0.00" for everyone.
+function formatUsd(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(value);
+}
+
 export default async function AdminUserDetailPage({ params }: { params: Promise<{ uid: string }> }) {
   const { uid } = await params;
   const parsedUid = adminUserSearchUidSchema.safeParse(uid);
@@ -33,6 +46,7 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
     lastSignInAt,
     cardCount,
     listCount,
+    claudeUsage,
     moderation,
     emailBlocked,
     channelLinks,
@@ -79,6 +93,8 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
           <dl className="space-y-1 text-sm">
             <Row label="כרטיסים" value={String(cardCount)} />
             <Row label="רשימות" value={String(listCount)} />
+            <Row label="קריאות Claude" value={String(claudeUsage.calls)} />
+            <Row label="עלות Claude משוערת" value={formatUsd(claudeUsage.estimatedCostUsd)} />
           </dl>
         </div>
       </div>

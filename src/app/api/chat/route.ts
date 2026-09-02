@@ -113,6 +113,8 @@ export async function POST(request: Request) {
           tools,
           history,
           userMessage: message,
+          uid,
+          channel: "web",
           onText: (text) => controller.enqueue(encodeEvent({ type: "text", text })),
           onToolCall: (name) => controller.enqueue(encodeEvent({ type: "tool_call", name })),
         });

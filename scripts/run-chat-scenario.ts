@@ -58,6 +58,8 @@ async function main() {
       tools,
       history,
       userMessage,
+      uid,
+      channel: "cli",
       onText: (text) => console.log(`\n<<< ${text}`),
       onToolCall: (name) => console.log(`\n[tool call: ${name}]`),
     });

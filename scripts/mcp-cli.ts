@@ -97,6 +97,8 @@ async function main() {
       tools,
       history,
       userMessage: userInput,
+      uid,
+      channel: "cli",
       onText: (text) => console.log(text),
     });
     history = result.history;
