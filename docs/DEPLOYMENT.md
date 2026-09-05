@@ -34,7 +34,7 @@
 | `GCP_SERVICE_ACCOUNT_EMAIL` | GitHub Actions secret | מזהה |
 | `FIREBASE_PROJECT_ID` | GitHub Actions secret | מזהה הפרויקט לפקודת ה-deploy |
 | `ANTHROPIC_FEDERATION_RULE_ID` / `ANTHROPIC_ORGANIZATION_ID` / `ANTHROPIC_SERVICE_ACCOUNT_ID` / `ANTHROPIC_WORKSPACE_ID` | `apphosting.yaml` (plain, לאחר הקמת WIF — ראו למטה) | מזהי קונפיגורציה, לא סוד — אין `ANTHROPIC_API_KEY` בפרודקשן כלל |
-| `CLAUDE_MONTHLY_BUDGET_USD` | `apphosting.yaml` (plain, `RUNTIME` בלבד) | **אופציונלי**, לא סוד — יעד הוצאה חודשי ב-USD שמולו מוצג פס הניצול ב-`/admin`. **לא תקרה נאכפת** — שום דבר לא נחסם בחריגה (הבלימה בפועל היא `RATE_LIMITS` ב-`src/lib/mcp/config.ts`). חסר/לא-מספרי → הפס פשוט לא מוצג. שינוי הערך מחייב rollout (ADR #50) |
+| `CLAUDE_CREDIT_BANK_USD` / `CLAUDE_CREDIT_BALANCE_USD` / `CLAUDE_CREDIT_BALANCE_AT` | `apphosting.yaml` (plain, `RUNTIME` בלבד) | **אופציונליים, נדרשים שלושתם יחד**, לא סודות — בנק קרדיטים משולם מראש שמוצג ב-`/admin`. **לא מתאפס בכל חודש ולא תקרה נאכפת** — שום דבר לא נחסם כשהבנק נגמר (הבלימה בפועל היא `RATE_LIMITS` ב-`src/lib/mcp/config.ts`). חסר/לא ניתן לפרסור → הפאנל פשוט לא מוצג. **לעדכן את `BALANCE_USD`+`BALANCE_AT` יחד מדי פעם** מול היתרה האמיתית ב-Console — זה מאפס את הסטייה מול החיוב האמיתי; עדכון אחד בלי השני סופר פעמיים את מה שבאמצע. שינוי מחייב rollout (ADR #50) |
 
 אין כרגע secrets ל-FCM/Resend — Phase 4 טרם מומש (ראו `docs/ROADMAP.md`).
 
