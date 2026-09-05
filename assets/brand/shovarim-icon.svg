@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="שוברים">
+  <!-- Brand mark: a voucher/ticket silhouette. Paths only, no <text> and no external
+       font, so rasterization is byte-identical on every machine (see docs/DECISIONS.md
+       ADR #51). Colors are derived from the design tokens in src/app/globals.css:
+       #171717 is the `primary` token (oklch(0.205 0 0)) and #ffffff the `background`
+       token (oklch(1 0 0)). Note XML comments cannot contain a double hyphen, which is
+       why the CSS custom-property names are not spelled out here. -->
+  <path fill="#171717" d="M224 0h576a224 224 0 0 1 224 224v576a224 224 0 0 1-224 224H224A224 224 0 0 1 0 800V224A224 224 0 0 1 224 0Z"/>
+  <path fill="#ffffff" d="M232 320h560a56 56 0 0 1 56 56v72a64 64 0 0 0 0 128v72a56 56 0 0 1-56 56H232a56 56 0 0 1-56-56v-72a64 64 0 0 0 0-128v-72a56 56 0 0 1 56-56Z"/>
+  <g fill="#171717">
+    <path d="M624 360h32a16 16 0 0 1 16 16v48a16 16 0 0 1-16 16h-32a16 16 0 0 1-16-16v-48a16 16 0 0 1 16-16Z"/>
+    <path d="M624 472h32a16 16 0 0 1 16 16v48a16 16 0 0 1-16 16h-32a16 16 0 0 1-16-16v-48a16 16 0 0 1 16-16Z"/>
+    <path d="M624 584h32a16 16 0 0 1 16 16v48a16 16 0 0 1-16 16h-32a16 16 0 0 1-16-16v-48a16 16 0 0 1 16-16Z"/>
+  </g>
+</svg>
