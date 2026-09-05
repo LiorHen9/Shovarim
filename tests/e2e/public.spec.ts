@@ -50,3 +50,64 @@ test("the public landing page has no WCAG 2.1 AA violations", async ({ page }) =
   await expect(page.getByRole("button", { name: "המשך עם Google" })).toBeVisible();
   await expectNoA11yViolations(page);
 });
+
+// ADR #59 turned into something enforced rather than merely written down.
+//
+// The reason this site needs no cookie banner is a factual claim: a visitor who has not
+// signed in receives no cookie from us and is not tracked. That claim is published in
+// /privacy, so the day it stops being true the published policy becomes false — and the
+// change that breaks it (an analytics snippet, a marketing pixel, GA4 from ROADMAP 9.6
+// layer 3) is exactly the kind that gets added without anyone rereading the policy.
+//
+// Two assertions, because either one alone has a hole: a tracker can load without setting
+// a cookie, and a cookie can appear without a tracker.
+const TRACKER_HOSTS = [
+  "google-analytics.com",
+  "googletagmanager.com",
+  "analytics.google.com",
+  "connect.facebook.net",
+  "facebook.com/tr",
+  "hotjar",
+  "sentry.io",
+];
+
+test("a visitor who has not signed in gets no cookies and no trackers", async ({
+  page,
+  context,
+}) => {
+  const trackerRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (TRACKER_HOSTS.some((host) => url.includes(host))) trackerRequests.push(url);
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "המשך עם Google" })).toBeVisible();
+
+  // Named in the message rather than just counted — a bare "expected 0, got 1" would send
+  // the next person hunting through the whole app for which cookie appeared.
+  const cookies = await context.cookies();
+  expect(cookies.map((cookie) => cookie.name)).toEqual([]);
+  expect(trackerRequests).toEqual([]);
+});
+
+test("the privacy policy discloses browser storage and every third-party recipient", async ({
+  page,
+}) => {
+  await page.goto("/privacy");
+
+  await expect(
+    page.getByRole("heading", { name: "עוגיות ואחסון בדפדפן", level: 2 })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "העברת מידע לצדדים שלישיים", level: 2 })
+  ).toBeVisible();
+
+  // The three recipients data actually reaches. Meta and Anthropic were live in production
+  // and undisclosed until Phase 6.C; this is what keeps them from quietly falling out of
+  // the page again in a future edit.
+  const main = page.getByRole("main");
+  await expect(main).toContainText("Google (Firebase)");
+  await expect(main).toContainText("Anthropic");
+  await expect(main).toContainText("Meta");
+});

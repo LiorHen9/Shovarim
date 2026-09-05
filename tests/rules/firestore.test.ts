@@ -830,7 +830,7 @@ describe("consents", () => {
     await assertSucceeds(
       setDoc(doc(dbA, "consents", USER_A), {
         uid: USER_A,
-        privacyPolicyVersion: "2026-08-25",
+        privacyPolicyVersion: "2026-09-05",
         acceptedAt: serverTimestamp(),
         marketingConsent: false,
       })
@@ -842,7 +842,7 @@ describe("consents", () => {
     await assertFails(
       setDoc(doc(dbA, "consents", USER_B), {
         uid: USER_B,
-        privacyPolicyVersion: "2026-08-25",
+        privacyPolicyVersion: "2026-09-05",
         acceptedAt: serverTimestamp(),
         marketingConsent: false,
       })
