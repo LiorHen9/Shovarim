@@ -323,5 +323,15 @@ Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Fireba
 
 אימות: `typecheck`/`lint`/`build` נקיים. `test:rules` — 60/60 (59 קיימים + 1 חדש). `test:unit` — 72 (67 קיימים + 5 חדשים ל-`estimateCostUsd`). אימות מקצה-לקצה אמיתי מול Firestore/Auth emulators + קריאת Claude API אמיתית (סקריפט חד-פעמי, לא נשמר): סבב שיחה יחיד כתב בדיוק רשומה אחת עם טוקנים תואמים בפועל (כולל `cacheCreationInputTokens`), ו-`getClaudeUsageSummaryForUid` החזיר סיכום תואם.
 
-### שלב 9.6 — אנליטיקס בקנה מידה (מתוכנן)
+### שלב 9.6 — אנליטיקס בקנה מידה
 שכבתי: (1) Firestore aggregation queries (`count()`/`sum()`) לטייל-ים בסיסיים בדשבורד — אפס תשתית חדשה; (2) Firebase Extension הרשמי "Stream Firestore to BigQuery" כשנפח גדל — אפס קוד ETL; (3) GA4 (`src/lib/firebase/analytics.ts`, אותו pattern כמו `appCheck.ts`) לאנליטיקס מוצר סטנדרטי (DAU/MAU, funnels) — נצפה ב-GA4/Firebase Console, לא משוכפל ב-UI.
+
+**שכבה 1 ✅ הושלמה (2026-09-05)** — מסך הבית של האדמין (`/admin`) הפך ל-`async` Server Component ומציג ארבעה כרטיסי צריכת Claude: 24 שעות אחרונות, 7 ימים אחרונים, החודש הנוכחי (מתחילת חודש הלוח ב-UTC), ומאז ומתמיד. כל כרטיס = עלות מוערכת + מספר קריאות, מ-`getClaudeUsageOverview` (`src/lib/services/adminClaudeUsage.ts`) — ארבע aggregations `count()`+`sum("estimatedCostUsd")` ב-`Promise.all`, אותה צורה בדיוק כמו הסיכום הפר-משתמש הקיים, רק מסוננות לפי `createdAt`. מתחתן פס ניצול מול תקציב חודשי מ-`CLAUDE_MONTHLY_BUDGET_USD` (יעד תצוגה, לא תקרה נאכפת — לא מוצג כלל כשהמשתנה חסר). כל חלון נתפס ב-`try/catch` בנפרד ומציג "לא זמין" בכשל, במקום להפיל את כל הדף כמו שקרה ב-`/admin/users/[uid]` ב-2026-09-05. אינדקס חדש: `claudeUsageLog`: `createdAt ASC, estimatedCostUsd ASC`. ראו `docs/DECISIONS.md` ADR #50.
+- אימות: `typecheck`/`lint`/`build` נקיים. `test:rules` — ללא שינוי (אין collection חדש). אימות ידני מול Firebase Emulators: ארבעת הכרטיסים, פס התקציב עם/בלי המשתנה, וערך לא-מספרי שלא מפיל את הדף.
+
+**המלצות להמשך (נשקלו ונדחו במודע בשכבה 1, לפי סדר עלות/תועלת):**
+1. **פירוק טוקנים** (input / output / cache-write / cache-read) בכרטיס נפרד — מראה כמה prompt caching באמת חוסך, ומאפשר לזהות רגרסיה ב-cache hit rate. עלות: כל שדה מסוכם נוסף דורש אינדקס מרוכב משלו (`createdAt ASC, <field> ASC`), ואגרגציה מוגבלת ל-5 aggregates לשאילתה.
+2. **פילוח לפי ערוץ** (web / whatsapp / telegram / cli) — עונה על "מאיפה מגיעה ההוצאה". עלות: אינדקס `channel ASC, estimatedCostUsd ASC` ושאילתה לכל ערוץ.
+3. **טופ-N משתמשים יקרים** — הכי שימושי לזיהוי חריגים, והכי יקר: Firestore לא תומך ב-group-by, אז זה מחייב סריקה מלאה של `claudeUsageLog` (read לכל מסמך) או מסמכי rollup פר-uid שנכתבים ב-`logClaudeUsage`. זה הטריגר הטבעי למעבר לשכבה (2).
+4. **גרף מגמה יומי/שבועי** — אותה מגבלה כמו (3) בלי rollup יומי; שייך לשכבה (2), BigQuery.
+5. **התראה בחריגת תקציב** (FCM/מייל לאדמין) — דורש Cloud Function מתוזמנת שמריצה את אותה aggregation; היום פס התקציב הוא pull בלבד ומחייב שמישהו יפתח את הדף.

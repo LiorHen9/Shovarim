@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { UserSearchForm } from "@/components/admin/UserSearchForm";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   adminUserSearchEmailSchema,
   adminUserSearchUidSchema,
@@ -12,6 +13,22 @@ import type { UserProfile } from "@/types/user";
 function formatDate(timestamp: UserProfile["createdAt"]): string {
   return new Intl.DateTimeFormat("he-IL", { dateStyle: "medium", timeStyle: "short" }).format(
     timestamp.toDate()
+  );
+}
+
+// `photoURL` is written once by ensureUserProfile() at signup (src/actions/auth.ts)
+// and never refreshed, so it can be stale or null — the fallback initial covers
+// both. Deliberately not read from the Auth record instead: that would mean one
+// adminAuth.getUser() per row on every page load.
+//
+// alt="" on purpose: the display name sits in the adjacent cell, so a real alt
+// would just make a screen reader announce the same person twice.
+function UserAvatar({ user }: { user: UserProfile }) {
+  return (
+    <Avatar>
+      <AvatarImage src={user.photoURL ?? undefined} alt="" />
+      <AvatarFallback>{user.displayName?.charAt(0) || user.email?.charAt(0) || "?"}</AvatarFallback>
+    </Avatar>
   );
 }
 
@@ -67,6 +84,9 @@ export default async function AdminUsersPage({
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/50 text-right">
                 <tr>
+                  <th className="w-px p-3 font-medium">
+                    <span className="sr-only">תמונת פרופיל</span>
+                  </th>
                   <th className="p-3 font-medium">שם</th>
                   <th className="p-3 font-medium">אימייל</th>
                   <th className="p-3 font-medium">נרשם/ה בתאריך</th>
@@ -77,6 +97,9 @@ export default async function AdminUsersPage({
               <tbody>
                 {listResult.users.map((user) => (
                   <tr key={user.uid} className="border-b last:border-0 hover:bg-muted/30">
+                    <td className="w-px p-3">
+                      <UserAvatar user={user} />
+                    </td>
                     <td className="p-3">
                       <Link href={`/admin/users/${user.uid}`} className="underline underline-offset-2">
                         {user.displayName || user.uid}
@@ -119,9 +142,12 @@ export default async function AdminUsersPage({
 function UserRow({ user }: { user: UserProfile }) {
   return (
     <div className="flex items-center justify-between">
-      <div>
-        <p className="font-medium">{user.displayName || user.uid}</p>
-        <p className="text-sm text-muted-foreground">{user.email}</p>
+      <div className="flex items-center gap-3">
+        <UserAvatar user={user} />
+        <div>
+          <p className="font-medium">{user.displayName || user.uid}</p>
+          <p className="text-sm text-muted-foreground">{user.email}</p>
+        </div>
       </div>
       <Link href={`/admin/users/${user.uid}`} className="underline underline-offset-2">
         פרטים

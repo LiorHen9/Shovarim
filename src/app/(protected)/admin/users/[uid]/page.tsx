@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { UserModerationSection } from "@/components/admin/UserModerationSection";
 import { UserDeletionSection } from "@/components/admin/UserDeletionSection";
+import { formatUsd } from "@/lib/format";
 import { getUserDetail } from "@/lib/services/adminUsers";
 import { adminUserSearchUidSchema } from "@/lib/validation/adminUsers";
 
@@ -15,19 +16,6 @@ function formatTimestamp(value: { toDate(): Date } | null): string {
 function formatIsoDate(value: string | null): string {
   if (!value) return "—";
   return new Intl.DateTimeFormat("he-IL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
-
-// Estimated, not a bill — see docs/DATA_MODEL.md's claudeUsageLog section
-// (docs/DECISIONS.md ADR #49) for why this number can drift from the real
-// Anthropic invoice. 4 fraction digits: per-user totals can be well under a
-// cent at low usage, where 2 digits would just show "$0.00" for everyone.
-function formatUsd(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  }).format(value);
 }
 
 export default async function AdminUserDetailPage({ params }: { params: Promise<{ uid: string }> }) {

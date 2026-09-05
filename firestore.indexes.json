@@ -64,6 +64,14 @@
         { "fieldPath": "uid", "order": "ASCENDING" },
         { "fieldPath": "estimatedCostUsd", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "claudeUsageLog",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdAt", "order": "ASCENDING" },
+        { "fieldPath": "estimatedCostUsd", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

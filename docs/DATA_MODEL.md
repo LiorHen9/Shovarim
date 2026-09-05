@@ -403,6 +403,7 @@ Append-only, **רשומה אחת לכל קריאת `messages.create()`** — ל�
 - `members` (collection group): `memberUid ASC, status ASC` — "השיתופים/ההזמנות שלי" על פני רשימות של בעלים שונים (`useCardLists`, `usePendingInvitations`), ראו `docs/DECISIONS.md` #15
 - `usageLog` (collection group): `ownerId ASC, date DESC` — יומן שימושים גלובלי למשתמש
 - `claudeUsageLog`: `uid ASC, estimatedCostUsd ASC` — אגרגציית `count()`+`sum()` לעלות Claude פר-משתמש בפאנל הניהול (`getClaudeUsageSummaryForUid`)
+- `claudeUsageLog`: `createdAt ASC, estimatedCostUsd ASC` — אותה אגרגציה לפי חלון זמן במקום לפי משתמש — כרטיסי הצריכה במסך הבית של האדמין (`getClaudeUsageOverview`, Phase 9.6). אותה סיבה כמו לקודם: `sum()` חייב לקרוא את השדה המסוכם מתוך האינדקס עצמו, אז האינדקס האוטומטי על `createdAt` לא מספיק. (שאילתת ה-`allTime`, בלי `where` כלל, מוגשת ע"י האינדקס האוטומטי על `estimatedCostUsd` ולא דורשת רשומה.)
 
 ## אינדקסי שדה־בודד ב-collection group (`fieldOverrides`)
 Firestore יוצר אינדקס single-field אוטומטי לכל שדה — **אבל רק ב-collection scope**. שאילתת `collectionGroup` על שדה בודד (בלי `where` שני שמפעיל אינדקס מרוכב) דורשת הצהרה מפורשת, אחרת היא נכשלת ב-`FAILED_PRECONDITION` בפרודקשן. ראו `docs/DECISIONS.md` #33.
