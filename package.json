@@ -20,7 +20,8 @@
     "chat:scenario": "tsx --env-file=.env.local scripts/run-chat-scenario.ts",
     "test:unit": "vitest run tests/unit",
     "test:rules": "vitest run tests/rules",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "icons:generate": "tsx scripts/generate-icons.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.121.0",
@@ -47,6 +48,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@firebase/rules-unit-testing": "^5.0.2",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
@@ -55,7 +57,10 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "firebase-tools": "^15.28.1",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.4",
     "tailwindcss": "^4",
     "tsx": "^4.23.12",
     "typescript": "^5",

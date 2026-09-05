@@ -632,3 +632,132 @@ for collection members and field memberUid
 **נדחה**: (א) מסמך הגדרות ב-Firestore לתקציב (החלטה 3); (ב) עמודת עלות בטבלת המשתמשים וטופ-N יקרים (החלטה 5); (ג) פירוק טוקנים ופילוח לפי ערוץ בשלב הזה — כל שדה מסוכם נוסף וכל `where` נוסף גוררים אינדקס מרוכב משלהם, ונרשמו כהמלצות ב-`docs/ROADMAP.md` Phase 9.6 במקום להיכנס עכשיו; (ד) `ui/card.tsx` לכרטיסים — הרכיב לא בשימוש בשום מקום בקוד, ושימוש ראשון בו כאן היה יוצר שני סגנונות כרטיס מקבילים במקום ה-`rounded-lg border p-4` שכבר בכל הפרויקט.
 
 **בנוסף בשינוי הזה**: אווטאר בתחילת כל שורה ב-`/admin/users` (שימוש חוזר ב-`Avatar` הקיים ובשדה `photoURL` שכבר נשמר ב-`ensureUserProfile`, בלי קריאת Auth נוספת פר-שורה), ו-`formatUsd` הועברה מ-`/admin/users/[uid]/page.tsx` ל-`src/lib/format.ts` כדי שהיא לא תשוכפל בין שני עמודי האדמין.
+
+## 51. PWA — מניפסט ואפשרות התקנה: `start_url` מוגן, סמל גאומטרי מיוצר מקוד, ואפס אחסון עמיד בלקוח (Phase 6.0–6.1)
+**תאריך**: 2026-09-05
+
+**רקע**: `docs/ROADMAP.md` Phase 6 הוא שלוש מילים (`manifest, service worker, offline indicators, ביצועים`) ואין שום ADR שמכסה PWA. נקודת הפתיחה: אין manifest, אין אייקונים, ו-`src/app/favicon.ico` הוא **עדיין הלוגו של Next.js מיום ה-scaffold** — כלומר בפרודקשן כל טאב וכל סימנייה של האפליקציה החיה מציגים את המשולש של Vercel. זה באג מיתוג חי, בלתי-תלוי ב-PWA, ולכן הוא נסגר כאן ראשון.
+
+**החלטה (1) — הסמל נכתב ידנית כ-SVG של `<path>` בלבד, בלי `<text>` ובלי פונט חיצוני.** האילוץ הזה נושא משקל, הוא לא העדפה אסתטית: `sharp`/librsvg מרסטרים `<text>` עם הפונטים המותקנים במערכת, כך שאות עברית (למשל "ש") הייתה מפיקה PNG **שונה** במכונה של המפתח, ב-CI, ובכל checkout אחר — בשקט, בלי שום שגיאה. Heebo מגיע דרך `next/font/google`, אז אין ברפו קובץ פונט להאכיל בו רסטרייזר; ו-`src/app/icon.tsx` עם `next/og` `ImageResponse` נופל באותו קיר בדיוק (הפונט המובנה שם לא מכסה עברית, וה-URL שהוא מפיק לא יציב). צורת שובר/כרטיס עם חריצים בצדדים קוראת ב-48px ועוקפת את כל הבעיה.
+
+**החלטה (2) — הפלטים מחויבים ל-git; `npm run icons:generate` הוא כלי מפתח, לא צעד build.** `sharp` הוא dependency נייטיב כבד, ו-App Hosting בונה בקונטיינר נקי בכל push (כולל push של docs בלבד). להפוך את ה-build לתלוי בכלי תמונה נייטיב, עבור נכסים שמשתנים כמעט לעולם, זו עסקה גרועה. `sharp` ו-`png-to-ico` הם `devDependencies` בלבד. אומת שהרצה כפולה מפיקה פלט זהה בית-בבית (sha256).
+- `apple-icon.png` נבנה דווקא מהמקור ה-**maskable** (רקע מלא, בלי alpha): iOS מתעלם מ-alpha ומרכיב על שחור, אז אייקון עם פינות שקופות נראה שבור במסך הבית. מאותה סיבה גם לא מעגלים לו פינות מראש — iOS ממסך אותן בעצמו.
+- הווריאנט ה-maskable מקטין את הסמל ל-0.85, כך שהפינה הרחוקה ביותר יושבת ~329px מהמרכז — בתוך רדיוס אזור הבטחון (409.6px, ה-80% הפנימיים). בלי זה אנדרואיד חותך את האייקון לעיגול.
+
+**החלטה (3) — `src/app/manifest.ts` (קובץ TypeScript) ולא `public/manifest.webmanifest` סטטי.** `npm run typecheck` תופס טעות ב-`purpose`/`display`, שאחרת הייתה מורידה בשקט את ההתקנה באנדרואיד לקיצור-דרך של דפדפן; הקובץ חי ליד `layout.tsx` שאיתו הוא חייב להישאר עקבי; ו-Next פולט את `<link rel="manifest">` בעצמו. זה route שעובר אופטימיזציה סטטית, אז אין עלות SSR.
+
+**החלטה (4) — `start_url: "/dashboard"`, למרות שהוא מאחורי אימות.** משתמש מותקן הוא בהגדרה משתמש חוזר, ו-`__session` תקף 14 יום. הפעלה ל-`/` הייתה מציגה את דף השיווק וכפתורי ההתחברות *בתוך חלון האפליקציה*, מה שנקרא כתקלה. כשה-cookie חסר או פג, `src/proxy.ts` כבר מפנה ל-`/?next=/dashboard` — זרימת ההתחברות-והמשך הקיימת והבדוקה, בלי שורת קוד חדשה. `id: "/"` מקובע במפורש: בלעדיו הוא נגזר מ-`start_url`, וכל שינוי עתידי ב-`start_url` היה נקרא כאפליקציה **אחרת** ומשאיר אייקון שני במסך הבית.
+
+**החלטה (5) — `scope: "/"`, עם סיכון מוצהר.** ה-scope חייב לכלול את `/__/auth/**` כדי שהמסלול של `signInWithRedirect` יישאר בתוך החלון המותקן ולא ייזרק לדפדפן המערכת (מה שהיה מנתק את `getRedirectResult`). אבל **ההתקנה משנה מהותית את הסביבה ש-ADR #34/#35 נכתבו עבורה**: ל-PWA ב-iOS יש מחיצת אחסון והיסטוריה משלו, וזו בדיוק הזרימה שכבר נשברה פעם ב-Safari. לכן "התחברות עם Google מ-PWA מותקן טרי ב-iOS" היא שער ידני מוצהר, לא הערת אגב.
+
+**החלטה (6) — בלי `maximumScale`/`userScalable` ב-`viewport`.** נעילת zoom היא ההעתקה הסטנדרטית שגורמת ל-PWA "להרגיש נייטיב", והיא מפירה ישירות פריט ש-`docs/ACCESSIBILITY.md` כבר מונה ("תפקוד תקין עד zoom 200% ללא אובדן תוכן") — ובישראל זו חובה חוקית. היא גם הייתה נלחמת בפקד הגדלת הפונט שבר הנגישות של Phase 6.A יזדקק לו. יש טסט E2E ייעודי שנכשל אם מישהו יוסיף אותם בעתיד.
+
+**החלטה (7) — Open Graph סטטי ושורשי, אחרי אימות שאין תופעות לוואי.** ערוץ השיתוף העיקרי של האפליקציה הוא WhatsApp (ADR #37/#39), שגורף תגי OG לכרטיס התצוגה; עד עכשיו לינק `/invite/<code>` משותף נראה כ-URL עירום. התמונה **לא** מיוצרת פר-הזמנה: קוד ההזמנה הוא bearer token, ו-endpoint של OG הוא fetch לא-מאומת. לפני הכרזת ה-URL לזחלן של Meta אומת ש-`GET /invite/[code]` לסקרייפר אנונימי הוא קריאה בלבד — `getListInvitePreview` מבצע שני `.get()` ותו לא, לא צורך את הקוד ולא כותב לוג; `getListInviteGate` רץ רק כשיש session. `metadataBase` נגזר מ-`getAppUrl()` הקיים (`src/lib/appUrl.ts`), בלי משתנה סביבה חדש.
+
+**נדחה**: (א) אות עברית כסמל (החלטה 1) — היה הופך לתלות בכלי עיצוב חיצוני להמרה ל-outlines; (ב) ייצור אייקונים ב-build time (החלטה 2); (ג) `public/manifest.webmanifest` סטטי (החלטה 3); (ד) `start_url: "/"` (החלטה 4); (ה) טקסט בתוך תמונת ה-OG — היה מחייב commit של subset של Heebo, וסורקי לינקים ממילא מרנדרים את `og:title`/`og:description` לצד התמונה.
+
+**בנוסף בשינוי הזה**: חמשת ה-SVG של create-next-app (`file`/`globe`/`next`/`vercel`/`window`) נמחקו מ-`public/` — אומת שאף אחד מהם לא מוזכר ב-`src/`, ב-`tests/` או ב-`docs/`.
+
+## 52. גבולות מסלול והודעת "גרסה חדשה" — `UnrecognizedActionError` סוגר את תקלת ADR #32, ו-`loading.tsx` מכריח את ה-E2E לרוץ מול build (Phase 6.2)
+**תאריך**: 2026-09-05
+
+**רקע**: לפני השלב הזה לא היה בפרויקט **אף** `error.tsx`, `not-found.tsx` או `loading.tsx`. שגיאת רינדור לא-תפוסה הגיעה ל-boundary ברירת המחדל של Next — באנגלית, LTR, בלי דרך חזרה לאפליקציה — ו-404 באתר עברי רינדר את עמוד ברירת המחדל האנגלי. ADR #48 הוא התקדים הקונקרטי: `Timestamp` גולמי של Firestore שחצה ל-Client Component הפיל עמוד בפרודקשן עם digest אטום ובלי מסלול התאוששות.
+
+**החלטה (1) — הודעת "גרסה חדשה" מזוהה טיפוסית, לא ניחוש.** Next 16.3.2 מייצא `unstable_isUnrecognizedActionError` מ-`next/navigation` (אומת ב-`node_modules/next/dist/client/components/unrecognized-action-error.d.ts` וב-`navigation.js:57`), והוא זורק `UnrecognizedActionError` בדיוק כשהתשובה נושאת `x-nextjs-action-not-found: 1` — הכותרת המתועדת ב-ADR #32 וב-`docs/DEPLOYMENT.md`. `src/lib/actions/clientErrors.ts` (`reportActionError(error, fallback)`) מציג במקרה הזה טוסט **מתמיד** (`duration: Infinity`) עם כפתור רענון, במקום הודעת כשל גנרית ומטעה. ה-`<Toaster>` כבר mounted ב-`layout.tsx`, אז אין משטח UI חדש; זהו גם השימוש הנכון ב-sonner (אירועי ובר-פעולה), בניגוד לחיווי ה-offline של 6.3 שהוא מצב ולכן חייב להיות פס סטטי.
+- **קיבוע `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` הופך את זה לנדיר, לא לבלתי-אפשרי**: אפשר לרוטט את המפתח, ו-deploy שמשנה את המודול של action משנה את ה-id שלו ממילא.
+- **היקף החיווט מכוון ומצומצם**: רק catch-ים בקומפוננטות שבאמת מריצות Server Action (`grep` על `from "@/actions/"`). catch סביב כתיבת client SDK ישירה לא יכול לקבל `UnrecognizedActionError`, והוספת הבדיקה שם הייתה רעש. `SignInButtons` הושאר בכוונה מחוץ להיקף: יש לו טקסונומיית שגיאות משלו (`toAuthErrorCode`/`reportAuthError`), ודף הכניסה נטען טרי ממילא אז חלון ה-bundle המיושן שם זעיר.
+- **`ExportDataButton` הוא הרווח הגדול**: ההערה שם תיארה במפורש שהמצב "בלתי-ניתן להבחנה בין action id מיושן (404) לקריסת שרת (500)" — בדיוק מה שנפתר עכשיו. חשיפת ה-`digest` נשארת לכשל שרת אמיתי.
+- `unstable_` הוא אזהרה: הגרסה שנצפתה (16.3.2) מקובעת כאן, ויש לבדוק מחדש בכל שדרוג של Next.
+
+**החלטה (2) — `deploymentId` נבדק ונדחה לעת עתה, עם מלכודת מתועדת.** הוא היה גורם ל-framework ל-reload קשיח אוטומטי בסקיו — עדיף על הודעה. אבל ערכי `apphosting.yaml` הם מחרוזות סטטיות, וקידום ידני בכל deploy אינו בר-קיימא; והמלכודת החמורה: **אסור לחשב אותו ב-`next.config.ts` מ-`Date.now()`** או כל ערך לא-דטרמיניסטי, כי הקובץ נטען גם ב-build וגם ב-boot של השרת, כך שערך שונה בין השניים מייצר אי-התאמה קבועה ולולאת reload אינסופית. **פתוח**: האם Cloud Build של App Hosting חושף `COMMIT_SHA`/`SHORT_SHA`/`BUILD_ID` ל-`next build`. לאמת אמפירית (לוג של `Object.keys(process.env)` ב-build זמני), לא להניח.
+
+**החלטה (3) — `error.tsx` נפרד ל-`(protected)` ול-`admin`.** מקטע האדמין הוא Server Components מעל Admin SDK ומצבי הכשל שלו שונים (אינדקס מרוכב חסר → `FAILED_PRECONDITION`, ADR #50). הפרדה מונעת מקריסת עמוד אדמין לבלוע את כל העץ המוגן, ומאפשרת נוסח שמכוון את האדמין ל-Cloud Logging. `global-error.tsx` מרנדר `<html lang="he" dir="rtl">` ו-`<body>` משלו (הוא מחליף את ה-root layout) ונכתב **נטול-תלויות לגמרי** — בלי `globals.css`, בלי Tailwind, בלי `Button`, בלי משתנה הפונט של Heebo — עם סגנונות inline בלבד, כדי שלא ייכשל מאותה סיבה שהאפליקציה בדיוק נכשלה. בשום מקום לא מוצג תוכן השגיאה; ה-`digest` הוא המזהה הבטוח היחיד וגם מה שזרימת ADR #48 מפתחת עליו.
+
+**החלטה (4) — שלדי הטעינה משותפים בין `loading.tsx` לעמוד.** `src/components/skeletons/PageSkeletons.tsx`. הכפילות שזה מונע נראית לעין ולא תיאורטית: `loading.tsx` מכסה את הרינדור בשרת, ואז העמוד עולה ומציג placeholder משלו בזמן שה-hooks נפתרים — שתי צורות שונות היו נותנות הבזק כפול.
+
+**החלטה (5, נכפתה) — ה-E2E ב-CI עובר לרוץ מול `next start` ולא `next dev`.** זה **לא** שיפור אופציונלי: ברגע ש-`/settings` קיבל `loading.tsx`, Next עוטף את המקטע ב-Suspense ומזרים את התשובה, וב-dev mode ההזרמה משאירה את אירוע ה-`load` של המסמך תלוי עד ש-`page.goto` נכשל בטיימאאוט — **כל חמשת טסטי `settings.spec.ts` נפלו**. אותם חמישה טסטים בדיוק עוברים מול `npm run start` עם אותו `loading.tsx` (אומת בבידוד: הסרת הקובץ מתקנת ב-dev, ובנייה לפרודקשן מתקנת בלי להסיר אותו). `playwright.config.ts` עבר ל-`process.env.CI ? "npm run start" : "npm run dev"`; זה לא מוסיף זמן build כי `.github/workflows/ci.yml` כבר מריץ `npm run build` לפני Playwright, וערכי `NEXT_PUBLIC_*` מוטבעים ב-build כך שחיווט האמולטורים ב-`src/lib/firebase/client.ts` מתנהג זהה. **המסקנה הרחבה, שרלוונטית ל-6.3**: כשל E2E שמשוחזר רק מקומית חייב להיבדק מול build לפני שמאמינים לו.
+
+**נדחה**: (א) `deploymentId` בשלב הזה (החלטה 2); (ב) חיווט `reportActionError` לכל 29 בלוקי ה-catch באפליקציה (החלטה 1); (ג) unit test שמרנדר את גבולות השגיאה — היה דורש להוסיף jsdom ו-`@testing-library/react` ולשנות את ה-`include` ב-`vitest.config.ts` מ-`*.test.ts`, תשתית לא פרופורציונלית לארבע קומפוננטות סטטיות ש-`next build` ממילא מאמת; (ד) פתח קריסה מלאכותי (`?boom=1`) בקוד פרודקשן כדי לאפשר טסט אוטומטי לגבולות — נדחה במפורש כי הוא מוסיף משטח התקפה אמיתי בשביל כיסוי טסט.
+
+## 53. חיווי offline דרך `experimental.useOffline` של Next 16, ו-`metadata.fromCache` כאות האמיתי באפליקציה שכולה `onSnapshot` (Phase 6.3)
+**תאריך**: 2026-09-05
+
+**רקע**: שורת Phase 6 ברודמאפ מבקשת "offline indicators", והנחת המוצא הייתה שזה מחייב Service Worker. בבדיקה מול `node_modules` התברר ש-Next 16.3.2 כבר מספק את זה: `node_modules/next/offline.js`, `experimental.useOffline` ב-`config-schema.js:225`, ומדריך מלא ב-`node_modules/next/dist/docs/01-app/02-guides/offline-support.md`.
+
+**החלטה (1) — `experimental.useOffline` כאות הראשי, בלי Service Worker.** הדגל מפעיל זיהוי קישוריות ו-retry אוטומטי לניווטים, prefetches ו-Server Actions שנחסמו, וחושף את ה-hook `useOffline` מ-`next/offline` (בלי הדגל הוא תמיד מחזיר `false`).
+- **עדיף על `navigator.onLine`**, שמשקף רק את ממשק הרשת של מערכת ההפעלה: Next נכנס למצב offline גם על **fetch כושל** של ה-framework, כלומר תופס captive portal / DNS שבור / upstream מת שבהם הדפדפן עדיין מדווח `onLine === true`.
+- **מנגנון ההתאוששות** (מהתיעוד): `HEAD` יחיד לכתובת הנוכחית עם כותרת RSC, בוטל אחרי 200ms; גם timeout נחשב "מחובר", כי בקשה offline אמיתית נכשלת כמעט מיד ב-DNS/TCP. Backoff מדורג 500ms→1s→2s→3s ותקרה של 3s, ואירוע `online` של הדפדפן מקצר את ההמתנה.
+- **ה-retry בטוח למוטציות הלא-אידמפוטנטיות של האפליקציה.** זו הייתה השאלה החוסמת, ונענתה בקריאת המקור ולא בהסתמכות על התיעוד: `node_modules/next/dist/client/components/router-reducer/reducers/server-action-reducer.js:85-97` משחזר **רק** כשה-`fetch()` עצמו נדחה — כלומר הבקשה מעולם לא הגיעה לשרת ואין side effect לשכפל. `AbortError`/`TimeoutError` מוחרגים (`offline.js:63-70`). הקצה שנשאר: בקשה שהגיעה לשרת ואז התשובה שלה נותקה באמצע ה-stream נדחית גם היא; הסתברות נמוכה, אבל נרשם כאן במפורש.
+- **מתלכד נקי עם ADR #32/#52**: `action-not-found` היא *תשובת* HTTP ולא דחיית fetch, אז `useOffline` לא בולע אותה והיא זורמת ל-`UnrecognizedActionError`.
+- **rollback** הוא שורה אחת ב-`next.config.ts` — הסיבה שזה שלב נפרד.
+
+**החלטה (2) — `snapshot.metadata.fromCache` הוא האות המשני, והאמיתי יותר כאן.** 100% מהדאטה של ה-UI המוגן מגיע מ-`onSnapshot`, ול-Firestore יש stream ארוך-חיים משלו שיכול להיות מת בזמן ש-HTTP תקין לחלוטין: טוקן App Check שפג (ADR #27/#28), endpoint חסום, טוקן שנשלל. ה-`HEAD` probe של Next יאמר "מחובר" בזמן שכל כרטיס על המסך מיושן.
+- **המימוש מינימלי בכוונה**: במקום להשחיל את הדגל דרך כל עשרת ה-hooks, הוא נחשף מ-`useUserProfile` בלבד — `users/{uid}` הוא ה-listener היחיד שיש לכל משתמש מחובר תמיד, כך ש-listener אחד עונה על השאלה עבור כל האפליקציה. אם זה יתברר כלא מספיק, `useCards`/`useCard` יכולים להוסיף את זה בהמשך.
+- **`onSnapshotsInSync` אינו הכלי הנכון** — הוא נורה כשכל ה-listeners התייצבו ואינו נושא מצב cache כלל; ול-Firestore אין API ציבורי של "האם מחובר" (`enableNetwork`/`disableNetwork` הן פקודות, לא שאילתות).
+
+**החלטה (3) — פס סטטי, לא טוסט, ולא ב-root layout.** קישוריות היא **מצב**, לא אירוע: `<Toaster>` נסגר מעצמו, ורשת סלולרית מקרטעת הייתה מייצרת זרם טוסטים. `OfflineBanner` הוא `role="status"` + `aria-live="polite"`, מה שגם מספק את הפריט ב-`docs/ACCESSIBILITY.md` על הכרזת שינויי סטטוס מ-`onSnapshot`. הוא מורכב ב-`(protected)/layout.tsx` ולא ב-root layout (בניגוד למה שהמדריך של Next מדגים): כבר יש שם משבצת באנר מבוססת ליד `DeletionPendingBanner`, העמודים הציבוריים סטטיים ובאנר קישוריות עליהם הוא רעש, ו-`useOffline()` מחזיר `false` ב-SSR ממילא. יש טסט E2E שמאמת את שלושת הדברים האלה.
+
+**החלטה (4) — `WaitingForConnection` כקומפוננטת client קטנה בתוך `loading.tsx`.** כשניווט נחסם על רשת מתה, ה-route shell שנעשה לו prefetch נצבע מיד והחלק הדינמי ממתין — בלי החיווי הזה המשתמש בוהה בשלד שלעולם לא ייפתר. היא מבודדת כקומפוננטה משלה כדי שקבצי ה-`loading.tsx` יישארו Server Components; רק שורת המרקאפ הזו צריכה את ה-hook.
+
+**נדחה**: (א) Service Worker (ADR #55); (ב) `navigator.onLine` כאות עצמאי (החלטה 1); (ג) חשיפת `fromCache` מכל עשרת ה-hooks (החלטה 2); (ד) טוסט לחיווי קישוריות (החלטה 3).
+
+## 54. דחיית Firestore offline persistence — משטח data-at-rest חדש, purge שמתנגש עם multi-tab, ומודל כתיבה שנהיה חסר-קוהרנטיות
+**תאריך**: 2026-09-05
+
+**רקע**: `src/lib/firebase/client.ts` משתמש ב-`getFirestore(firebaseApp)` פשוט, כלומר cache בזיכרון בלבד. המעבר ל-`persistentLocalCache` הוא שינוי של שורה אחת, והוא התנאי המקדים לכל יכולת offline אמיתית. ה-ADR הזה נכתב **אף שלא נשלח קוד**, כדי שההחלטה לא תילקח בהיסח הדעת בעתיד.
+
+**החלטה: לא להפעיל persistence מקומי.** ארבע סיבות בלתי-תלויות, כל אחת מספיקה בפני עצמה:
+
+1. **משטח data-at-rest חדש, עם זנב plaintext.** לפי ADR #25 ו-`docs/SECURITY.md`, `cvv`/`barcodeOrCode` מגיעים ללקוח כ-`v1:<iv>:<authTag>:<ciphertext>` — אבל `decryptSensitiveField` מחזיר ערכים שאינם `v1:` כמות שהם, לתאימות לאחור, כך ש**כרטיסים שקדמו למיגרציה עשויים לשאת plaintext**. הפעלת persistence כותבת לדיסק של המשתמש את מה ש-`onSnapshot` מספק. זו לא החלטת config אלא שינוי עמדת פרטיות, שדורש עדכון `docs/PRIVACY.md` ו-`docs/SECURITY.md` ואולי מסלול הסכמה מחדש דרך `ConsentBanner`. תנאי מקדים לדיון מחדש: לאמת ש-`scripts/migrate-encrypt-sensitive-fields.ts` הושלם מול פרודקשן ולא נותר plaintext.
+2. **ניקוי ב-signout לא עובד אמין יחד עם multi-tab.** `clearIndexedDbPersistence(db)` זורק `failed-precondition` אם ה-instance לא הופסק או אם טאב אחר מחזיק בו. כלומר `persistentMultipleTabManager` (שכן היינו רוצים) ו-purge מובטח נמצאים במתח ישיר. קונקרטית: `handleSignOut` ב-`Header.tsx` עושה `signOutClient()` → `clearSession()` → `router.push("/")` → `router.refresh()`; הוספת `terminate(db)` + `clearIndexedDbPersistence(db)` שם הייתה הורגת את ה-instance לשארית חיי העמוד, ועדיין יכולה להידחות אם טאב נוסף פתוח.
+3. **מודל הכתיבה נהיה חסר-קוהרנטיות.** המוטציות מפוצלות: ~10 אתרי כתיבה ישירים ב-client SDK מול 12 Server Actions. עם persistence, כתיבות ה-client מתורות באופן עמיד במצב מנותק וה-Server Actions לא — כלומר "האם השינוי שלי שרד סגירת טאב?" מקבל **תשובות שונות לפי איזה כפתור נלחץ**. גרוע מכך, `addDoc`/`updateDoc` לא נפתרים עד ack מהשרת, אז `toast.success` לעולם לא נורה בזמן שהכתיבה המקומית האופטימית כבר מופיעה ב-`onSnapshot` — המשתמש רואה את הכרטיס נוצר וספינר שלא נעצר. וכתיבה מתורה שנשטפת שעות מאוחר יותר נבחנת מול `firestore.rules` ו-App Check **בזמן השטיפה**, כלומר יכולה להידחות בשקט הרבה אחרי שה-UI הראה הצלחה.
+4. **היא לא קונה כלום בלי Service Worker**, שנדחה בעצמו (ADR #55): נתונים שמורים מאחורי עמוד HTML שלא ייטען offline אינם שווים דבר.
+
+**מה כן נעשה במקום**: להישאר על ה-cache בזיכרון ולהשתמש ב-`snapshot.metadata.fromCache` כאות החיווי (ADR #53). קריאות מה-cache בזיכרון מסמנות `fromCache: true` כשה-stream מת, כך שמתקבל חיווי אמיתי ב**אפס** משטח at-rest חדש.
+
+**אם זה ייבחן מחדש אי-פעם**, זה צריך להיות שלב משלו עם: ADR, סעיף ב-`docs/PRIVACY.md`, opt-in מפורש ב-`/settings` (לא ברירת מחדל), אימות שהמיגרציה הושלמה, הכרעה במתח multi-tab/purge, ו-UI מודע ל-`hasPendingWrites` בכל ~10 אתרי הכתיבה של ה-client.
+
+## 55. dark mode שהוחייה, טעינת תמונות עצלה, וסליס האוטומציה של הנגישות (Phase 6.4)
+**תאריך**: 2026-09-05
+
+**רקע**: `next-themes` היה dependency מאז ה-scaffold, `src/app/globals.css` נשא סט טוקנים מלא ל-`.dark` מאחורי `@custom-variant dark`, ו-`src/components/ui/sonner.tsx` כבר קרא ל-`useTheme()` — אבל **שום `ThemeProvider` לא הורכב מעולם**. כלומר dark mode היה קוד מת, ו-`useTheme()` החזיר `undefined` בשקט. במקביל, `docs/ACCESSIBILITY.md` מונה שמונה פריטי WCAG ומצהיר מילולית ש"עדיין לא בוצעה בדיקת Lighthouse/NVDA בפועל".
+
+**החלטה (1) — להרכיב את ה-`ThemeProvider` ולהוסיף מתג לתפריט הקיים.** `attribute="class"` (מה שה-`@custom-variant` ב-`globals.css` מפתח עליו), `defaultTheme="system"`. `suppressHydrationWarning` על `<html>` הוא **נדרש ולא קוסמטי**: next-themes כותב את ה-class לפני ש-React מבצע hydration, אז השרת והלקוח נבדלים בכוונה באלמנט הזה. המתג הוא פריט יחיד ב-`DropdownMenu` הקיים ב-`Header`, שמסתובב system → light → dark; המצב הנוכחי כתוב בתווית, אז תפריט-משנה היה יותר chrome מבחירה.
+- **בלי `mounted` guard**, בניגוד לדפוס המקובל של next-themes: הרכיב מרונדר בתוך `DropdownMenuContent`, ש-Radix מרכיב רק כשהתפריט נפתח — תמיד אחרי hydration — אז אין רינדור שרת שאפשר להתנגש איתו. זה גם מה שמאפשר להימנע מ-`setState` בתוך `useEffect`, שה-lint של הפרויקט אוסר (`react-hooks/set-state-in-effect`).
+
+**החלטה (2) — לא לאמץ `next/image`, ולתקן את מה שבאמת חסר.** ה-runtime הוא `cpu: 1, memoryMiB: 512, maxInstances: 2` (`apphosting.yaml`), ותמונות הכרטיסים/קבלות מגיעות מ-Firebase Storage — כלומר `next/image` פירושו `images.remotePatterns` ל-`firebasestorage.googleapis.com` וטרנסקודינג on-demand על המסלול הקריטי של אותו backend. זו החלטת תשתית עם עלות אמיתית, לא polish.
+- **תיקון הערכת שווא שהייתה בתכנון**: התוכנית דיברה על "תיקוני CLS", אבל בבדיקה שלושת תגי ה-`img` **כבר** נושאים מידות קבועות ב-Tailwind (`h-10 w-10`, `h-24 w-24`) עם `object-cover`, כך שתיבת הפריסה שמורה ואין CLS מלכתחילה. מה שבאמת היה חסר: `loading="lazy"` בשתי התצוגות הרשימתיות (בקשת Storage לכל שורה, רובן מתחת לקו הקיפול) ו-`decoding="async"`. תצוגת המקדימה ב-`ImageDropInput` לא קיבלה `lazy` — היא תמיד גלויה, וזה רק היה מעכב אותה. נוספו גם `width`/`height` מפורשים לנכונות.
+
+**החלטה (3) — הסליס הזול מ-issue #41 נכנס, השאר לא.** `eslint-plugin-jsx-a11y` מופעל במפורש (`eslint-config-next` מטמיע רק חלק מהכללים), ו-`@axe-core/playwright` נוסף לספקים **הקיימים**. `lighthouse-ci` נדחה: שער ציון על runner עם worker אחד הוא flaky והתמורה נמוכה.
+- **מלכודת מתועדת**: אי אפשר לפרוש את `jsxA11y.flatConfigs.recommended` כולו — `eslint-config-next` כבר רושם את הפלאגין, וכפילות היא `ConfigError` קשה שמפילה את כל ה-lint. רק ה-`rules` נפרשים.
+- **הסריקה מוגבלת ל-`wcag2a`/`wcag2aa`/`wcag21a`/`wcag21aa`** ולא כוללת את כללי ה-best-practice של axe, כך שכשל תמיד מסמן פער תאימות אמיתי ולא דעה סגנונית. ה-**dark theme נסרק בנפרד** (`expectNoA11yViolationsInDark`), כי הטוקנים הכהים מעולם לא נבדקו לניגודיות ואי אפשר לרשת את תוצאת ה-light. שתי הסריקות עוברות נקי.
+- **שני `autoFocus` קיימים סומנו כחריגים מוצדקים ולא הוסרו**: בשני המקרים ה-input מחליף את הכפתור שהמשתמש בדיוק הפעיל, כך שהכפתור מתפרק והפוקוס היה נופל ל-body. העברת הפוקוס ל-input היא ההתנהגות ה**נגישה** כאן; הכלל מגן מפני `autoFocus` בטעינת עמוד, שזה מצב אחר לגמרי. **הערה מעשית**: אי אפשר להשתמש בהערת JSX מסולסלת בתוך רשימת ה-attributes של תג (שגיאת פרסור) — הערות `//` כן עובדות שם.
+- **סייג מוצהר**: סריקה אוטומטית תופסת בערך שליש מבעיות הנגישות האמיתיות. היא לא שופטת אם `alt` משמעותי או אם סדר הפוקוס הגיוני. מעברי NVDA ו-Lighthouse הידניים ב-`docs/ACCESSIBILITY.md` נשארים נדרשים.
+
+**החלטה (4) — מדידה לפני אופטימיזציה, והמדידה שינתה את התוכנית.** התוכנית הציעה `next/dynamic` על פאנל הצ'אט אם ה-bundle שלו גדול. **Next 16.3.2 כבר לא מדפיס First Load JS פר-מסלול** ב-`next build`, וגם `--experimental-analyze` לא הפיק מספרים, אז המדידה נעשתה ישירות על התוצר: **38 קבצים, כ-2078KB JS גולמי ב-`.next/static/chunks`, כשה-chunk הגדול ביותר הוא 680KB והוא Firebase/Firestore** (אומת בחיפוש מחרוזות בתוך ה-chunk). זו העלות הדומיננטית, והיא נטענת בכל עמוד מוגן כי כל עמוד משתמש ב-`onSnapshot`. **המסקנה: `next/dynamic` על הצ'אט לא יזיז את המחט** — הוא לא מופיע כלל בין ה-chunks הגדולים. המנוף האמיתי הוא ארכיטקטוני (העברת קריאות לצד שרת), וזה מחוץ להיקף של פאזת polish. הוא לא בוצע, ולא הועמד פנים שבוצע.
+
+**נדחה**: (א) `next/image` (החלטה 2); (ב) `lighthouse-ci` ב-CI (החלטה 3); (ג) הסרת ה-`autoFocus` הקיימים (החלטה 3); (ד) `next/dynamic` על פאנל הצ'אט — נבדק במדידה ונמצא חסר-תועלת (החלטה 4).
+
+## 56. דחיית ה-Service Worker — הארטיפקט היחיד שה-rollback לא מגיע אליו, והצורה שתשמש אם ייבנה אי-פעם
+**תאריך**: 2026-09-05
+
+**רקע**: שורת Phase 6 ב-`docs/ROADMAP.md` אומרת מפורשות "service worker". ה-ADR הזה מתעד למה הפאזה נסגרת **בלעדיו**, כדי שזו תהיה החלטה מתועדת ולא השמטה שקטה.
+
+**החלטה: לא לבנות Service Worker בשלב הזה.** ארבעה נימוקים, לפי סדר משקל:
+
+1. **הוא הארטיפקט היחיד בסטאק ש-`firebase apphosting:rollouts:create --git-commit <sha>` לא יכול לבטל.** מסלול ה-rollback המתורגל ב-`docs/DEPLOYMENT.md` מחזיר קוד **שרת**. Service Worker מותקן אצל ה**לקוח** ושורד כל rollout, לנצח, אצל כל מי שטען אי-פעם את הגרסה הרעה. גם דגל env אינו מתג כיבוי — `NEXT_PUBLIC_SW_ENABLED=false` עוצר רישומים *חדשים* בלבד ולא מסיר קיימים; זה שער שחרור, לא מתג חירום. **אסור שמישהו יושיט יד לדגל כזה בזמן תקלה ויחשוב שפתר.**
+2. **הערך שלו כאן כמעט אפס.** כל עמוד מוגן הוא `"use client"` וכל עשרת ה-hooks הם `onSnapshot`, ו-Firestore הוא cache בזיכרון בלבד. כלומר app shell שמור מראש ל-`/cards` יציג header ושלד ריק — לנצח. הערך האמיתי חסום מאחורי Firestore persistence, שנדחתה בעצמה ומסיבות טובות (ADR #54).
+3. **הוא מנציח את ADR #32.** תקלת "לקוח ישן, שרת חדש" היא בדיוק המצב ש-app shell במטמון הופך מאירוע חולף למצב קבוע.
+4. **ההתקנה כבר לא דורשת אותו.** Chrome ביטל את קריטריון ה-fetch handler / יכולת ה-offline; manifest + אייקונים + HTTPS מספיקים ל-"Install app". Phase 6.1 עומד בפני עצמו, ואומת בפועל.
+
+בנוסף, שני הפריטים שבגללם ה-SW הופיע ברודמאפ מסופקים עכשיו בלעדיו: חיווי offline דרך `experimental.useOffline` (ADR #53), והודעת ה-rollout דרך `UnrecognizedActionError` (ADR #52).
+
+**הצורה שתשמש אם הוא כן ייבנה אי-פעם** (נרשם כדי שלא יידרש מחקר מחדש):
+- **hand-rolled, כ-80 שורות, בלי dependency.** לא Serwist: הערך שלו הוא אסטרטגיות runtime-caching — בדיוק מה שאסור כאן — והוא גורר plugin לתוך ה-build, כלומר יושב ישירות על רדיוס הפגיעה של ADR #32. קובץ שאפשר לקרוא במלואו בשלוש לפנות בוקר בזמן תקלה שווה יותר מספרייה.
+- **precache רק לנכסי `/_next/static/`**, שבטוחים מעצם הבנייה: ה-URL מכיל content hash, אז לקוח מיושן מבקש את ה-hashes שלו (פגיעה במטמון) ולקוח טרי מבקש חדשים (רשת), וה-SW לעולם לא צריך לדעת את ה-build id. **זו התשובה ל-ADR #32** — התקלה נובעת מהגשת HTML/RSC מיושן, אף פעם לא מ-chunks בלתי-משתנים. בנוסף: אייקונים ועמוד `/offline` יחיד.
+- **יציאה מוקדמת מ-`fetch` לפני כל לוגיקה** עבור: `method !== "GET"` (POST הוא Server Action — SW לעולם לא בנתיב הזה), נתיבי `/__/` (ADR #34/#35 — ה-iframe וה-handler של האימות חייבים להגיע ל-rewrite ללא נגיעה), נתיבי `/api/` (`/api/chat` מזרים NDJSON), בקשות עם כותרת `RSC`, ו-cross-origin (Firestore/Storage/App Check/reCAPTCHA). ניווטים: **network-only** עם `catch` שמחזיר את `/offline` — אף פעם לא app shell במטמון, אף פעם לא stale-while-revalidate.
+- **בלי `self.skipWaiting()` ב-`install`.** החלפת נכסים תחת עמוד שכבר רץ מייצרת שגיאות טעינת chunk — בדיוק סוג הבאג שהפאזה הזו ניסתה לחסל. במקום: `updatefound` ← הודעה (אותה הודעת sonner של 6.2) ← `postMessage` ← `skipWaiting` ← `controllerchange` ← `reload`.
+- **ה-PR הראשון חייב להיות tombstone worker בלבד** (unregister + מחיקת כל ה-caches), עם ה-`headers()` ל-`/sw.js` (`Cache-Control: no-cache`) וה-registrar — אפס לוגיקת caching. זה מוכיח בפרודקשן שהקובץ מוגש ב-scope הנכון, שהכותרת שורדת את ה-CDN של App Hosting, ושנתיבי האימות עדיין עובדים — בסיכון אפס, כי כל תפקיד ה-worker הוא להסיר את עצמו. **מתג הכיבוי הוא אז `git revert` של ה-PR השני**, ולא קובץ שנכתב תחת לחץ בזמן תקלה.
+- **`X-Frame-Options: DENY`** (אם נוספות כותרות אבטחה יחד עם `headers()`) חייב להיבדק מול `/__/auth/iframe` בפועל ולא בהיסק — ADR #34/#35 קיימים כי האזור הזה כבר הפיק כשל שקט שספציפי ל-Safari.
+
+**דו-קיום עתידי עם FCM (Phase 7)** — נרשם עכשיו כדי שלא יידרש דיון מחדש: FCM web push מחייב worker ב-`/firebase-messaging-sw.js`, ו-`users/{uid}.fcmTokens` כבר קיים כמערך ריק (`src/actions/auth.ts`). **שני workers באותו scope בלתי אפשריים** — `register()` שני ב-scope `/` מחליף את הראשון. הדפוס הנתמך: worker אפליקטיבי ב-scope `/`, ורישום `/firebase-messaging-sw.js` ב-scope צר יותר שמועבר ל-`getToken({ serviceWorkerRegistration })`. **לא** למזג לוגיקת FCM לתוך ה-worker האפליקטיבי: הוא עובד ע"י `importScripts` של ה-compat SDK, מה שגורר bundle צד-שלישי גדול ל-worker וקושר את מתג הכיבוי שלנו ל-SDK של Firebase.

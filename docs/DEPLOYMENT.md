@@ -334,6 +334,8 @@ on: push [branches:main] →  quality ‖ functions  →  deploy-rules-and-funct
 
 `npm ci` → `typecheck` → `lint` → `build` → `playwright install chromium` → `emulators:exec` (rules tests + E2E באותה הרצת emulator אחת). שגיאת טיפוס נופלת תוך שניות ולא אחרי שהותקן דפדפן והורמו emulators. `playwright-report/` נשמר כ-artifact **רק על כישלון** (`if: failure()`, 7 ימים).
 
+**ה-E2E ב-CI רץ מול `next start`, לא `next dev`** (מ-Phase 6.2, 2026-09-05). `playwright.config.ts` בוחר לפי `process.env.CI`. זו לא העדפה: ברגע שמסלול מקבל `loading.tsx`, Next עוטף אותו ב-Suspense ומזרים את התשובה, וב-dev mode ההזרמה משאירה את אירוע ה-`load` של המסמך תלוי — מה שהפיל את כל חמשת טסטי `settings.spec.ts` בטיימאאוט. אותם טסטים עוברים מול build עם אותו קובץ בדיוק. **אין עלות זמן**: ה-job כבר מריץ `npm run build` לפני Playwright, וערכי `NEXT_PUBLIC_*` מוטבעים ב-build כך שחיווט האמולטורים ב-`src/lib/firebase/client.ts` מתנהג זהה. **מסקנה מעשית**: כשל E2E שמשוחזר רק מקומית (ב-`next dev`) חייב להיבדק מול `npm run build && npm run start` לפני שמאמינים לו.
+
 ה-job כולו רץ ב-**emulator mode עם ערכי Firebase דמה** ומפתח `CARD_FIELD_ENCRYPTION_KEY` קבוע (ראו טבלת ה-secrets למעלה ואת מיפוי ה-emulator למטה). זו לא רק נוחות — **ל-CI על PR אין שום גישה ל-production**, וזה חשוב במיוחד כי PR יכול להגיע מ-fork.
 
 ### למה ה-deploy job לא רץ על PR

@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Check, Loader2, LogIn, MessageCircle, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -77,8 +79,8 @@ export function InvitePanel({
         } else if (announce) {
           toast.info("המספר עדיין לא מקושר. שלחו את ההודעה בוואטסאפ ונסו שוב.");
         }
-      } catch {
-        if (announce) toast.error("בדיקת מצב הקישור נכשלה");
+      } catch (error) {
+        if (announce) reportActionError(error, "בדיקת מצב הקישור נכשלה");
       }
     },
     [preview.code]
@@ -170,8 +172,8 @@ export function InvitePanel({
       setDone("accepted");
       toast.success("הצטרפת לרשימה");
       router.push(`/cards/lists/${result.listId}`);
-    } catch {
-      toast.error("אישור ההצטרפות נכשל");
+    } catch (error) {
+      reportActionError(error, "אישור ההצטרפות נכשל");
     } finally {
       setPending(false);
     }
@@ -187,8 +189,8 @@ export function InvitePanel({
       }
       setConfirmOpen(false);
       setDone("declined");
-    } catch {
-      toast.error("דחיית ההזמנה נכשלה");
+    } catch (error) {
+      reportActionError(error, "דחיית ההזמנה נכשלה");
     } finally {
       setPending(false);
     }

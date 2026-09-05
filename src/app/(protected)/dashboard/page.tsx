@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DashboardSkeleton } from "@/components/skeletons/PageSkeletons";
 import { useAuth } from "@/hooks/useAuth";
 import { useCards } from "@/hooks/useCards";
 import { formatCurrency } from "@/lib/format";
@@ -26,7 +26,7 @@ export default function DashboardPage() {
       </div>
 
       {loading ? (
-        <Skeleton className="h-24 w-full" />
+        <DashboardSkeleton />
       ) : activeCards.length === 0 ? (
         <div className="space-y-3 rounded-lg border p-6 text-center">
           <p className="text-muted-foreground">עדיין אין כרטיסים פעילים.</p>

@@ -59,6 +59,9 @@ export function CategoryManager({ uid }: { uid: string }) {
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               aria-label={`שם חדש לקטגוריה ${category.name}`}
+              // Same reasoning as the list-rename input: the edit button unmounts when
+              // this input replaces it, so focus has to move here or it is lost.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               className="max-w-xs"
             />

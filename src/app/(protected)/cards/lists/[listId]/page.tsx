@@ -10,7 +10,7 @@ import { ArrowRight, CheckIcon, ExternalLink, PencilIcon, TrashIcon, XIcon } fro
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CardDetailSkeleton, CardListSkeleton } from "@/components/skeletons/PageSkeletons";
 import { DeleteCardButton } from "@/components/cards/DeleteCardButton";
 import { ShareListDialog } from "@/components/lists/ShareListDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -40,7 +40,7 @@ export default function CardListDetailPage({
   // deny it to anyone else) — see useListMembers.
   const { members } = useListMembers(isOwner ? listId : null);
 
-  if (authLoading || !user || listsLoading) return <Skeleton className="h-40 w-full" />;
+  if (authLoading || !user || listsLoading) return <CardDetailSkeleton />;
   if (!list) return <p className="text-muted-foreground">הרשימה לא נמצאה.</p>;
 
   const canManage = list.role === "owner" || list.role === "manager";
@@ -102,6 +102,11 @@ export default function CardListDetailPage({
               value={nameValue}
               onChange={(e) => setNameValue(e.target.value)}
               aria-label="שם חדש לרשימה"
+              // The input replaces the button the user just activated, so that button
+              // unmounts and focus would otherwise fall back to <body>. Moving focus into
+              // the replacement is the accessible behaviour here — jsx-a11y/no-autofocus
+              // guards against autoFocus on page load, which is a different situation.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               className="max-w-xs"
             />
@@ -161,10 +166,7 @@ export default function CardListDetailPage({
       </div>
 
       {cardsLoading && (
-        <div className="space-y-2">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-        </div>
+        <CardListSkeleton />
       )}
 
       {!cardsLoading && listCards.length === 0 && (
@@ -183,6 +185,10 @@ export default function CardListDetailPage({
                 <img
                   src={card.cardImageUrl}
                   alt={`תמונת הכרטיס ${card.name}`}
+                  width={40}
+                  height={40}
+                  loading="lazy"
+                  decoding="async"
                   className="h-10 w-10 rounded-md border object-cover"
                 />
               )}

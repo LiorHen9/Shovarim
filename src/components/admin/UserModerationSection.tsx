@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -61,8 +63,8 @@ export function UserModerationSection({
       }
       toast.success(successMessage);
       router.refresh();
-    } catch {
-      toast.error("הפעולה נכשלה");
+    } catch (error) {
+      reportActionError(error, "הפעולה נכשלה");
     } finally {
       setPending(false);
     }

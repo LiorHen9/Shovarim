@@ -5,6 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -46,8 +48,8 @@ export function UpdateBalanceDialog({
       }
       toast.success("היתרה עודכנה");
       setOpen(false);
-    } catch {
-      toast.error("עדכון היתרה נכשל");
+    } catch (error) {
+      reportActionError(error, "עדכון היתרה נכשל");
     }
   }
 

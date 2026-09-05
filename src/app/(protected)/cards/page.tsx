@@ -7,7 +7,7 @@ import { ChevronLeft } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CardListSkeleton } from "@/components/skeletons/PageSkeletons";
 import { CreateListDialog } from "@/components/lists/CreateListDialog";
 import { PendingInvitationsPanel } from "@/components/lists/PendingInvitationsPanel";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,10 +43,7 @@ export default function CardsPage() {
       {user && <PendingInvitationsPanel uid={user.uid} />}
 
       {loading && !error && (
-        <div className="space-y-2">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-        </div>
+        <CardListSkeleton />
       )}
 
       {error && (

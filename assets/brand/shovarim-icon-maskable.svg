@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="שוברים">
+  <!-- Maskable variant of assets/brand/shovarim-icon.svg: full-bleed background (Android
+       crops it to an arbitrary shape) with the mark scaled to 0.85 so its furthest corner
+       sits ~329px from centre, well inside the 409.6px safe-zone radius (the inner 80%). -->
+  <path fill="#171717" d="M0 0h1024v1024H0Z"/>
+  <g transform="translate(512 512) scale(0.85) translate(-512 -512)">
+    <path fill="#ffffff" d="M232 320h560a56 56 0 0 1 56 56v72a64 64 0 0 0 0 128v72a56 56 0 0 1-56 56H232a56 56 0 0 1-56-56v-72a64 64 0 0 0 0-128v-72a56 56 0 0 1 56-56Z"/>
+    <g fill="#171717">
+      <path d="M624 360h32a16 16 0 0 1 16 16v48a16 16 0 0 1-16 16h-32a16 16 0 0 1-16-16v-48a16 16 0 0 1 16-16Z"/>
+      <path d="M624 472h32a16 16 0 0 1 16 16v48a16 16 0 0 1-16 16h-32a16 16 0 0 1-16-16v-48a16 16 0 0 1 16-16Z"/>
+      <path d="M624 584h32a16 16 0 0 1 16 16v48a16 16 0 0 1-16 16h-32a16 16 0 0 1-16-16v-48a16 16 0 0 1 16-16Z"/>
+    </g>
+  </g>
+</svg>

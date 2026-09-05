@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useAuth } from "@/hooks/useAuth";
 import { signOut as signOutClient } from "@/lib/auth/authService";
 import { clearSession } from "@/actions/auth";
@@ -61,6 +62,7 @@ export function Header() {
             <DropdownMenuItem asChild>
               <Link href="/settings">הגדרות</Link>
             </DropdownMenuItem>
+            <ThemeToggle />
             <DropdownMenuItem onClick={() => void handleSignOut()}>
               התנתקות
             </DropdownMenuItem>

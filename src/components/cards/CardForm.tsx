@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -130,7 +132,7 @@ export function CardForm({ uid, initialListId }: { uid: string; initialListId?: 
       router.push(`/cards/${result.cardId}`);
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "שמירת הכרטיס נכשלה");
+      reportActionError(error, error instanceof Error ? error.message : "שמירת הכרטיס נכשלה");
     }
   }
 
