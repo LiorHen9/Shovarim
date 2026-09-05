@@ -390,7 +390,7 @@ Append-only, **רשומה אחת לכל קריאת `messages.create()`** — ל�
 
 `firestore.rules`: `allow read, write: if false` לחלוטין — כולל לבעלים, בשונה מ-`auditLog` (`allow read: if isExistingOwner()`) — אין כרגע פיצ'ר משתמש שצריך לראות את זה, ותצוגת האדמין עוברת Admin SDK ממילא.
 
-**אין אינדקס מרוכב**: `getClaudeUsageSummaryForUid` (`src/lib/services/adminClaudeUsage.ts`) עושה `where("uid","==",uid)` בלבד עם `aggregate()` (`count()`+`sum("estimatedCostUsd")`) — שדה בודד, מכוסה אוטומטית.
+**דורש אינדקס מרוכב** `uid ASC, estimatedCostUsd ASC`: `getClaudeUsageSummaryForUid` (`src/lib/services/adminClaudeUsage.ts`) עושה `where("uid","==",uid)` עם `aggregate()` (`count()`+`sum("estimatedCostUsd")`). בניגוד ל-`count()`, אגרגציית `sum()`/`average()` חייבת לקרוא את השדה המסוכם מתוך האינדקס עצמו — ולכן האינדקס האוטומטי על `uid` לבדו **לא** מספיק ברגע שמשלבים `where()` עם `sum()`. הצהרה מקורית שגויה כאן ("מכוסה אוטומטית") הפילה את דף המשתמש באדמין ב-500 בפרודקשן; ראו את הפוסט-מורטם ב-`docs/DEPLOYMENT.md`.
 
 ## מחיקה יזומה ע"י אדמין (Phase 9.4, ADR #45)
 אין collection חדש. מחיקה מתוזמנת (`src/lib/services/adminDeletion.ts`, `scheduleUserDeletion`/`cancelUserDeletion`) כותבת לאותו שדה קיים `users/{uid}.deletionRequestedAt` (Phase 4.2, ראו למעלה) דרך ה-Admin SDK — אותו grace period, אותו `deleteExpiredAccounts` sweep, בלי מנגנון תזמון מקביל. מחיקה מיידית קוראת ישירות ל-`deleteUserAccount()` הקיים (`functions/src/accountDeletion.ts`) מתוך Cloud Function `onCall` חדש (`functions/src/adminActions.ts`, `adminDeleteUserNow`) — שני נתיבי המחיקה (sweep מתוזמן ומחיקה מיידית ע"י אדמין) מתכנסים לאותה פונקציית cascade-delete יחידה, בלי שכפול לוגיקה. שלוש הפעולות (`delete_scheduled`/`delete_cancelled`/`delete_immediate`) נכתבות ל-`adminAuditLog` לפני הפעולה עצמה.
@@ -402,6 +402,7 @@ Append-only, **רשומה אחת לכל קריאת `messages.create()`** — ל�
 - `cardLists`: `ownerId ASC, createdAt ASC` — שאילתת רשימות המשתמש (`useCardLists`)
 - `members` (collection group): `memberUid ASC, status ASC` — "השיתופים/ההזמנות שלי" על פני רשימות של בעלים שונים (`useCardLists`, `usePendingInvitations`), ראו `docs/DECISIONS.md` #15
 - `usageLog` (collection group): `ownerId ASC, date DESC` — יומן שימושים גלובלי למשתמש
+- `claudeUsageLog`: `uid ASC, estimatedCostUsd ASC` — אגרגציית `count()`+`sum()` לעלות Claude פר-משתמש בפאנל הניהול (`getClaudeUsageSummaryForUid`)
 
 ## אינדקסי שדה־בודד ב-collection group (`fieldOverrides`)
 Firestore יוצר אינדקס single-field אוטומטי לכל שדה — **אבל רק ב-collection scope**. שאילתת `collectionGroup` על שדה בודד (בלי `where` שני שמפעיל אינדקס מרוכב) דורשת הצהרה מפורשת, אחרת היא נכשלת ב-`FAILED_PRECONDITION` בפרודקשן. ראו `docs/DECISIONS.md` #33.
