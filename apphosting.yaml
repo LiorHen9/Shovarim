@@ -157,17 +157,38 @@ env:
     value: "wrkspc_01NNmbmN2Yi3LBEaEzYm8bEr"
     availability: [RUNTIME]
 
-  # Monthly spend target in USD for the admin home page's budget bar
-  # (docs/ROADMAP.md Phase 9.6, docs/DECISIONS.md ADR #50). Not a secret and
-  # not an enforced cap — purely the denominator of a progress bar; nothing is
-  # throttled when month-to-date cost passes it (the per-user rate limits in
-  # src/lib/mcp/config.ts remain the actual control). RUNTIME only: read
+  # Prepaid credit bank for the admin home page's balance panel
+  # (docs/ROADMAP.md Phase 9.6, docs/DECISIONS.md ADR #50). Not a monthly
+  # budget — the balance does not reset on the 1st, it only goes down until
+  # credit is topped up. Not secrets, and not an enforced cap: nothing is
+  # throttled when the bank runs out (the per-user rate limits in
+  # src/lib/mcp/config.ts remain the actual control). RUNTIME only — read
   # lazily inside src/lib/services/adminClaudeUsage.ts, so `next build` never
-  # needs it. Unset or non-numeric → the bar is simply not rendered, the rest
-  # of the page is unaffected. Changing the target means a rollout, which is
-  # the accepted trade-off for a value that moves about once a quarter.
-  - variable: CLAUDE_MONTHLY_BUDGET_USD
-    value: "50"
+  # needs them.
+  #
+  # All three are required together; if any is missing or unparseable the panel
+  # is simply not rendered and the rest of the page is unaffected.
+  #
+  # Why a balance reading rather than a running total: claudeUsageLog only
+  # exists from Phase 9.5 onward, so spend that predates it is invisible to us
+  # and summing the whole collection undercounts. BALANCE_USD/BALANCE_AT record
+  # a figure actually read off the Claude Console, so everything before that
+  # instant is already accounted for and only entries after it get added up.
+  #
+  # Re-read the real balance in the Console periodically and update BOTH
+  # BALANCE_USD and BALANCE_AT together — that resets the accumulated drift
+  # between our static-pricing estimate and the real bill. A top-up is the same
+  # edit, plus raising BANK_USD. Editing one without the other silently skews
+  # the number: a new balance with an old timestamp double-counts the spend in
+  # between.
+  - variable: CLAUDE_CREDIT_BANK_USD
+    value: "20"
+    availability: [RUNTIME]
+  - variable: CLAUDE_CREDIT_BALANCE_USD
+    value: "19.04"
+    availability: [RUNTIME]
+  - variable: CLAUDE_CREDIT_BALANCE_AT
+    value: "2026-09-05T07:34:35Z"
     availability: [RUNTIME]
 
   # WhatsApp Cloud API (docs/ROADMAP.md Phase 5.5.c, docs/DECISIONS.md ADR #30).
