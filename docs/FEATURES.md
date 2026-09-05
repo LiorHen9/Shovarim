@@ -9,7 +9,8 @@
 | Google Sign-In | ✅ הושלם | Phase 1 — `src/components/auth/SignInButtons.tsx` + session cookie |
 | CRUD כרטיסים (create/list/edit/archive) | ✅ הושלם | Phase 1 — `/cards`, `/cards/new`, `/cards/[cardId]`. עריכה מוגבלת בכוונה לשם/תוקף/מספר כרטיס/CVV/קישור רשתות מכבדות — מטבע לא ניתן לעריכה כלל, ויתרה רק דרך יומן שימושים או עדכון ידני ייעודי (Phase 3), ראו `docs/DECISIONS.md` #11 |
 | יומן שימושים + מטרת שימוש | ✅ הושלם | Phase 1 — `src/actions/usage.ts`, עדכון יתרה אטומי בטרנזקציה, מונע overdraft |
-| Consent banner + Privacy Policy | ✅ הושלם | Phase 1 — חוסם UI עד הסכמה, `/privacy` ו-`/terms` עם תוכן אמיתי |
+| Consent banner + Privacy Policy | ✅ הושלם | Phase 1 — חוסם UI עד הסכמה, `/privacy` ו-`/terms` עם תוכן אמיתי. הורחב ב-Phase 6.C (2026-09-05, ADR #59): סעיפי עוגיות/אחסון בדפדפן והעברה לצדדים שלישיים (Google, Anthropic, Meta), שמות הנמענים גם בגוף הבאנר, ו-`PRIVACY_POLICY_VERSION` הועלה כלומר re-consent לכולם |
+| באנר עוגיות | ❌ לא נדרש, במכוון | ADR #59 — עוגייה אחת (`__session`, נוצרת רק בהתחברות), אפס אנליטיקס/פרסום, אפס `Set-Cookie` למבקר אנונימי; הכול בפטור ההכרחיות של ePrivacy 5(3). GA4 (ROADMAP 9.6 שכבה 3) הוא הטריגר שיהפוך opt-in לחובה. נאכף ב-`tests/e2e/public.spec.ts` |
 | Categories (system defaults) | ✅ הושלם | Phase 1 — `npm run seed:categories`; קטגוריות מותאמות אישית עדיין ב-Phase 2 |
 | תמונות כרטיס/קבלות | ✅ הושלם | Phase 2 — `src/lib/storage/upload.ts`, `CardImageUpload`, `ImageDropInput`; ה-id של הכרטיס/רשומת השימוש נוצר בצד הלקוח לפני ההעלאה כדי לשמור על העלאה לפני כתיבת המסמך |
 | קטגוריות/תגיות מותאמות אישית | ✅ הושלם | Phase 2 — `useCategories`, `CategorySelect` (כולל יצירה מהירה), `TagsInput`, ניהול (עריכה/מחיקה) ב-`/settings` דרך `CategoryManager` |

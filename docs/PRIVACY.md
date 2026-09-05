@@ -29,13 +29,28 @@
 
 **מזעור נתונים בשיחות (5.5.b)**: שיחה שלא נגעו בה 24 שעות נטענת כריקה ונדרסת בתור הבא, והיסטוריה נגזמת בגבול ~200KB; ניתוק ערוץ או קישורו מחדש לחשבון אחר מוחקים את השיחה מיד. `channelMessages` שומר מזהי הודעות (לא תוכן) לצורך דדופליקציה.
 
-**חובות פתוחות**: (1) להגדיר בקונסולה **TTL policies** בפועל — `chatSessions.updatedAt`, `channelMessages.receivedAt`, `channelLinkCodes.expiresAt`, `listInviteCodes.expiresAt` (האחרון מחזיק מספר טלפון של צד שלישי, ראו למעלה — ולכן הוא הדחוף מביניהם). הלוגיקה לא נשענת עליהן (שיחה ישנה נזרקת בקוד גם אם המסמך קיים), אבל בלעדיהן המסמכים נשארים מאוחסנים. (2) תוכן ההודעות **והתשובות** עובר דרך השרתים של Meta — **העברה לצד שלישי** — ודורש התייחסות מפורשת ב-Privacy Policy ובזרימת ה-consent, כולל העלאת גרסת המדיניות ודרישת re-consent, **לפני** הפעלה בפרודקשן. **סעיף זה דחוף כעת**: WhatsApp חי מקצה לקצה מ-2026-08-30 (`docs/CHATBOT.md`), ומאותו תאריך (ADR #36) התוכן שעובר דרך Meta עשוי לכלול גם `cvv`/`barcodeOrCode` בטקסט גלוי, לא רק יתרות/שמות כרטיסים — כלומר החוב הזה גדל מ"נדרש לפני production" ל"פעיל בפרודקשן בלי שהוסדר".
+**חובות פתוחות**: (1) להגדיר בקונסולה **TTL policies** בפועל — `chatSessions.updatedAt`, `channelMessages.receivedAt`, `channelLinkCodes.expiresAt`, `listInviteCodes.expiresAt` (האחרון מחזיק מספר טלפון של צד שלישי, ראו למעלה — ולכן הוא הדחוף מביניהם). הלוגיקה לא נשענת עליהן (שיחה ישנה נזרקת בקוד גם אם המסמך קיים), אבל בלעדיהן המסמכים נשארים מאוחסנים. (2) ✅ **נסגר ב-2026-09-05 (Phase 6.C, ADR #59).** החוב היה: תוכן ההודעות **והתשובות** עובר דרך השרתים של Meta — **העברה לצד שלישי** — בלי התייחסות ב-Privacy Policy ובזרימת ה-consent, בזמן ש-WhatsApp כבר חי מקצה לקצה מ-2026-08-30 (`docs/CHATBOT.md`) ומאותו תאריך (ADR #36) התוכן עשוי לכלול `cvv`/`barcodeOrCode` בטקסט גלוי. מה שנעשה: סעיף "העברת מידע לצדדים שלישיים" ב-`privacy/page.tsx` נוקב בשלושת הנמענים — Google (Firebase), **Anthropic** (שלא היה מוצהר כלל, ולא רק Meta) ו-**Meta** (רק בקישור ערוץ יזום, וניתן לניתוק); `ConsentBanner` נוקב בשניים החדשים בגוף הדיאלוג; ו-`PRIVACY_POLICY_VERSION` עלה ל-`2026-09-05`, כלומר כל משתמש קיים נדרש לאשר מחדש.
+
+## אחסון בדפדפן (עוגיות) — אין באנר, ויש סיבה
+מופה במלואו ב-`docs/DECISIONS.md` ADR #59 (2026-09-05). בקצרה, זה כל מה שנשמר במכשיר המשתמש:
+
+| מה | איפה | תכלית | דורש הסכמה? |
+|---|---|---|---|
+| `__session` | עוגיית HttpOnly, המקור שלנו (`src/actions/auth.ts`) | שמירת ההתחברות; נוצרת **רק** בהתחברות | לא — הכרחית |
+| `firebaseLocalStorageDb` | IndexedDB של Firebase Auth | שמירת ההתחברות בצד לקוח | לא — הכרחית |
+| `A11Y_STORAGE_KEY` | `localStorage` (`src/lib/a11y/preferences.ts`) | העדפות סרגל הנגישות שהמשתמש בחר בעצמו | לא — יזום ע"י המשתמש |
+| provider ממתין | `sessionStorage` (`src/components/auth/SignInButtons.tsx`) | שרידות ה-redirect של OAuth | לא — הכרחית |
+| `_GRECAPTCHA` | צד שלישי, `google.com`, מ-App Check (`src/lib/firebase/appCheck.ts`) | מניעת הונאה/בוטים; נטען גם למבקר אנונימי | לא — פטור אבטחה |
+
+**אפס אנליטיקס, אפס פרסום, אפס פיקסלים.** Heebo מגיע דרך `next/font/google` (מוריד ב-build, מוגש מהדומיין שלנו) ולא בקריאת runtime ל-Google. אומת אמפירית: `curl -D -` על `/` ועל `/privacy` בפרודקשן מחזיר אפס `Set-Cookie`.
+
+לכן **אין באנר עוגיות, וזו החלטה ולא השמטה** — הכול בתוך פטור ההכרחיות של ePrivacy 5(3). **הטריגר שמשנה את זה הוא GA4** (שכבה 3 של Phase 9.6): ברגע שנכנס אנליטיקס נדרש מנגנון opt-in אמיתי שלא יורה אירוע לפני קליק. אכיפה: `tests/e2e/public.spec.ts` מוודא שמבקר לא-מחובר מקבל אפס עוגיות ואפס בקשות לדומייני מעקב.
 
 ## Consent
-`components/legal/ConsentBanner.tsx` — חוסם שימוש עד הסכמה מפורשת, כותב ל-`consents/{uid}` (גרסת מדיניות + timestamp). גרסת המדיניות הנוכחית מוגדרת קבוע ב-קוד; שינוי מדיניות מהותי = הגדלת הגרסה + דרישת re-consent.
+`components/legal/ConsentBanner.tsx` — חוסם שימוש עד הסכמה מפורשת, כותב ל-`consents/{uid}` (גרסת מדיניות + timestamp). גרסת המדיניות הנוכחית מוגדרת קבוע ב-קוד; שינוי מדיניות מהותי = הגדלת הגרסה + דרישת re-consent. הבאנר עצמו נוקב בשמות נמעני הצד-השלישי (Anthropic, Meta) ולא רק מפנה למדיניות — ראו ADR #59 החלטה 5.
 
 ## Privacy Policy & Terms
-`app/(public)/privacy/page.tsx`, `app/(public)/terms/page.tsx` — עמודים סטטיים, גרסתיים. כתובים בעברית וברורים (לא ז'רגון משפטי בלבד — GDPR מחייב שפה נהירה).
+`app/(public)/(legal)/privacy/page.tsx`, `app/(public)/(legal)/terms/page.tsx` (הועברו לקבוצת המסלולים `(legal)` ב-Phase 6.B) — עמודים סטטיים, גרסתיים. כתובים בעברית וברורים (לא ז'רגון משפטי בלבד — GDPR מחייב שפה נהירה).
 
 ## זכות גישה/ייצוא (Right to Access/Portability)
 ✅ הושלם (Phase 4.1, 2026-08-27). Server Action `exportUserData()` (`src/actions/privacy.ts`, Admin SDK, ללא פרמטר `uid` — נגזר מה-session) קוראת ל-`buildUserDataExport(uid)` (`src/lib/services/export.ts`) שאוספת `users/{uid}`, `consents/{uid}`, `cardLists`+`members` בבעלות המשתמש, חברויות ברשימות של אחרים, `cards`+`usageLog` בבעלות המשתמש ו-`categories` בבעלות המשתמש ל-JSON אחד. `ExportDataButton` ב-`/settings` מפעילה הורדה בדפדפן. כל קריאה נכתבת ל-`auditLog` (`eventType:"export"`).
