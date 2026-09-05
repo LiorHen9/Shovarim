@@ -1,4 +1,5 @@
 import { DashboardSkeleton } from "@/components/skeletons/PageSkeletons";
+import { WaitingForConnection } from "@/components/skeletons/WaitingForConnection";
 
 export default function Loading() {
   return (
@@ -7,6 +8,7 @@ export default function Loading() {
         <h1 className="text-xl font-bold">סקירה</h1>
         <p className="text-muted-foreground">סיכום הכרטיסים הפעילים שלכם</p>
       </div>
+      <WaitingForConnection />
       <DashboardSkeleton />
     </div>
   );

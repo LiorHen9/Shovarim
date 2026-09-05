@@ -13,6 +13,21 @@ import type { NextConfig } from "next";
 const firebaseProjectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Offline connectivity detection, plus automatic retry of navigation, prefetch and
+    // Server Action requests that were blocked by a dead network. Exposes the
+    // `useOffline` hook from `next/offline`, which returns false without this flag.
+    //
+    // Chosen over a service worker (ADR #53/#55): it is a better signal than
+    // navigator.onLine — it also trips on a failed framework fetch, catching a captive
+    // portal where the browser still reports online — and it carries none of a service
+    // worker's rollback risk.
+    //
+    // The retry is safe for this app's non-idempotent Server Actions: Next only replays
+    // when the `fetch()` itself rejects, which means the request never reached the
+    // server, so there is no side effect to duplicate. Aborts and timeouts are excluded.
+    useOffline: true,
+  },
   async rewrites() {
     if (!firebaseProjectId) return [];
     const authHelperOrigin = `https://${firebaseProjectId}.firebaseapp.com`;

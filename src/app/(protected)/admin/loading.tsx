@@ -1,4 +1,5 @@
 import { SectionsSkeleton } from "@/components/skeletons/PageSkeletons";
+import { WaitingForConnection } from "@/components/skeletons/WaitingForConnection";
 
 // /admin is an async Server Component running four Firestore aggregations in
 // parallel (ADR #50), so unlike the client pages this one has a real server-side
@@ -6,6 +7,7 @@ import { SectionsSkeleton } from "@/components/skeletons/PageSkeletons";
 export default function Loading() {
   return (
     <>
+      <WaitingForConnection />
       <SectionsSkeleton />
     </>
   );

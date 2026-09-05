@@ -678,3 +678,41 @@ for collection members and field memberUid
 **החלטה (5, נכפתה) — ה-E2E ב-CI עובר לרוץ מול `next start` ולא `next dev`.** זה **לא** שיפור אופציונלי: ברגע ש-`/settings` קיבל `loading.tsx`, Next עוטף את המקטע ב-Suspense ומזרים את התשובה, וב-dev mode ההזרמה משאירה את אירוע ה-`load` של המסמך תלוי עד ש-`page.goto` נכשל בטיימאאוט — **כל חמשת טסטי `settings.spec.ts` נפלו**. אותם חמישה טסטים בדיוק עוברים מול `npm run start` עם אותו `loading.tsx` (אומת בבידוד: הסרת הקובץ מתקנת ב-dev, ובנייה לפרודקשן מתקנת בלי להסיר אותו). `playwright.config.ts` עבר ל-`process.env.CI ? "npm run start" : "npm run dev"`; זה לא מוסיף זמן build כי `.github/workflows/ci.yml` כבר מריץ `npm run build` לפני Playwright, וערכי `NEXT_PUBLIC_*` מוטבעים ב-build כך שחיווט האמולטורים ב-`src/lib/firebase/client.ts` מתנהג זהה. **המסקנה הרחבה, שרלוונטית ל-6.3**: כשל E2E שמשוחזר רק מקומית חייב להיבדק מול build לפני שמאמינים לו.
 
 **נדחה**: (א) `deploymentId` בשלב הזה (החלטה 2); (ב) חיווט `reportActionError` לכל 29 בלוקי ה-catch באפליקציה (החלטה 1); (ג) unit test שמרנדר את גבולות השגיאה — היה דורש להוסיף jsdom ו-`@testing-library/react` ולשנות את ה-`include` ב-`vitest.config.ts` מ-`*.test.ts`, תשתית לא פרופורציונלית לארבע קומפוננטות סטטיות ש-`next build` ממילא מאמת; (ד) פתח קריסה מלאכותי (`?boom=1`) בקוד פרודקשן כדי לאפשר טסט אוטומטי לגבולות — נדחה במפורש כי הוא מוסיף משטח התקפה אמיתי בשביל כיסוי טסט.
+
+## 53. חיווי offline דרך `experimental.useOffline` של Next 16, ו-`metadata.fromCache` כאות האמיתי באפליקציה שכולה `onSnapshot` (Phase 6.3)
+**תאריך**: 2026-09-05
+
+**רקע**: שורת Phase 6 ברודמאפ מבקשת "offline indicators", והנחת המוצא הייתה שזה מחייב Service Worker. בבדיקה מול `node_modules` התברר ש-Next 16.3.2 כבר מספק את זה: `node_modules/next/offline.js`, `experimental.useOffline` ב-`config-schema.js:225`, ומדריך מלא ב-`node_modules/next/dist/docs/01-app/02-guides/offline-support.md`.
+
+**החלטה (1) — `experimental.useOffline` כאות הראשי, בלי Service Worker.** הדגל מפעיל זיהוי קישוריות ו-retry אוטומטי לניווטים, prefetches ו-Server Actions שנחסמו, וחושף את ה-hook `useOffline` מ-`next/offline` (בלי הדגל הוא תמיד מחזיר `false`).
+- **עדיף על `navigator.onLine`**, שמשקף רק את ממשק הרשת של מערכת ההפעלה: Next נכנס למצב offline גם על **fetch כושל** של ה-framework, כלומר תופס captive portal / DNS שבור / upstream מת שבהם הדפדפן עדיין מדווח `onLine === true`.
+- **מנגנון ההתאוששות** (מהתיעוד): `HEAD` יחיד לכתובת הנוכחית עם כותרת RSC, בוטל אחרי 200ms; גם timeout נחשב "מחובר", כי בקשה offline אמיתית נכשלת כמעט מיד ב-DNS/TCP. Backoff מדורג 500ms→1s→2s→3s ותקרה של 3s, ואירוע `online` של הדפדפן מקצר את ההמתנה.
+- **ה-retry בטוח למוטציות הלא-אידמפוטנטיות של האפליקציה.** זו הייתה השאלה החוסמת, ונענתה בקריאת המקור ולא בהסתמכות על התיעוד: `node_modules/next/dist/client/components/router-reducer/reducers/server-action-reducer.js:85-97` משחזר **רק** כשה-`fetch()` עצמו נדחה — כלומר הבקשה מעולם לא הגיעה לשרת ואין side effect לשכפל. `AbortError`/`TimeoutError` מוחרגים (`offline.js:63-70`). הקצה שנשאר: בקשה שהגיעה לשרת ואז התשובה שלה נותקה באמצע ה-stream נדחית גם היא; הסתברות נמוכה, אבל נרשם כאן במפורש.
+- **מתלכד נקי עם ADR #32/#52**: `action-not-found` היא *תשובת* HTTP ולא דחיית fetch, אז `useOffline` לא בולע אותה והיא זורמת ל-`UnrecognizedActionError`.
+- **rollback** הוא שורה אחת ב-`next.config.ts` — הסיבה שזה שלב נפרד.
+
+**החלטה (2) — `snapshot.metadata.fromCache` הוא האות המשני, והאמיתי יותר כאן.** 100% מהדאטה של ה-UI המוגן מגיע מ-`onSnapshot`, ול-Firestore יש stream ארוך-חיים משלו שיכול להיות מת בזמן ש-HTTP תקין לחלוטין: טוקן App Check שפג (ADR #27/#28), endpoint חסום, טוקן שנשלל. ה-`HEAD` probe של Next יאמר "מחובר" בזמן שכל כרטיס על המסך מיושן.
+- **המימוש מינימלי בכוונה**: במקום להשחיל את הדגל דרך כל עשרת ה-hooks, הוא נחשף מ-`useUserProfile` בלבד — `users/{uid}` הוא ה-listener היחיד שיש לכל משתמש מחובר תמיד, כך ש-listener אחד עונה על השאלה עבור כל האפליקציה. אם זה יתברר כלא מספיק, `useCards`/`useCard` יכולים להוסיף את זה בהמשך.
+- **`onSnapshotsInSync` אינו הכלי הנכון** — הוא נורה כשכל ה-listeners התייצבו ואינו נושא מצב cache כלל; ול-Firestore אין API ציבורי של "האם מחובר" (`enableNetwork`/`disableNetwork` הן פקודות, לא שאילתות).
+
+**החלטה (3) — פס סטטי, לא טוסט, ולא ב-root layout.** קישוריות היא **מצב**, לא אירוע: `<Toaster>` נסגר מעצמו, ורשת סלולרית מקרטעת הייתה מייצרת זרם טוסטים. `OfflineBanner` הוא `role="status"` + `aria-live="polite"`, מה שגם מספק את הפריט ב-`docs/ACCESSIBILITY.md` על הכרזת שינויי סטטוס מ-`onSnapshot`. הוא מורכב ב-`(protected)/layout.tsx` ולא ב-root layout (בניגוד למה שהמדריך של Next מדגים): כבר יש שם משבצת באנר מבוססת ליד `DeletionPendingBanner`, העמודים הציבוריים סטטיים ובאנר קישוריות עליהם הוא רעש, ו-`useOffline()` מחזיר `false` ב-SSR ממילא. יש טסט E2E שמאמת את שלושת הדברים האלה.
+
+**החלטה (4) — `WaitingForConnection` כקומפוננטת client קטנה בתוך `loading.tsx`.** כשניווט נחסם על רשת מתה, ה-route shell שנעשה לו prefetch נצבע מיד והחלק הדינמי ממתין — בלי החיווי הזה המשתמש בוהה בשלד שלעולם לא ייפתר. היא מבודדת כקומפוננטה משלה כדי שקבצי ה-`loading.tsx` יישארו Server Components; רק שורת המרקאפ הזו צריכה את ה-hook.
+
+**נדחה**: (א) Service Worker (ADR #55); (ב) `navigator.onLine` כאות עצמאי (החלטה 1); (ג) חשיפת `fromCache` מכל עשרת ה-hooks (החלטה 2); (ד) טוסט לחיווי קישוריות (החלטה 3).
+
+## 54. דחיית Firestore offline persistence — משטח data-at-rest חדש, purge שמתנגש עם multi-tab, ומודל כתיבה שנהיה חסר-קוהרנטיות
+**תאריך**: 2026-09-05
+
+**רקע**: `src/lib/firebase/client.ts` משתמש ב-`getFirestore(firebaseApp)` פשוט, כלומר cache בזיכרון בלבד. המעבר ל-`persistentLocalCache` הוא שינוי של שורה אחת, והוא התנאי המקדים לכל יכולת offline אמיתית. ה-ADR הזה נכתב **אף שלא נשלח קוד**, כדי שההחלטה לא תילקח בהיסח הדעת בעתיד.
+
+**החלטה: לא להפעיל persistence מקומי.** ארבע סיבות בלתי-תלויות, כל אחת מספיקה בפני עצמה:
+
+1. **משטח data-at-rest חדש, עם זנב plaintext.** לפי ADR #25 ו-`docs/SECURITY.md`, `cvv`/`barcodeOrCode` מגיעים ללקוח כ-`v1:<iv>:<authTag>:<ciphertext>` — אבל `decryptSensitiveField` מחזיר ערכים שאינם `v1:` כמות שהם, לתאימות לאחור, כך ש**כרטיסים שקדמו למיגרציה עשויים לשאת plaintext**. הפעלת persistence כותבת לדיסק של המשתמש את מה ש-`onSnapshot` מספק. זו לא החלטת config אלא שינוי עמדת פרטיות, שדורש עדכון `docs/PRIVACY.md` ו-`docs/SECURITY.md` ואולי מסלול הסכמה מחדש דרך `ConsentBanner`. תנאי מקדים לדיון מחדש: לאמת ש-`scripts/migrate-encrypt-sensitive-fields.ts` הושלם מול פרודקשן ולא נותר plaintext.
+2. **ניקוי ב-signout לא עובד אמין יחד עם multi-tab.** `clearIndexedDbPersistence(db)` זורק `failed-precondition` אם ה-instance לא הופסק או אם טאב אחר מחזיק בו. כלומר `persistentMultipleTabManager` (שכן היינו רוצים) ו-purge מובטח נמצאים במתח ישיר. קונקרטית: `handleSignOut` ב-`Header.tsx` עושה `signOutClient()` → `clearSession()` → `router.push("/")` → `router.refresh()`; הוספת `terminate(db)` + `clearIndexedDbPersistence(db)` שם הייתה הורגת את ה-instance לשארית חיי העמוד, ועדיין יכולה להידחות אם טאב נוסף פתוח.
+3. **מודל הכתיבה נהיה חסר-קוהרנטיות.** המוטציות מפוצלות: ~10 אתרי כתיבה ישירים ב-client SDK מול 12 Server Actions. עם persistence, כתיבות ה-client מתורות באופן עמיד במצב מנותק וה-Server Actions לא — כלומר "האם השינוי שלי שרד סגירת טאב?" מקבל **תשובות שונות לפי איזה כפתור נלחץ**. גרוע מכך, `addDoc`/`updateDoc` לא נפתרים עד ack מהשרת, אז `toast.success` לעולם לא נורה בזמן שהכתיבה המקומית האופטימית כבר מופיעה ב-`onSnapshot` — המשתמש רואה את הכרטיס נוצר וספינר שלא נעצר. וכתיבה מתורה שנשטפת שעות מאוחר יותר נבחנת מול `firestore.rules` ו-App Check **בזמן השטיפה**, כלומר יכולה להידחות בשקט הרבה אחרי שה-UI הראה הצלחה.
+4. **היא לא קונה כלום בלי Service Worker**, שנדחה בעצמו (ADR #55): נתונים שמורים מאחורי עמוד HTML שלא ייטען offline אינם שווים דבר.
+
+**מה כן נעשה במקום**: להישאר על ה-cache בזיכרון ולהשתמש ב-`snapshot.metadata.fromCache` כאות החיווי (ADR #53). קריאות מה-cache בזיכרון מסמנות `fromCache: true` כשה-stream מת, כך שמתקבל חיווי אמיתי ב**אפס** משטח at-rest חדש.
+
+**אם זה ייבחן מחדש אי-פעם**, זה צריך להיות שלב משלו עם: ADR, סעיף ב-`docs/PRIVACY.md`, opt-in מפורש ב-`/settings` (לא ברירת מחדל), אימות שהמיגרציה הושלמה, הכרעה במתח multi-tab/purge, ו-UI מודע ל-`hasPendingWrites` בכל ~10 אתרי הכתיבה של ה-client.
