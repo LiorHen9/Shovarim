@@ -18,27 +18,30 @@ import sharp from "sharp";
 const repoRoot = resolve(import.meta.dirname, "..");
 const ICON_SRC = join(repoRoot, "assets/brand/shovarim-icon.svg");
 const MASKABLE_SRC = join(repoRoot, "assets/brand/shovarim-icon-maskable.svg");
+const OG_SRC = join(repoRoot, "assets/brand/shovarim-og.svg");
 
 /** Sizes baked into favicon.ico, smallest first. */
 const FAVICON_SIZES = [16, 32, 48];
 
-type PngTarget = { src: string; size: number; out: string };
+type PngTarget = { src: string; width: number; height: number; out: string };
 
 const PNG_TARGETS: PngTarget[] = [
   // Web app manifest, purpose "any".
-  { src: ICON_SRC, size: 192, out: "public/icons/icon-192.png" },
-  { src: ICON_SRC, size: 512, out: "public/icons/icon-512.png" },
+  { src: ICON_SRC, width: 192, height: 192, out: "public/icons/icon-192.png" },
+  { src: ICON_SRC, width: 512, height: 512, out: "public/icons/icon-512.png" },
   // Web app manifest, purpose "maskable" — full-bleed, mark inside the 80% safe zone.
-  { src: MASKABLE_SRC, size: 512, out: "public/icons/icon-maskable-512.png" },
+  { src: MASKABLE_SRC, width: 512, height: 512, out: "public/icons/icon-maskable-512.png" },
   // apple-touch-icon. Built from the maskable (full-bleed) source on purpose: iOS ignores
   // alpha and composites onto black, so a transparent-cornered icon looks broken on the
   // home screen. iOS applies its own corner mask, so we must not pre-round it either.
-  { src: MASKABLE_SRC, size: 180, out: "src/app/apple-icon.png" },
+  { src: MASKABLE_SRC, width: 180, height: 180, out: "src/app/apple-icon.png" },
+  // Open Graph card, picked up by Next's file convention and by WhatsApp's link scraper.
+  { src: OG_SRC, width: 1200, height: 630, out: "src/app/opengraph-image.png" },
 ];
 
-async function renderPng(src: string, size: number): Promise<Buffer> {
+async function renderPng(src: string, width: number, height: number): Promise<Buffer> {
   return sharp(src, { density: 384 })
-    .resize(size, size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(width, height, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png({ compressionLevel: 9 })
     .toBuffer();
 }
@@ -53,12 +56,12 @@ async function writeOut(relativePath: string, data: Buffer): Promise<void> {
 async function main() {
   console.log("Generating icons from assets/brand/…");
 
-  for (const { src, size, out } of PNG_TARGETS) {
-    await writeOut(out, await renderPng(src, size));
+  for (const { src, width, height, out } of PNG_TARGETS) {
+    await writeOut(out, await renderPng(src, width, height));
   }
 
   // png-to-ico takes one PNG per size and packs them into a single multi-resolution .ico.
-  const faviconFrames = await Promise.all(FAVICON_SIZES.map((size) => renderPng(ICON_SRC, size)));
+  const faviconFrames = await Promise.all(FAVICON_SIZES.map((size) => renderPng(ICON_SRC, size, size)));
   await writeOut("src/app/favicon.ico", await pngToIco(faviconFrames));
 
   // The scalable favicon is the source itself — no rasterization involved.

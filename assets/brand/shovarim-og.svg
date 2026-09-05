@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="שוברים">
+  <!-- Open Graph card (1200x630). Same paths-only constraint as the icon sources: no
+       <text>, so it rasterizes identically everywhere. The card carries no wording on
+       purpose — link scrapers render the og:title and og:description alongside it, and
+       baking text in would need a committed font subset for the Hebrew glyphs. -->
+  <path fill="#171717" d="M0 0h1200v630H0Z"/>
+  <g transform="translate(600 315) scale(0.774) translate(-512 -512)">
+    <path fill="#ffffff" d="M232 320h560a56 56 0 0 1 56 56v72a64 64 0 0 0 0 128v72a56 56 0 0 1-56 56H232a56 56 0 0 1-56-56v-72a64 64 0 0 0 0-128v-72a56 56 0 0 1 56-56Z"/>
+    <g fill="#171717">
+      <path d="M624 360h32a16 16 0 0 1 16 16v48a16 16 0 0 1-16 16h-32a16 16 0 0 1-16-16v-48a16 16 0 0 1 16-16Z"/>
+      <path d="M624 472h32a16 16 0 0 1 16 16v48a16 16 0 0 1-16 16h-32a16 16 0 0 1-16-16v-48a16 16 0 0 1 16-16Z"/>
+      <path d="M624 584h32a16 16 0 0 1 16 16v48a16 16 0 0 1-16 16h-32a16 16 0 0 1-16-16v-48a16 16 0 0 1 16-16Z"/>
+    </g>
+  </g>
+</svg>

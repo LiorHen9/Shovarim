@@ -279,6 +279,29 @@ issue #75, `docs/DECISIONS.md` ADR #40. `redeemLinkCode` (ADR #29) דרס בלי
 manifest, service worker, offline indicators, ביצועים.
 (הערה: החלטת ה-hosting/deploy טופלה מוקדם יותר ב-Phase 3.3 — לא כאן, בניגוד למה שנרמז במקור ב-ADR #5.)
 
+**שינוי בהיקף הפאזה (2026-09-05):** בבדיקה מול `node_modules` התברר ש-Next 16.3.2 כבר מספק שניים משלושת הפריטים בשורה למעלה **בלי Service Worker**: `experimental.useOffline` (`node_modules/next/offline.js`, מדריך ב-`node_modules/next/dist/docs/01-app/02-guides/offline-support.md`) ו-`unstable_isUnrecognizedActionError` (תופס בדיוק את `x-nextjs-action-not-found: 1`, הכותרת של תקלת ADR #32). במקביל, ה-SW הוא הארטיפקט היחיד בסטאק ש-`firebase apphosting:rollouts:create` **לא** יכול לבטל — הוא מותקן בלקוח ושורד כל rollout. לכן הפאזה מסתיימת ב-6.4, וה-SW נדחה במפורש ב-ADR #55 (לא נשמט). ראו ADR #51.
+
+### שלב 6.0 — סמל ופס ייצור אייקונים ✅ הושלם (2026-09-05)
+`src/app/favicon.ico` היה עדיין הלוגו של Next.js מיום ה-scaffold, כלומר בפרודקשן כל טאב וכל סימנייה הציגו את המשולש של Vercel — באג מיתוג חי, בלתי-תלוי ב-PWA. הסמל (צורת שובר/כרטיס עם חריצים) נכתב ידנית כ-SVG של `<path>` בלבד ב-`assets/brand/` — **בלי `<text>` ובלי פונט חיצוני**, כי librsvg מרסטר טקסט עם הפונטים של המערכת ואות עברית הייתה מפיקה PNG שונה בכל מכונה, בשקט. `scripts/generate-icons.ts` (`npm run icons:generate`, אותה קונבנציה כמו `scripts/seed-categories.ts`) מייצר את כל הגדלים; `sharp`/`png-to-ico` הם devDependencies והפלטים מחויבים ל-git — App Hosting בונה בקונטיינר נקי בכל push, ואין טעם להעמיס עליו כלי תמונה נייטיב עבור נכסים שמשתנים כמעט לעולם. בנוסף נמחקו חמשת ה-SVG של create-next-app מ-`public/`. ראו ADR #51 החלטות 1–2.
+- אימות: הרצה כפולה של `npm run icons:generate` נתנה פלט זהה בית-בבית (sha256 על כל חמשת הקבצים); אומת ויזואלית שהווריאנט ה-maskable יושב בתוך אזור הבטחון (80% פנימיים).
+
+### שלב 6.1 — התקנה (manifest + viewport + OG) ✅ הושלם (2026-09-05)
+`src/app/manifest.ts` (קובץ TypeScript ולא `public/manifest.webmanifest` — `npm run typecheck` תופס טעות ב-`purpose`/`display` שאחרת הייתה מורידה בשקט את ההתקנה באנדרואיד): `id: "/"` מקובע, `lang: "he"`/`dir: "rtl"`, `start_url: "/dashboard"` (משתמש מותקן הוא משתמש חוזר; כשה-cookie פג `src/proxy.ts` כבר מפנה ל-`/?next=/dashboard`), `scope: "/"` כדי ש-`signInWithRedirect` יישאר בחלון המותקן, ושלושה `shortcuts`. `viewport` ב-`src/app/layout.tsx` עם זוג `themeColor` שנגזר מהטוקנים ב-`globals.css` (`#ffffff`/`#0a0a0a`) — ו**בלי** `maximumScale`/`userScalable`, שהיו מפירים את דרישת ה-zoom 200% ב-`docs/ACCESSIBILITY.md`. תגי Open Graph סטטיים ושורשיים (ערוץ השיתוף העיקרי הוא WhatsApp, ADR #37/#39), אחרי אימות ש-`GET /invite/[code]` לסקרייפר אנונימי הוא קריאה בלבד. ראו ADR #51 החלטות 3–7.
+- אימות: `typecheck`/`lint`/`build` נקיים. `test:unit` 72/72, `test:rules` 60/60 (ללא שינוי — הפאזה לא מכניסה שום collection). E2E חדש: `tests/e2e/pwa.spec.ts`, 5 טסטים — מבנה המניפסט, שכל אייקון שהוא מפרסם באמת נפתר, שיעדי ה-shortcuts אינם 404, תגי ה-`<head>`, ושה-zoom לא נעול. אומת גם ידנית מול `next start`: `/manifest.webmanifest` מוגש כ-`application/manifest+json`, וכל שבעת נתיבי האייקונים/OG מחזירים 200 עם ה-content-type הנכון.
+- **נשאר לבדוק ידנית לפני שחרור רחב**: התקנה ב-Android Chrome (שהאייקון ה-maskable לא נחתך לעיגול), הוספה למסך הבית ב-iOS Safari, ו**התחברות עם Google מתוך PWA מותקן טרי ב-iOS** — ההתקנה משנה מהותית את הסביבה ש-ADR #34/#35 נכתבו עבורה (מחיצת אחסון והיסטוריה נפרדות), וזו בדיוק הזרימה שכבר נשברה פעם ב-Safari.
+
+### שלב 6.2 — גבולות מסלול והודעת גרסה חדשה (מתוכנן)
+`unstable_isUnrecognizedActionError` → טוסט sonner מתמיד ("גרסה חדשה זמינה — רענון"), שסוגר את תקלת ADR #32; `global-error.tsx`, `error.tsx` ל-`(protected)` ול-`admin` בנפרד (ADR #48 הוא הנימוק), `not-found.tsx` בעברית, וחמישה `loading.tsx`. חייב לקדום את 6.3: בלי Cache Components, `loading.tsx` הוא מה שמגדיר את ה-route shell ש-`useOffline` מרנדר במצב מנותק, ואין היום אף אחד כזה.
+
+### שלב 6.3 — חיווי offline (מתוכנן)
+`experimental.useOffline` כאות ראשי, ו-`snapshot.metadata.fromCache` מ-`useUserProfile` כאות המשני והאמיתי יותר (100% מה-UI המוגן מגיע מ-`onSnapshot`, וה-stream של Firestore יכול להיות מת בזמן ש-HTTP תקין). באנר סטטי עם `role="status"` ב-`(protected)/layout.tsx` ליד `DeletionPendingBanner` — לא טוסט, כי קישוריות היא מצב ולא אירוע.
+
+### שלב 6.4 — dark mode, ביצועים, וסליס נגישות (מתוכנן)
+הרכבת `ThemeProvider` (next-themes כבר dependency ו-`globals.css` כבר מכיל את כל טוקני ה-`.dark`, אבל אין provider — כלומר dark mode הוא קוד מת היום); תיקוני CLS ב-`<img>` בלי לאמץ `next/image` (היה מעמיס טרנסקודינג on-demand על backend של `cpu: 1, memoryMiB: 512`); ומ-issue #41 רק `eslint-plugin-jsx-a11y` מפורש ו-`@axe-core/playwright` בספקים הקיימים.
+
+## Phase 6.A — נגישות (חובה חוקית, issue #40)
+מסלול אחות ל-Phase 6, **אחרי** 6.4 ולא בתוכו: בר נגישות צף + עמוד "הצהרת נגישות". `docs/ISSUES_SPRINT.md` ממיין אותו כ"בינוני-גדול" עם החלטת מוצר פתוחה (widget צד-שלישי מול בנייה עצמאית, תלוי בדרישות התקן הישראלי), ולקפל אותו לתוך Phase 6 היה הופך את הפאזה לבלתי-שליחה בזמן שההחלטה ממתינה. הרצף הזה אינו שרירותי: מצב ניגודיות גבוהה הוא *theme* וצריך להישען על ה-`ThemeProvider` של 6.4, ופקד הגדלת הפונט הוא הסיבה השנייה ש-6.1 לא קובע `userScalable: false`.
+
 ## Phase 7 — Notifications
 Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Firebase Extension / Resend).
 

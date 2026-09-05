@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Heebo } from "next/font/google";
 import "./globals.css";
 
 import { Toaster } from "@/components/ui/sonner";
+import { getAppUrl } from "@/lib/appUrl";
 
 const heebo = Heebo({
   variable: "--font-sans",
@@ -10,8 +11,46 @@ const heebo = Heebo({
 });
 
 export const metadata: Metadata = {
+  // Makes the Open Graph image URL below absolute, which is what link scrapers need.
+  metadataBase: new URL(getAppUrl()),
   title: "שוברים",
   description: "ניהול שוברים וכרטיסי מתנה",
+  applicationName: "שוברים",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "שוברים",
+  },
+  // The app's primary sharing channel is WhatsApp (ADR #37/#39 — NEXT_PUBLIC_APP_URL
+  // exists so invite links are absolute), and WhatsApp scrapes OG tags for the preview
+  // card. Without these, a shared /invite/<code> link renders as a bare URL.
+  //
+  // The image is deliberately static and root-level: the invite code is a bearer token,
+  // and an OG endpoint is an unauthenticated fetch, so there must be no per-invite image.
+  // Verified that GET /invite/[code] is read-only for an anonymous scraper — it only
+  // calls getListInvitePreview (two .get() reads) and never consumes the code.
+  openGraph: {
+    type: "website",
+    locale: "he_IL",
+    siteName: "שוברים",
+    title: "שוברים",
+    description: "ניהול שוברים וכרטיסי מתנה",
+  },
+};
+
+export const viewport: Viewport = {
+  // Derived from the tokens in globals.css, not eyeballed: light --background is
+  // oklch(1 0 0) -> #ffffff, dark --background is oklch(0.145 0 0) -> #0a0a0a (both
+  // achromatic, so Y = L³ and the sRGB transfer function gives these exactly).
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
+  colorScheme: "light dark",
+  // Deliberately no maximumScale/userScalable. Locking zoom is the usual trick to make a
+  // PWA "feel native" and it directly violates the item docs/ACCESSIBILITY.md already
+  // lists ("תפקוד תקין עד zoom 200% ללא אובדן תוכן"). It would also fight the font-scaling
+  // control that the accessibility toolbar in Phase 6.A needs.
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
