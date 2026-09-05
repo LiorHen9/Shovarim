@@ -43,15 +43,35 @@ export function AccessibilityToolbar() {
         <Button
           variant="outline"
           size="icon"
-          // bottom-end, which under dir="rtl" puts it at the bottom-left — where Israeli
-          // sites conventionally place it, so users find it without hunting.
-          className="fixed bottom-4 end-4 z-50 size-12 rounded-full shadow-lg"
+          // Vertically centred against the viewport, at the inline end — which under
+          // dir="rtl" is the left edge, where Israeli sites conventionally place it.
+          //
+          // -translate-y-1/2 is safe here even though Button's base carries
+          // active:not-aria-[haspopup]:translate-y-px: PopoverTrigger sets
+          // aria-haspopup="dialog", so that variant excludes this button and cannot
+          // overwrite --tw-translate-y.
+          className="fixed end-4 top-1/2 z-50 size-12 -translate-y-1/2 rounded-full shadow-lg"
         >
           <Accessibility className="size-6" aria-hidden="true" />
           <span className="sr-only">הגדרות נגישות</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-72" aria-label="הגדרות נגישות">
+      {/* Opens sideways, not downward. With the trigger centred vertically, the default
+          side="bottom" leaves this ~340px panel only half the viewport, which collides on
+          any phone-height screen; opening along the inline axis gives it the full height.
+
+          side is physical, not logical: @radix-ui/react-popper 1.3.7 builds the placement
+          as `side + align` with no dir handling at all, and does not accept
+          inline-start/inline-end. dir="rtl" is fixed in the root layout, so end-4 is the
+          physical left edge and "right" is the direction of the page centre. Do not
+          "correct" this to "left". */}
+      <PopoverContent
+        side="right"
+        align="center"
+        collisionPadding={16}
+        className="w-72"
+        aria-label="הגדרות נגישות"
+      >
         {/* Radix mounts this only once opened, i.e. always after hydration, so the panel
             can read localStorage in a lazy useState initialiser without a mismatch. Same
             reasoning as ThemeToggle. */}

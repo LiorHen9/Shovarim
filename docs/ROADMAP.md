@@ -330,6 +330,18 @@ manifest, service worker, offline indicators, ביצועים.
 
 **נשאר לבדוק ידנית**: מעבר NVDA, Lighthouse מול ה-URL החי, ו-`/admin` שאינו מכוסה בסריקה כי הוא דורש `adminRoles` שאין ל-uid שנוצר בטסטים. החלטה על מינוי רכז נגישות תלויה בסיווג העסקי ואינה שאלה הנדסית.
 
+## Phase 6.B — כותרת קבועה ומיקום הבר ✅ הושלם (2026-09-05)
+שני ליקויים שעלו מבדיקה ידנית של תוצרי 6.A, שאחד מהם נוצר דווקא ע"י התיקון של 6.A. ראו `docs/DECISIONS.md` ADR #58.
+
+**הליקוי המהותי**: ה-`SiteFooter` של 6.A.0 הפך את `/accessibility`, `/privacy` ו-`/terms` לנגישים מכל עמוד — אבל שלושתם ישבו תחת `(public)/` שאין לו layout, בעוד `<Header />` מורכב רק ב-`(protected)/layout.tsx`. כלומר המשתמש הגיע לעמוד ההצהרה בלי שום דרך חזרה מלבד כפתור ה-back. התיקון: route group `(legal)` עם layout שמרנדר `<Header context="public" />`. `Header` קיבל prop אחד במקום קומפוננטה מקבילה — `context="app"` מרנדר בדיוק את המרקאפ הקודם, `context="public"` מסתעף לפי `useAuth()` (מחובר → ניווט מלא, לא מחובר → לוגו + "התחברות"). הענף נפתר **בלקוח ולא ב-`getSessionUid()`**, כדי ששלושת העמודים יישארו `○ (Static)` ולא יוסיפו `verifySessionCookie` לכל בקשה.
+
+**הכותרת דביקה בכל האתר** — `sticky top-0 z-40` עם `bg-background`, אבל **רק מ-`min-height: 480px`**: כותרת דביקה גוזלת גובה קבוע וב-zoom 400% או ב-`--a11y-font-scale: 1.5` היא פוגעת בדיוק בפריט ה-reflow ש-`ACCESSIBILITY.md` עוקב אחריו. נוסף `#main-content { scroll-margin-top: 4rem }` כדי שקפיצת קישור הדילוג לא תנחת מתחת לכותרת.
+
+**הבר עבר למרכז האנכי** (`fixed end-4 top-1/2 -translate-y-1/2`), והפאנל נפתח על הציר האופקי במקום כלפי מטה — עם מפעיל ממורכז, `side="bottom"` היה משאיר לפאנל בן ~340px רק חצי מסך. `side` ב-Radix פיזי ולא לוגי (אומת ב-popper 1.3.7), ולכן תחת `dir="rtl"` הערך הוא `"right"`.
+- אימות: `typecheck`/`lint`/`build` נקיים, `test:unit` 72/72, `test:rules` 60/60 (ללא שינוי), E2E **54/54 מול build פרודקשן בלי retries**, פעמיים ברצף. ארבעה טסטים חדשים, וסריקת axe הורחבה מ-`/accessibility` בלבד לשלושת עמודי המידע.
+
+**נשאר לבדוק ידנית**: איך הבר הממורכז נראה בפועל ואם הוא מכסה תוכן ב-viewport צר, והחפיפה שלו עם `ConsentBanner` (`fixed inset-0 z-50`).
+
 ## Phase 7 — Notifications
 Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Firebase Extension / Resend).
 

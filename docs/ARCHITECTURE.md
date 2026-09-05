@@ -26,7 +26,8 @@ Server Action (privacy.ts) → מאמת session → קורא ל-adminDb/adminAut
 ## מבנה תיקיות
 ```
 src/
-  app/(public)/       # login, privacy, terms — נגיש בלי אימות
+  app/(public)/       # דף נחיתה, הזמנה לרשימה — נגיש בלי אימות
+  app/(public)/(legal)/  # accessibility, privacy, terms — layout שמוסיף Header ציבורי (ADR #58)
   app/(protected)/    # dashboard, cards, reports, settings — מוגן ע"י middleware
   components/ui/      # shadcn/ui generated components (Radix base, RTL logical properties)
   components/{cards,usage,auth,legal,layout}/  # קומפוננטות ספציפיות למוצר
