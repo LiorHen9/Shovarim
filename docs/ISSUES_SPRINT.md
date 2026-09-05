@@ -253,20 +253,20 @@ https://github.com/LiorHen9/Shovarim/issues/35 · https://github.com/LiorHen9/Sh
 
 ---
 
-## 18. ☐ #62 — לינק לאזור אישי בהודעות סיכום בווטסאפ
+## 18. ✅ #62 — לינק לאזור אישי בהודעות סיכום בווטסאפ
 https://github.com/LiorHen9/Shovarim/issues/62
 
-**קבצים**: `src/lib/services/channelChat.ts:131` (בניית ה-`reply`), `src/lib/appUrl.ts` (`getAppUrl`/`buildListInviteUrl`), `src/lib/whatsapp/graph.ts` (`sendWhatsAppText`, `MAX_BODY_LENGTH=4096`).
+**קבצים**: `src/lib/mcp/toolEffects.ts` (חדש), `src/lib/services/channelChat.ts`, `src/lib/appUrl.ts` (`buildDashboardUrl`), `src/app/api/whatsapp/webhook/route.ts`, `src/lib/whatsapp/graph.ts`, `src/lib/mcp/mcpServer.ts` (הערה בלבד), `tests/unit/toolEffects.test.ts` (חדש).
 
-**ממצא**: כשהבוט שולח הודעת סיכום (הוספה/מחיקה/עריכה/שיתוף רשימה/הרשמה וכו') — ה-reply הסופי נבנה ב-`channelChat.ts:131` (`const reply = chunks.join("\n\n").trim();`), **אחרי** ש-`runAgentTurn` (`agentLoop.ts`) כבר סיים לגמרי את הסבב מול ה-LLM. הוספת לינק בנקודה הזו היא concatenation טהור על מחרוזת — אין קריאת Anthropic API נוספת ואין השפעה על ה-context/הקרדיטים, בדיוק האילוץ המפורש ב-issue. אין כיום שום "אובייקט הודעת סיכום" נפרד מתשובת המודל עצמה (`mcpServer.ts` tools מחזירים טקסט רגיל ל-agent loop, שם המודל מנסח את הסיכום בעצמו) — כלומר "לינק בהודעת סיכום" בפועל = "לינק על כל תשובה סופית שיוצאת מ-`channelChat.ts:131`", לא רק על תת-קבוצה מזוהה של הודעות.
+**שתי ההחלטות שהמסמך הזה השאיר למשתמש — הוכרעו (2026-09-05)**: (1) הכפתור מוצמד **רק אחרי פעולה משנת-מצב**, לא על כל תשובה — כלי הקריאה הם רוב התעבורה, וכפתור על כולם הוא רעש. (2) היעד הוא **`/dashboard`**, לא `/settings` כפי שהוצע כאן קודם: זה האזור האישי עצמו (כרטיסים פעילים + יתרה כוללת), ואחרי שינוי דרך WhatsApp זה מה שרוצים לראות.
 
-יש כבר helper מוכן מ-issue #58/#61 לבניית URL ציבורי ל-WhatsApp: `src/lib/appUrl.ts` — `getAppUrl()` קורא `NEXT_PUBLIC_APP_URL`, ו-`buildListInviteUrl(code)` בונה `${getAppUrl()}/invite/...`. דרוש רק פונקציה מקבילה (למשל `buildSettingsUrl()` → `${getAppUrl()}/settings`).
+**מימוש**: `handleInboundChannelMessage` מעביר `onToolCall` ל-`runAgentTurn` (callback שכבר היה קיים ב-`agentLoop.ts` ולא היה בשימוש כאן), אוסף שמות כלים, ומשווה מול `MUTATING_TOOL_NAMES`. הכפתור מוחזר כ-`cta` על `ChannelReply` — המנגנון של issue #66, לא חדש. `REPLY_LINKED` (שני מקומות ההחזרה) מקבל אותו גם, כ"הרשמה" שה-issue מונה. **האילוץ מה-issue מתקיים מבנית**: אין נגיעה ב-system prompt, אין קריאת API נוספת, וה-`cta` לא נכנס ל-`reply.text` ולכן לא נשמר ב-`chatSessions` ולא חוזר כטוקנים בסבב הבא.
 
-**מגבלה שצריך לזכור**: `sendWhatsAppText` (`graph.ts`) חותך בתגובה שחוצה `MAX_BODY_LENGTH=4096` תווים — תשובה ארוכה עם לינק בסוף עלולה לאבד את הלינק דווקא. עדיף לבנות את הלינק כשורה קצרה וקבועה, ואולי לבדוק/לקצר את גוף התשובה לפני הצירוף במקום אחרי.
+**תיקון למגבלה שהמסמך הזה תיאר לא נכון**: האזהרה כאן דיברה על `MAX_BODY_LENGTH=4096`, אבל מסלול ה-CTA הוא `sendWhatsAppCtaUrl`, שגבולו **1024** (`MAX_INTERACTIVE_BODY_LENGTH`). הקבוע יוצא מ-`graph.ts`, וה-route בודק אורך לפני בחירת השולח: תשובה חורגת נשלחת כטקסט רגיל בלי כפתור — עדיף לאבד את הכפתור מאשר את סוף התשובה.
 
-**החלטה נדרשת בזמן העיצוב המפורט**: האם הלינק מוצמד לכל תשובה, או רק כשזוהה tool call "משנה מצב" (create/update/delete/share) בסבב? האופציה השנייה דורשת להעביר סימון מ-`runAgentTurn`/tool handlers חזרה ל-`channelChat.ts` (שינוי קטן ב-`agentLoop.ts` — למשל return value בוליאני "בוצעה פעולת כתיבה"), בעוד האופציה הראשונה היא שינוי שורה אחת. לא להכריע מראש בלי אישור המשתמש.
+**Effort**: קטן-בינוני. **Risk**: נמוך. **אימות**: `typecheck`/`lint`/`build` נקיים; `test:unit` — 88 (72 קיימים + 16 חדשים ב-`toolEffects.test.ts`). **E2E לא יכול לכסות את זה** — בלי credentials יוצאים `sendWhatsAppCtaUrl` מחזירה `false` ולא משאירה עקבה; הכיסוי האוטומטי נעצר ב-classifier, והשאר אומת ידנית דרך `npm run whatsapp:sim` (שכבר מדפיס את ה-`cta`). ראו `docs/DECISIONS.md` ADR #60.
 
-**Effort**: קטן (אופציה "על כל תשובה") עד קטן-בינוני (אופציה "רק אחרי פעולת כתיבה"). **Risk**: נמוך.
+**נקודה לשמירה**: כלי MCP חדש שכותב חייב להתווסף ל-`MUTATING_TOOL_NAMES`, אחרת התשובות שלו לא יקבלו כפתור — בשקט. הערה קיימת גם בגוף `createMcpServer` וגם ב-`docs/CHATBOT.md`.
 
 ---
 

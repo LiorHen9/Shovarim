@@ -99,6 +99,10 @@ function serializeCardsForLlm(cards: GiftCard[]) {
   return cards.map(serializeCardForLlm);
 }
 
+// Adding a tool here that writes anything? Add its name to MUTATING_TOOL_NAMES
+// in ./toolEffects.ts as well, or the WhatsApp reply that reports it will come
+// without the "לאזור האישי" button (issue #62, ADR #60). Nothing fails loudly
+// if you forget — the feature just quietly stops covering the new tool.
 export function createMcpServer(uid: string, channel: AuditLogChannel): McpServer {
   const server = new McpServer({ name: "shovarim-mcp", version: "0.2.0" });
 

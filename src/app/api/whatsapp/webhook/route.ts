@@ -9,7 +9,12 @@
 // silently and the caller gets HTML where it expected JSON.
 import { getInboundConfig } from "@/lib/whatsapp/config";
 import { verifyMetaSignature } from "@/lib/whatsapp/signature";
-import { sendWhatsAppText, sendWhatsAppCtaUrl, sendWhatsAppReplyButtons } from "@/lib/whatsapp/graph";
+import {
+  sendWhatsAppText,
+  sendWhatsAppCtaUrl,
+  sendWhatsAppReplyButtons,
+  MAX_INTERACTIVE_BODY_LENGTH,
+} from "@/lib/whatsapp/graph";
 import { extractInboundMessages } from "@/lib/validation/whatsapp";
 import { claimInboundMessage } from "@/lib/services/channelMessages";
 import { buildChannelKey } from "@/lib/services/channelLinks";
@@ -105,9 +110,13 @@ export async function POST(request: Request) {
     try {
       if (reply.buttons) {
         await sendWhatsAppReplyButtons(message.from, reply.text, reply.buttons);
-      } else if (reply.cta) {
+      } else if (reply.cta && reply.text.length <= MAX_INTERACTIVE_BODY_LENGTH) {
         await sendWhatsAppCtaUrl(message.from, reply.text, reply.cta);
       } else {
+        // Falls through to plain text when an answer is too long for an
+        // interactive body (issue #62): a cta_url message caps at 1024 against
+        // 4096 for text, so keeping the button here would silently cut the tail
+        // off a long summary. Losing the button beats losing the answer.
         await sendWhatsAppText(message.from, reply.text);
       }
     } catch (error) {

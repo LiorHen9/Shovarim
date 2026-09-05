@@ -12,7 +12,10 @@ import { getOutboundConfig } from "./config";
 const MAX_BODY_LENGTH = 4096;
 
 // Interactive messages (buttons) cap the body far lower than plain text.
-const MAX_INTERACTIVE_BODY_LENGTH = 1024;
+// Exported because the caller has to know: since issue #62 a cta_url reply can
+// carry a model-written answer rather than a short constant, and silently
+// truncating that from 4096 to 1024 would make the button cost content.
+export const MAX_INTERACTIVE_BODY_LENGTH = 1024;
 
 export class WhatsAppSendError extends Error {
   constructor(status: number, body: string) {

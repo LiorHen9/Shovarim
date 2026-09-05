@@ -38,7 +38,8 @@ import {
 import { loadChannelHistory, saveChannelHistory } from "./chatSessions";
 import { checkAndConsumeRateLimit, RateLimitExceededError } from "./rateLimit";
 import { assertNotBlocked } from "./moderation";
-import { getAppUrl } from "../appUrl";
+import { didMutate } from "../mcp/toolEffects";
+import { buildDashboardUrl, getAppUrl } from "../appUrl";
 import type { ChannelKind } from "../../types/channelLink";
 
 // A reply's link rides as a WhatsApp CTA-URL button (interactive message),
@@ -51,6 +52,13 @@ export interface ChannelReply {
 }
 
 const HOME_CTA = { url: getAppUrl(), label: "כניסה לאתר" };
+
+// Attached to replies that summarise something the bot just changed (issue
+// #62). Distinct from HOME_CTA on purpose: an unlinked sender needs the site
+// root so they can sign in and reach Settings, while someone who just created a
+// card wants to see it. Never inlined into reply.text and never written to the
+// stored history, so it costs no tokens on this turn or any later one.
+const DASHBOARD_CTA = { url: buildDashboardUrl(), label: "לאזור האישי" };
 
 export const REPLY_NOT_LINKED =
   "היי! המספר הזה עדיין לא מקושר לחשבון Shovarim.\n" +
@@ -138,7 +146,7 @@ export async function handleInboundChannelMessage({
       await deletePendingRelink(channelKey);
       try {
         await redeemLinkCode(pending.channel, pending.externalId, pending.code, { confirmed: true });
-        return { text: REPLY_LINKED };
+        return { text: REPLY_LINKED, cta: DASHBOARD_CTA };
       } catch (error) {
         if (error instanceof ActionError) return { text: error.message };
         throw error;
@@ -168,7 +176,10 @@ export async function handleInboundChannelMessage({
   if (code.success) {
     try {
       await redeemLinkCode(channel, externalId, code.data);
-      return { text: REPLY_LINKED };
+      // The "signing up" case issue #62 lists: the account exists but the
+      // sender has never seen it from this phone, so this is the single best
+      // moment to hand them the way in.
+      return { text: REPLY_LINKED, cta: DASHBOARD_CTA };
     } catch (error) {
       if (error instanceof RelinkConfirmationRequiredError) {
         await createPendingRelink(channelKey, channel, externalId, code.data, error.existingUid);
@@ -216,6 +227,13 @@ export async function handleInboundChannelMessage({
   // content in the cases where the model front-loads its reasoning.
   const chunks: string[] = [];
 
+  // Which tools the turn actually ran, for the "did this change anything?"
+  // decision below (issue #62). onToolCall already existed for the web chat's
+  // "calling tool X" status and was simply unused here — reusing it means the
+  // model is never asked whether it performed an action, so the button costs
+  // nothing in tokens.
+  const toolsUsed: string[] = [];
+
   try {
     const result = await runAgentTurn({
       client: createAnthropicClient(),
@@ -227,6 +245,7 @@ export async function handleInboundChannelMessage({
       uid,
       channel,
       onText: (chunk) => chunks.push(chunk),
+      onToolCall: (name) => toolsUsed.push(name),
     });
     await saveChannelHistory(channelKey, uid, result.history);
   } catch (error) {
@@ -242,5 +261,11 @@ export async function handleInboundChannelMessage({
   await touchChannelLink(channel, externalId);
 
   const reply = chunks.join("\n\n").trim();
+
+  // Only turns that wrote something get the button. A plain question ("what's
+  // my balance?") is the common case on WhatsApp, and a button on every single
+  // answer would be noise rather than a shortcut — issue #62 asks for it on
+  // summary messages specifically.
+  if (didMutate(toolsUsed)) return { text: reply || REPLY_EMPTY, cta: DASHBOARD_CTA };
   return { text: reply || REPLY_EMPTY };
 }
