@@ -95,13 +95,22 @@ test("the accessibility statement is reachable from the footer on every page", a
   await expect(page.getByRole("heading", { name: "הצהרת נגישות" })).toBeVisible();
 });
 
-test("the accessibility statement page has no WCAG 2.1 AA violations, in either theme", async ({
-  page,
-}) => {
-  await page.goto("/accessibility");
-  await expect(page.getByRole("heading", { name: "הצהרת נגישות" })).toBeVisible();
-  await expectNoA11yViolations(page);
-  await expectNoA11yViolationsInDark(page);
+// All three legal pages, not just the statement: they gained a banner landmark and a
+// second navigation landmark when (legal)/layout.tsx started rendering the header, and
+// only /accessibility had ever been scanned.
+test("the legal pages have no WCAG 2.1 AA violations, in either theme", async ({ page }) => {
+  const pages: [path: string, heading: string][] = [
+    ["/accessibility", "הצהרת נגישות"],
+    ["/privacy", "מדיניות פרטיות"],
+    ["/terms", "תנאי שימוש"],
+  ];
+
+  for (const [path, heading] of pages) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
+    await expectNoA11yViolations(page);
+    await expectNoA11yViolationsInDark(page);
+  }
 });
 
 test("the accessibility toolbar scales the root font size and persists the choice", async ({
@@ -194,4 +203,66 @@ test("the remaining signed-in routes have no WCAG 2.1 AA violations", async ({ p
     await expectNoA11yViolations(page);
     await expectNoA11yViolationsInDark(page);
   }
+});
+
+// Phase 6.B. The legal pages had no header at all, so the footer link Phase 6.A added to
+// make the statement reachable from everywhere dropped the visitor onto a dead end.
+test("the legal pages carry a header that stays put while scrolling", async ({ page }) => {
+  for (const path of ["/accessibility", "/privacy", "/terms"]) {
+    await page.goto(path);
+    await expect(page.getByRole("banner")).toBeVisible();
+  }
+
+  // The accessibility statement is the longest of the three, so it is the one that
+  // actually scrolls far enough for "sticky" to mean anything.
+  await page.goto("/accessibility");
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const box = await page.getByRole("banner").boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeLessThan(1);
+});
+
+test("a signed-out visitor to a legal page gets a sign-in link, not the app nav", async ({
+  page,
+}) => {
+  await page.goto("/privacy");
+  const header = page.getByRole("banner");
+  await expect(header.getByRole("link", { name: "התחברות" })).toBeVisible();
+  await expect(header.getByRole("link", { name: "כרטיסים" })).toHaveCount(0);
+});
+
+// The regression this phase exists for: reaching /privacy from the footer used to leave a
+// signed-in user with no route back into the app.
+test("a signed-in visitor can navigate out of a legal page", async ({ page }) => {
+  const uid = `e2e-${randomUUID()}`;
+  await signInAsTestUser(page, { uid, email: `${uid}@example.com`, name: "בודק אוטומטי" });
+
+  await page.goto("/privacy");
+  const header = page.getByRole("banner");
+  await expect(header.getByRole("link", { name: "התחברות" })).toHaveCount(0);
+  await header.getByRole("link", { name: "כרטיסים" }).click();
+  await expect(page).toHaveURL(/\/cards$/);
+});
+
+test("the accessibility toolbar is centred on the vertical axis and opens inside the viewport", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+
+  const trigger = page.getByRole("button", { name: "הגדרות נגישות" });
+  const button = await trigger.boundingBox();
+  expect(button).not.toBeNull();
+  expect(Math.abs(button!.y + button!.height / 2 - viewport!.height / 2)).toBeLessThan(2);
+
+  // The panel opens along the inline axis rather than downward precisely so that a
+  // vertically centred trigger does not push it off-screen.
+  await trigger.click();
+  const panel = await page.getByRole("dialog", { name: "הגדרות נגישות" }).boundingBox();
+  expect(panel).not.toBeNull();
+  expect(panel!.x).toBeGreaterThanOrEqual(0);
+  expect(panel!.y).toBeGreaterThanOrEqual(0);
+  expect(panel!.x + panel!.width).toBeLessThanOrEqual(viewport!.width);
+  expect(panel!.y + panel!.height).toBeLessThanOrEqual(viewport!.height);
 });

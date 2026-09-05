@@ -153,6 +153,14 @@ html {
   font-size: calc(100% * var(--a11y-font-scale, 1));
 }
 
+/* The header is sticky, so an anchor jump to #main-content — which is exactly what the
+   skip link does — would land the target underneath it. One rule rather than a class on
+   each <main>, of which there is one per public page plus (protected)/layout.tsx and
+   not-found.tsx. In rem, so it grows with --a11y-font-scale as the header itself does. */
+#main-content {
+  scroll-margin-top: 4rem;
+}
+
 [data-a11y-contrast="high"] {
   --background: oklch(1 0 0);
   --foreground: oklch(0 0 0);
