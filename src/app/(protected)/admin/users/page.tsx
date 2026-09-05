@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { UserSearchForm } from "@/components/admin/UserSearchForm";
@@ -46,6 +47,9 @@ async function resolveSearch(q: string): Promise<{ user: UserProfile | null } | 
   if (!parsed.success) return { user: null };
   return { user: await findUserByUid(parsed.data) };
 }
+
+// Per-page <title> (WCAG 2.4.2, Level A) — see the note in src/app/layout.tsx.
+export const metadata: Metadata = { title: "משתמשים · פאנל ניהול" };
 
 export default async function AdminUsersPage({
   searchParams,

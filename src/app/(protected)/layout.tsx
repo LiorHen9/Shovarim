@@ -5,6 +5,7 @@ import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { ConsentBanner } from "@/components/legal/ConsentBanner";
 import { DeletionPendingBanner } from "@/components/legal/DeletionPendingBanner";
 import { getSessionUid } from "@/lib/auth/session";
+import { A11Y_MAIN_CONTENT_ID } from "@/lib/a11y/constants";
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const uid = await getSessionUid();
@@ -19,7 +20,12 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       <OfflineBanner />
       <DeletionPendingBanner />
       <Header />
-      <div className="mx-auto w-full max-w-4xl flex-1 p-4">{children}</div>
+      {/* Was a plain <div>. Every signed-in page therefore had no main landmark, so a
+          screen-reader user could not jump to the content and the skip link had nothing to
+          target. WCAG 1.3.1 / 2.4.1. */}
+      <main id={A11Y_MAIN_CONTENT_ID} className="mx-auto w-full max-w-4xl flex-1 p-4">
+        {children}
+      </main>
       <ConsentBanner />
     </div>
   );

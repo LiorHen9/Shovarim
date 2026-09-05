@@ -1,10 +1,11 @@
 import { Suspense } from "react";
 
 import { SignInButtons } from "@/components/auth/SignInButtons";
+import { A11Y_MAIN_CONTENT_ID } from "@/lib/a11y/constants";
 
 export default function HomePage() {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
+    <main id={A11Y_MAIN_CONTENT_ID} className="flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center">
       <div className="space-y-2">
         <h1 className="text-3xl font-bold">שוברים</h1>
         <p className="text-muted-foreground">ניהול שוברים וכרטיסי מתנה במקום אחד</p>

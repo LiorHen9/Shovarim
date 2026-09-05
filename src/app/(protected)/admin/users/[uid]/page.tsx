@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -17,6 +18,9 @@ function formatIsoDate(value: string | null): string {
   if (!value) return "—";
   return new Intl.DateTimeFormat("he-IL", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
+
+// Per-page <title> (WCAG 2.4.2, Level A) — see the note in src/app/layout.tsx.
+export const metadata: Metadata = { title: "פרטי משתמש · פאנל ניהול" };
 
 export default async function AdminUserDetailPage({ params }: { params: Promise<{ uid: string }> }) {
   const { uid } = await params;

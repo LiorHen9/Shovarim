@@ -1,9 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 
-// The automatable half of issue #41 (see docs/DECISIONS.md ADR #55).
-// docs/ACCESSIBILITY.md lists eight WCAG 2.1 AA items and states plainly that no
-// automated check has ever run against this app — this is the first one.
+// The automatable half of issue #41 (see docs/DECISIONS.md ADR #55), extended in Phase 6.A
+// from two pages to every route in the app.
 //
 // Scoped to WCAG 2.1 A/AA, which is the standard the project committed to; axe's
 // "best-practice" rules are deliberately excluded so a failure always means a real
@@ -22,12 +21,26 @@ export async function expectNoA11yViolations(page: Page): Promise<void> {
 
   // Name the offending rules and elements in the failure message; the raw violation
   // objects are far too verbose to read in CI output.
-  const summary = results.violations.map(
-    (violation) =>
-      `${violation.id} (${violation.impact}): ${violation.help}\n    ${violation.nodes
-        .map((node) => node.target.join(" "))
-        .join("\n    ")}`,
-  );
+  //
+  // The target selector alone is not actionable: a Tailwind class chain does not identify
+  // the element, and for color-contrast it does not say what the measured ratio was. axe's
+  // own failureSummary carries the computed colours and ratio, so a trimmed version of it
+  // is included — that is what turned the first cross-route failure from a guess into a
+  // one-line fix.
+  const summary = results.violations.map((violation) => {
+    const nodes = violation.nodes.map(
+      (node) =>
+        `${node.target.join(" ")}\n      ${node.html.slice(0, 160)}\n      ${(
+          node.failureSummary ?? ""
+        )
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .slice(0, 3)
+          .join(" | ")}`,
+    );
+    return `${violation.id} (${violation.impact}): ${violation.help}\n    ${nodes.join("\n    ")}`;
+  });
 
   expect(summary, `accessibility violations on ${page.url()}`).toEqual([]);
 }
