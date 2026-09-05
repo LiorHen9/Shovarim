@@ -52,6 +52,9 @@ export function ImageDropInput({
         <img
           src={shownImage}
           alt={previewAlt}
+          width={96}
+          height={96}
+          decoding="async"
           className="h-24 w-24 rounded-md border object-cover"
         />
       )}

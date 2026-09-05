@@ -716,3 +716,48 @@ for collection members and field memberUid
 **מה כן נעשה במקום**: להישאר על ה-cache בזיכרון ולהשתמש ב-`snapshot.metadata.fromCache` כאות החיווי (ADR #53). קריאות מה-cache בזיכרון מסמנות `fromCache: true` כשה-stream מת, כך שמתקבל חיווי אמיתי ב**אפס** משטח at-rest חדש.
 
 **אם זה ייבחן מחדש אי-פעם**, זה צריך להיות שלב משלו עם: ADR, סעיף ב-`docs/PRIVACY.md`, opt-in מפורש ב-`/settings` (לא ברירת מחדל), אימות שהמיגרציה הושלמה, הכרעה במתח multi-tab/purge, ו-UI מודע ל-`hasPendingWrites` בכל ~10 אתרי הכתיבה של ה-client.
+
+## 55. dark mode שהוחייה, טעינת תמונות עצלה, וסליס האוטומציה של הנגישות (Phase 6.4)
+**תאריך**: 2026-09-05
+
+**רקע**: `next-themes` היה dependency מאז ה-scaffold, `src/app/globals.css` נשא סט טוקנים מלא ל-`.dark` מאחורי `@custom-variant dark`, ו-`src/components/ui/sonner.tsx` כבר קרא ל-`useTheme()` — אבל **שום `ThemeProvider` לא הורכב מעולם**. כלומר dark mode היה קוד מת, ו-`useTheme()` החזיר `undefined` בשקט. במקביל, `docs/ACCESSIBILITY.md` מונה שמונה פריטי WCAG ומצהיר מילולית ש"עדיין לא בוצעה בדיקת Lighthouse/NVDA בפועל".
+
+**החלטה (1) — להרכיב את ה-`ThemeProvider` ולהוסיף מתג לתפריט הקיים.** `attribute="class"` (מה שה-`@custom-variant` ב-`globals.css` מפתח עליו), `defaultTheme="system"`. `suppressHydrationWarning` על `<html>` הוא **נדרש ולא קוסמטי**: next-themes כותב את ה-class לפני ש-React מבצע hydration, אז השרת והלקוח נבדלים בכוונה באלמנט הזה. המתג הוא פריט יחיד ב-`DropdownMenu` הקיים ב-`Header`, שמסתובב system → light → dark; המצב הנוכחי כתוב בתווית, אז תפריט-משנה היה יותר chrome מבחירה.
+- **בלי `mounted` guard**, בניגוד לדפוס המקובל של next-themes: הרכיב מרונדר בתוך `DropdownMenuContent`, ש-Radix מרכיב רק כשהתפריט נפתח — תמיד אחרי hydration — אז אין רינדור שרת שאפשר להתנגש איתו. זה גם מה שמאפשר להימנע מ-`setState` בתוך `useEffect`, שה-lint של הפרויקט אוסר (`react-hooks/set-state-in-effect`).
+
+**החלטה (2) — לא לאמץ `next/image`, ולתקן את מה שבאמת חסר.** ה-runtime הוא `cpu: 1, memoryMiB: 512, maxInstances: 2` (`apphosting.yaml`), ותמונות הכרטיסים/קבלות מגיעות מ-Firebase Storage — כלומר `next/image` פירושו `images.remotePatterns` ל-`firebasestorage.googleapis.com` וטרנסקודינג on-demand על המסלול הקריטי של אותו backend. זו החלטת תשתית עם עלות אמיתית, לא polish.
+- **תיקון הערכת שווא שהייתה בתכנון**: התוכנית דיברה על "תיקוני CLS", אבל בבדיקה שלושת תגי ה-`img` **כבר** נושאים מידות קבועות ב-Tailwind (`h-10 w-10`, `h-24 w-24`) עם `object-cover`, כך שתיבת הפריסה שמורה ואין CLS מלכתחילה. מה שבאמת היה חסר: `loading="lazy"` בשתי התצוגות הרשימתיות (בקשת Storage לכל שורה, רובן מתחת לקו הקיפול) ו-`decoding="async"`. תצוגת המקדימה ב-`ImageDropInput` לא קיבלה `lazy` — היא תמיד גלויה, וזה רק היה מעכב אותה. נוספו גם `width`/`height` מפורשים לנכונות.
+
+**החלטה (3) — הסליס הזול מ-issue #41 נכנס, השאר לא.** `eslint-plugin-jsx-a11y` מופעל במפורש (`eslint-config-next` מטמיע רק חלק מהכללים), ו-`@axe-core/playwright` נוסף לספקים **הקיימים**. `lighthouse-ci` נדחה: שער ציון על runner עם worker אחד הוא flaky והתמורה נמוכה.
+- **מלכודת מתועדת**: אי אפשר לפרוש את `jsxA11y.flatConfigs.recommended` כולו — `eslint-config-next` כבר רושם את הפלאגין, וכפילות היא `ConfigError` קשה שמפילה את כל ה-lint. רק ה-`rules` נפרשים.
+- **הסריקה מוגבלת ל-`wcag2a`/`wcag2aa`/`wcag21a`/`wcag21aa`** ולא כוללת את כללי ה-best-practice של axe, כך שכשל תמיד מסמן פער תאימות אמיתי ולא דעה סגנונית. ה-**dark theme נסרק בנפרד** (`expectNoA11yViolationsInDark`), כי הטוקנים הכהים מעולם לא נבדקו לניגודיות ואי אפשר לרשת את תוצאת ה-light. שתי הסריקות עוברות נקי.
+- **שני `autoFocus` קיימים סומנו כחריגים מוצדקים ולא הוסרו**: בשני המקרים ה-input מחליף את הכפתור שהמשתמש בדיוק הפעיל, כך שהכפתור מתפרק והפוקוס היה נופל ל-body. העברת הפוקוס ל-input היא ההתנהגות ה**נגישה** כאן; הכלל מגן מפני `autoFocus` בטעינת עמוד, שזה מצב אחר לגמרי. **הערה מעשית**: אי אפשר להשתמש בהערת JSX מסולסלת בתוך רשימת ה-attributes של תג (שגיאת פרסור) — הערות `//` כן עובדות שם.
+- **סייג מוצהר**: סריקה אוטומטית תופסת בערך שליש מבעיות הנגישות האמיתיות. היא לא שופטת אם `alt` משמעותי או אם סדר הפוקוס הגיוני. מעברי NVDA ו-Lighthouse הידניים ב-`docs/ACCESSIBILITY.md` נשארים נדרשים.
+
+**החלטה (4) — מדידה לפני אופטימיזציה, והמדידה שינתה את התוכנית.** התוכנית הציעה `next/dynamic` על פאנל הצ'אט אם ה-bundle שלו גדול. **Next 16.3.2 כבר לא מדפיס First Load JS פר-מסלול** ב-`next build`, וגם `--experimental-analyze` לא הפיק מספרים, אז המדידה נעשתה ישירות על התוצר: **38 קבצים, כ-2078KB JS גולמי ב-`.next/static/chunks`, כשה-chunk הגדול ביותר הוא 680KB והוא Firebase/Firestore** (אומת בחיפוש מחרוזות בתוך ה-chunk). זו העלות הדומיננטית, והיא נטענת בכל עמוד מוגן כי כל עמוד משתמש ב-`onSnapshot`. **המסקנה: `next/dynamic` על הצ'אט לא יזיז את המחט** — הוא לא מופיע כלל בין ה-chunks הגדולים. המנוף האמיתי הוא ארכיטקטוני (העברת קריאות לצד שרת), וזה מחוץ להיקף של פאזת polish. הוא לא בוצע, ולא הועמד פנים שבוצע.
+
+**נדחה**: (א) `next/image` (החלטה 2); (ב) `lighthouse-ci` ב-CI (החלטה 3); (ג) הסרת ה-`autoFocus` הקיימים (החלטה 3); (ד) `next/dynamic` על פאנל הצ'אט — נבדק במדידה ונמצא חסר-תועלת (החלטה 4).
+
+## 56. דחיית ה-Service Worker — הארטיפקט היחיד שה-rollback לא מגיע אליו, והצורה שתשמש אם ייבנה אי-פעם
+**תאריך**: 2026-09-05
+
+**רקע**: שורת Phase 6 ב-`docs/ROADMAP.md` אומרת מפורשות "service worker". ה-ADR הזה מתעד למה הפאזה נסגרת **בלעדיו**, כדי שזו תהיה החלטה מתועדת ולא השמטה שקטה.
+
+**החלטה: לא לבנות Service Worker בשלב הזה.** ארבעה נימוקים, לפי סדר משקל:
+
+1. **הוא הארטיפקט היחיד בסטאק ש-`firebase apphosting:rollouts:create --git-commit <sha>` לא יכול לבטל.** מסלול ה-rollback המתורגל ב-`docs/DEPLOYMENT.md` מחזיר קוד **שרת**. Service Worker מותקן אצל ה**לקוח** ושורד כל rollout, לנצח, אצל כל מי שטען אי-פעם את הגרסה הרעה. גם דגל env אינו מתג כיבוי — `NEXT_PUBLIC_SW_ENABLED=false` עוצר רישומים *חדשים* בלבד ולא מסיר קיימים; זה שער שחרור, לא מתג חירום. **אסור שמישהו יושיט יד לדגל כזה בזמן תקלה ויחשוב שפתר.**
+2. **הערך שלו כאן כמעט אפס.** כל עמוד מוגן הוא `"use client"` וכל עשרת ה-hooks הם `onSnapshot`, ו-Firestore הוא cache בזיכרון בלבד. כלומר app shell שמור מראש ל-`/cards` יציג header ושלד ריק — לנצח. הערך האמיתי חסום מאחורי Firestore persistence, שנדחתה בעצמה ומסיבות טובות (ADR #54).
+3. **הוא מנציח את ADR #32.** תקלת "לקוח ישן, שרת חדש" היא בדיוק המצב ש-app shell במטמון הופך מאירוע חולף למצב קבוע.
+4. **ההתקנה כבר לא דורשת אותו.** Chrome ביטל את קריטריון ה-fetch handler / יכולת ה-offline; manifest + אייקונים + HTTPS מספיקים ל-"Install app". Phase 6.1 עומד בפני עצמו, ואומת בפועל.
+
+בנוסף, שני הפריטים שבגללם ה-SW הופיע ברודמאפ מסופקים עכשיו בלעדיו: חיווי offline דרך `experimental.useOffline` (ADR #53), והודעת ה-rollout דרך `UnrecognizedActionError` (ADR #52).
+
+**הצורה שתשמש אם הוא כן ייבנה אי-פעם** (נרשם כדי שלא יידרש מחקר מחדש):
+- **hand-rolled, כ-80 שורות, בלי dependency.** לא Serwist: הערך שלו הוא אסטרטגיות runtime-caching — בדיוק מה שאסור כאן — והוא גורר plugin לתוך ה-build, כלומר יושב ישירות על רדיוס הפגיעה של ADR #32. קובץ שאפשר לקרוא במלואו בשלוש לפנות בוקר בזמן תקלה שווה יותר מספרייה.
+- **precache רק לנכסי `/_next/static/`**, שבטוחים מעצם הבנייה: ה-URL מכיל content hash, אז לקוח מיושן מבקש את ה-hashes שלו (פגיעה במטמון) ולקוח טרי מבקש חדשים (רשת), וה-SW לעולם לא צריך לדעת את ה-build id. **זו התשובה ל-ADR #32** — התקלה נובעת מהגשת HTML/RSC מיושן, אף פעם לא מ-chunks בלתי-משתנים. בנוסף: אייקונים ועמוד `/offline` יחיד.
+- **יציאה מוקדמת מ-`fetch` לפני כל לוגיקה** עבור: `method !== "GET"` (POST הוא Server Action — SW לעולם לא בנתיב הזה), נתיבי `/__/` (ADR #34/#35 — ה-iframe וה-handler של האימות חייבים להגיע ל-rewrite ללא נגיעה), נתיבי `/api/` (`/api/chat` מזרים NDJSON), בקשות עם כותרת `RSC`, ו-cross-origin (Firestore/Storage/App Check/reCAPTCHA). ניווטים: **network-only** עם `catch` שמחזיר את `/offline` — אף פעם לא app shell במטמון, אף פעם לא stale-while-revalidate.
+- **בלי `self.skipWaiting()` ב-`install`.** החלפת נכסים תחת עמוד שכבר רץ מייצרת שגיאות טעינת chunk — בדיוק סוג הבאג שהפאזה הזו ניסתה לחסל. במקום: `updatefound` ← הודעה (אותה הודעת sonner של 6.2) ← `postMessage` ← `skipWaiting` ← `controllerchange` ← `reload`.
+- **ה-PR הראשון חייב להיות tombstone worker בלבד** (unregister + מחיקת כל ה-caches), עם ה-`headers()` ל-`/sw.js` (`Cache-Control: no-cache`) וה-registrar — אפס לוגיקת caching. זה מוכיח בפרודקשן שהקובץ מוגש ב-scope הנכון, שהכותרת שורדת את ה-CDN של App Hosting, ושנתיבי האימות עדיין עובדים — בסיכון אפס, כי כל תפקיד ה-worker הוא להסיר את עצמו. **מתג הכיבוי הוא אז `git revert` של ה-PR השני**, ולא קובץ שנכתב תחת לחץ בזמן תקלה.
+- **`X-Frame-Options: DENY`** (אם נוספות כותרות אבטחה יחד עם `headers()`) חייב להיבדק מול `/__/auth/iframe` בפועל ולא בהיסק — ADR #34/#35 קיימים כי האזור הזה כבר הפיק כשל שקט שספציפי ל-Safari.
+
+**דו-קיום עתידי עם FCM (Phase 7)** — נרשם עכשיו כדי שלא יידרש דיון מחדש: FCM web push מחייב worker ב-`/firebase-messaging-sw.js`, ו-`users/{uid}.fcmTokens` כבר קיים כמערך ריק (`src/actions/auth.ts`). **שני workers באותו scope בלתי אפשריים** — `register()` שני ב-scope `/` מחליף את הראשון. הדפוס הנתמך: worker אפליקטיבי ב-scope `/`, ורישום `/firebase-messaging-sw.js` ב-scope צר יותר שמועבר ל-`getToken({ serviceWorkerRegistration })`. **לא** למזג לוגיקת FCM לתוך ה-worker האפליקטיבי: הוא עובד ע"י `importScripts` של ה-compat SDK, מה שגורר bundle צד-שלישי גדול ל-worker וקושר את מתג הכיבוי שלנו ל-SDK של Firebase.

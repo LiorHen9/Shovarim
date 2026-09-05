@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 
+import { expectNoA11yViolations } from "./helpers/a11y";
+
 test("landing page shows sign-in options", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "שוברים" })).toBeVisible();
@@ -40,4 +42,11 @@ test("an unknown path renders the Hebrew 404 page, not Next's default", async ({
   await expect(page.getByRole("heading", { name: "הדף לא נמצא" })).toBeVisible();
   await expect(page.getByRole("link", { name: "חזרה לדף הבית" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+});
+
+test("the public landing page has no WCAG 2.1 AA violations", async ({ page }) => {
+  // The one page every visitor sees, and the only one reachable without a session.
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "המשך עם Google" })).toBeVisible();
+  await expectNoA11yViolations(page);
 });

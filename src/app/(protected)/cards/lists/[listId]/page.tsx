@@ -102,6 +102,11 @@ export default function CardListDetailPage({
               value={nameValue}
               onChange={(e) => setNameValue(e.target.value)}
               aria-label="שם חדש לרשימה"
+              // The input replaces the button the user just activated, so that button
+              // unmounts and focus would otherwise fall back to <body>. Moving focus into
+              // the replacement is the accessible behaviour here — jsx-a11y/no-autofocus
+              // guards against autoFocus on page load, which is a different situation.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               className="max-w-xs"
             />
@@ -180,6 +185,10 @@ export default function CardListDetailPage({
                 <img
                   src={card.cardImageUrl}
                   alt={`תמונת הכרטיס ${card.name}`}
+                  width={40}
+                  height={40}
+                  loading="lazy"
+                  decoding="async"
                   className="h-10 w-10 rounded-md border object-cover"
                 />
               )}

@@ -38,7 +38,9 @@
 | עמודי שגיאה ו-404 בעברית | ✅ הושלם | 2026-09-05, Phase 6.2 — `global-error.tsx` (נטול-תלויות), `error.tsx` נפרדים ל-`(protected)` ול-`admin`, `not-found.tsx`. ראו ADR #52 |
 | הודעת "גרסה חדשה זמינה" אחרי rollout | ✅ הושלם | 2026-09-05, Phase 6.2 — `reportActionError` מזהה `UnrecognizedActionError` וסוגר את תקלת ADR #32 שעד היום התחזתה להודעת כשל גנרית |
 | Firestore offline persistence | ⛔ נדחה במודע | ADR #54 — משטח data-at-rest חדש עם זנב plaintext, purge שמתנגש עם multi-tab, ומודל כתיבה מפוצל בין client SDK ל-Server Actions |
-| PWA — Service Worker / offline מלא | ⛔ נדחה במודע | ראו `docs/ROADMAP.md` Phase 6 ו-`docs/DECISIONS.md` ADR #55: הוא הארטיפקט היחיד בסטאק ש-`apphosting:rollouts:create` לא מבטל, והערך שלו כאן חסום מאחורי Firestore persistence שנדחתה בעצמה (ADR #54) |
+| מצב כהה (dark mode) | ✅ הושלם | 2026-09-05, Phase 6.4 — `ThemeProvider` הורכב סוף-סוף (הטוקנים והתלות היו שם מאז ה-scaffold, בלי provider), מתג בתפריט המשתמש. `tests/e2e/theme.spec.ts`. ראו ADR #55 |
+| בדיקות נגישות אוטומטיות | ✅ הושלם (חלקי) | 2026-09-05, Phase 6.4 — `@axe-core/playwright` (WCAG 2.1 A/AA, בשתי ערכות הנושא) + `eslint-plugin-jsx-a11y` מפורש. הסליס הזול מ-issue #41; בר הנגישות של issue #40 הוא מסלול נפרד (Phase 6.A) |
+| PWA — Service Worker / offline מלא | ⛔ נדחה במודע | ראו `docs/ROADMAP.md` Phase 6 ו-`docs/DECISIONS.md` ADR #56: הוא הארטיפקט היחיד בסטאק ש-`apphosting:rollouts:create` לא מבטל, והערך שלו כאן חסום מאחורי Firestore persistence שנדחתה בעצמה (ADR #54) |
 | התראות תפוגה (push/email) | ⏳ מתוכנן | Phase 7 |
 | דוחות וסטטיסטיקות | ⏳ מתוכנן | Phase 8 |
 | פאנל ניהול — יסודות (הרשאת אדמין, `/admin` shell) | ✅ הושלם | 2026-09-01, Phase 9.1 — `adminRoles`/`adminAuditLog` (Admin SDK בלבד), `scripts/grant-admin.ts`, `requireAdmin()`/`isAdminUid()` (`src/lib/auth/session.ts`), `app/(protected)/admin/` (layout מגן + עמוד placeholder). ראו `docs/DECISIONS.md` ADR #42 |

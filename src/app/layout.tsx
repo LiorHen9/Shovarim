@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Heebo } from "next/font/google";
 import "./globals.css";
 
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { getAppUrl } from "@/lib/appUrl";
 
@@ -55,10 +56,20 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="he" dir="rtl" className={`${heebo.variable} h-full antialiased`}>
+    // suppressHydrationWarning is required, not cosmetic: next-themes writes the theme
+    // class onto <html> before React hydrates, so the server and client markup differ by
+    // design on this one element.
+    <html
+      lang="he"
+      dir="rtl"
+      suppressHydrationWarning
+      className={`${heebo.variable} h-full antialiased`}
+    >
       <body className="min-h-full flex flex-col">
-        {children}
-        <Toaster position="top-center" />
+        <ThemeProvider>
+          {children}
+          <Toaster position="top-center" />
+        </ThemeProvider>
       </body>
     </html>
   );

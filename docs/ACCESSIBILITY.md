@@ -29,3 +29,11 @@ Phase 2: אותו דפוס הורחב לרכיבים החדשים — `ImageDrop
 Phase 3: אותו דפוס הוחל על השדות החדשים (`cvv`, `acceptingRetailersUrl` ב-`CardForm`/`EditCardDialog`) ועל `UpdateBalanceDialog` (`Label`+`htmlFor`, `aria-describedby`+`role="alert"` לשגיאות).
 
 עדיין לא בוצעה בדיקת Lighthouse/NVDA בפועל — יש לבצע לפני שחרור רחב.
+
+### Phase 6 (2026-09-05)
+- **בדיקה אוטומטית ראשונה אי-פעם**: `@axe-core/playwright` רץ ב-`tests/e2e/dashboard.spec.ts` ו-`public.spec.ts`, מוגבל ל-`wcag2a`/`wcag2aa`/`wcag21a`/`wcag21aa` (בלי כללי best-practice, כדי שכשל תמיד יסמן פער תאימות אמיתי). עובר נקי. `eslint-plugin-jsx-a11y` מופעל במפורש ולא רק דרך מה ש-`eslint-config-next` מטמיע.
+- **ניגודיות ב-dark mode נבדקה** (`expectNoA11yViolationsInDark`) — Phase 6.4 הרכיב את ה-`ThemeProvider` שהפך את טוקני ה-`.dark` לנגישים לראשונה, והם מעולם לא נבדקו קודם. עובר נקי.
+- **zoom 200% נשמר במפורש**: ה-`viewport` ב-`src/app/layout.tsx` **לא** קובע `maximumScale`/`userScalable`, ויש טסט E2E ייעודי (`pwa.spec.ts`) שנכשל אם מישהו יוסיף אותם. נעילת zoom היא ההעתקה הסטנדרטית שגורמת ל-PWA "להרגיש נייטיב", והיא מפירה את הפריט הזה.
+- **חריגי `autoFocus` מוצדקים**: שני מקומות (שינוי שם רשימה, עריכת קטגוריה) שומרים `autoFocus` עם `eslint-disable` מנומק — ה-input מחליף את הכפתור שהמשתמש הפעיל, כך שהסרתו הייתה מאבדת את הפוקוס ל-`body` ופוגעת בנגישות, לא משפרת אותה.
+- **חיווי הניתוק החדש** (`OfflineBanner`) הוא `role="status"` + `aria-live="polite"` ולא טוסט — מה שגם מספק את הפריט על הכרזת שינויי סטטוס מ-`onSnapshot`.
+- **עדיין פתוח**: מעבר Lighthouse ו-NVDA ידני. סריקה אוטומטית תופסת בערך שליש מהבעיות ואינה שופטת אם `alt` משמעותי או אם סדר הפוקוס הגיוני.
