@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Link2, Loader2, MessageCircle, RefreshCw, Unlink } from "lucide-react";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -84,8 +86,8 @@ export function ChannelLinksSection() {
     setLoading(true);
     try {
       applyResult(await listMyChannelLinks());
-    } catch {
-      toast.error("טעינת הערוצים המקושרים נכשלה");
+    } catch (error) {
+      reportActionError(error, "טעינת הערוצים המקושרים נכשלה");
     } finally {
       setLoading(false);
     }
@@ -105,8 +107,8 @@ export function ChannelLinksSection() {
         return;
       }
       setIssued({ url, expiresAt: result.expiresAt });
-    } catch {
-      toast.error("יצירת קישור החיבור נכשלה");
+    } catch (error) {
+      reportActionError(error, "יצירת קישור החיבור נכשלה");
     } finally {
       setPending(false);
     }
@@ -124,8 +126,8 @@ export function ChannelLinksSection() {
       toast.success("הערוץ נותק");
       setUnlinkTarget(null);
       await reload();
-    } catch {
-      toast.error("ניתוק הערוץ נכשל");
+    } catch (error) {
+      reportActionError(error, "ניתוק הערוץ נכשל");
     } finally {
       setPending(false);
     }

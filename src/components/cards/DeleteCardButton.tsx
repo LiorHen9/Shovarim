@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -41,8 +43,8 @@ export function DeleteCardButton({
       toast.success("הכרטיס נמחק");
       setOpen(false);
       if (redirectTo) router.push(redirectTo);
-    } catch {
-      toast.error("מחיקת הכרטיס נכשלה");
+    } catch (error) {
+      reportActionError(error, "מחיקת הכרטיס נכשלה");
     } finally {
       setPending(false);
     }

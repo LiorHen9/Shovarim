@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
+
+import { reportActionError } from "@/lib/actions/clientErrors";
 import { Loader2, MessageCircle, Share2, TrashIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -176,9 +178,9 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
       }
       setPhone("");
       await reloadInvites();
-    } catch {
+    } catch (error) {
       popup?.close();
-      toast.error("יצירת קישור השיתוף נכשלה");
+      reportActionError(error, "יצירת קישור השיתוף נכשלה");
     } finally {
       setSharing(false);
     }
@@ -193,8 +195,8 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
       }
       toast.success("הלינק בוטל");
       await reloadInvites();
-    } catch {
-      toast.error("ביטול הלינק נכשל");
+    } catch (error) {
+      reportActionError(error, "ביטול הלינק נכשל");
     }
   }
 
@@ -205,8 +207,8 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
         updatedAt: serverTimestamp(),
       });
       toast.success("ההרשאה עודכנה");
-    } catch {
-      toast.error("עדכון ההרשאה נכשל");
+    } catch (error) {
+      reportActionError(error, "עדכון ההרשאה נכשל");
     }
   }
 
@@ -214,8 +216,8 @@ export function ShareListDialog({ listId, listName }: { listId: string; listName
     try {
       await deleteDoc(doc(db, "cardLists", listId, "members", memberUid));
       toast.success("השיתוף בוטל");
-    } catch {
-      toast.error("ביטול השיתוף נכשל");
+    } catch (error) {
+      reportActionError(error, "ביטול השיתוף נכשל");
     }
   }
 

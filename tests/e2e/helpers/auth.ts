@@ -21,10 +21,24 @@ export async function signInAsTestUser(page: Page, user: TestUser, next = "/dash
   // New users see the consent modal (ConsentBanner) on first protected page
   // load, same as a real first sign-in — dismiss it so it doesn't block
   // subsequent interactions in the test.
+  //
+  // Two things here are load-bearing, and both used to be wrong:
+  //
+  // 1. The timeout must be generous. useConsent() starts at "loading" and only flips to
+  //    "needed" once the consents/{uid} onSnapshot lands, so for the fresh uid every
+  //    test creates the dialog *always* appears — just not always quickly. The old 3s
+  //    wait lost that race under parallel load, swallowed the timeout, and let the modal
+  //    pop up mid-test, where its full-screen overlay silently intercepted every
+  //    subsequent click until the test timed out.
+  // 2. Clicking is not enough; the overlay has to be gone before we return. grantConsent()
+  //    is a Firestore write and the dialog unmounts only on the resulting snapshot, so
+  //    returning right after the click hands the test a page that is still covered.
+  const consentDialog = page.getByRole("alertdialog");
   const consentButton = page.getByRole("button", { name: "מאשר/ת, המשך" });
   try {
-    await consentButton.waitFor({ state: "visible", timeout: 3000 });
+    await consentButton.waitFor({ state: "visible", timeout: 15000 });
     await consentButton.click();
+    await consentDialog.waitFor({ state: "detached", timeout: 15000 });
   } catch {
     // useConsent() already resolved to "granted"/not-needed — nothing to dismiss.
   }

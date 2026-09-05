@@ -10,7 +10,7 @@ import { ArrowRight, CheckIcon, ExternalLink, PencilIcon, TrashIcon, XIcon } fro
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { CardDetailSkeleton, CardListSkeleton } from "@/components/skeletons/PageSkeletons";
 import { DeleteCardButton } from "@/components/cards/DeleteCardButton";
 import { ShareListDialog } from "@/components/lists/ShareListDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -40,7 +40,7 @@ export default function CardListDetailPage({
   // deny it to anyone else) — see useListMembers.
   const { members } = useListMembers(isOwner ? listId : null);
 
-  if (authLoading || !user || listsLoading) return <Skeleton className="h-40 w-full" />;
+  if (authLoading || !user || listsLoading) return <CardDetailSkeleton />;
   if (!list) return <p className="text-muted-foreground">הרשימה לא נמצאה.</p>;
 
   const canManage = list.role === "owner" || list.role === "manager";
@@ -161,10 +161,7 @@ export default function CardListDetailPage({
       </div>
 
       {cardsLoading && (
-        <div className="space-y-2">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-        </div>
+        <CardListSkeleton />
       )}
 
       {!cardsLoading && listCards.length === 0 && (

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,8 +45,8 @@ export function DeleteUsageEntryButton({
       }
       toast.success(restoreBalance ? "השימוש נמחק והסכום הוחזר ליתרה" : "השימוש נמחק");
       setOpen(false);
-    } catch {
-      toast.error("מחיקת השימוש נכשלה");
+    } catch (error) {
+      reportActionError(error, "מחיקת השימוש נכשלה");
     } finally {
       setPending(false);
     }

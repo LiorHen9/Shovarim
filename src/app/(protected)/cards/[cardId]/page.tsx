@@ -6,6 +6,7 @@ import { ArrowRight, ExternalLink } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CardDetailSkeleton } from "@/components/skeletons/PageSkeletons";
 import { ArchiveCardButton } from "@/components/cards/ArchiveCardButton";
 import { DeleteCardButton } from "@/components/cards/DeleteCardButton";
 import { EditCardDialog } from "@/components/cards/EditCardDialog";
@@ -30,7 +31,7 @@ export default function CardDetailPage({
   const { lists } = useCardLists(user?.uid ?? null);
   const { entries, loading: entriesLoading } = useUsageLog(cardId, card?.ownerId ?? null);
 
-  if (loading || !user) return <Skeleton className="h-40 w-full" />;
+  if (loading || !user) return <CardDetailSkeleton />;
   if (!card) return <p className="text-muted-foreground">הכרטיס לא נמצא.</p>;
 
   // Defaults to "viewer" (the least-privileged role) while the lists query is

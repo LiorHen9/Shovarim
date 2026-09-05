@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { FunctionsError, httpsCallable } from "firebase/functions";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,8 +62,8 @@ export function UserDeletionSection({
       }
       toast.success(successMessage);
       router.refresh();
-    } catch {
-      toast.error("הפעולה נכשלה");
+    } catch (error) {
+      reportActionError(error, "הפעולה נכשלה");
     } finally {
       setPending(false);
     }

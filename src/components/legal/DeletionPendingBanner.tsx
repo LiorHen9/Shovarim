@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserProfile } from "@/hooks/useUserProfile";
@@ -27,8 +29,8 @@ export function DeletionPendingBanner() {
         return;
       }
       toast.success("בקשת המחיקה בוטלה");
-    } catch {
-      toast.error("ביטול בקשת המחיקה נכשל");
+    } catch (error) {
+      reportActionError(error, "ביטול בקשת המחיקה נכשל");
     } finally {
       setPending(false);
     }

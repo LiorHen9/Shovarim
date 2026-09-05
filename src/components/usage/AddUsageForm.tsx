@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { collection, doc } from "firebase/firestore";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,8 +54,8 @@ export function AddUsageForm({
       reset({ cardId, amount: 0, date: new Date(), purpose: "", location: null });
       setReceiptFile(null);
       setReceiptInputKey((k) => k + 1);
-    } catch {
-      toast.error("הוספת השימוש נכשלה");
+    } catch (error) {
+      reportActionError(error, "הוספת השימוש נכשלה");
     }
   }
 

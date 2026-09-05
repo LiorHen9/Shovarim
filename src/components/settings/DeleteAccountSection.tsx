@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { reportActionError } from "@/lib/actions/clientErrors";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,8 +37,8 @@ export function DeleteAccountSection() {
       }
       toast.success("בקשת המחיקה נקלטה");
       setOpen(false);
-    } catch {
-      toast.error("בקשת המחיקה נכשלה");
+    } catch (error) {
+      reportActionError(error, "בקשת המחיקה נכשלה");
     } finally {
       setPending(false);
     }
@@ -51,8 +53,8 @@ export function DeleteAccountSection() {
         return;
       }
       toast.success("בקשת המחיקה בוטלה");
-    } catch {
-      toast.error("ביטול בקשת המחיקה נכשל");
+    } catch (error) {
+      reportActionError(error, "ביטול בקשת המחיקה נכשל");
     } finally {
       setPending(false);
     }
