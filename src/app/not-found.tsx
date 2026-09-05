@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { A11Y_MAIN_CONTENT_ID } from "@/lib/a11y/constants";
 
 // Until now a 404 on this Hebrew, RTL site rendered Next's default English page — the
 // smoke test in docs/DEPLOYMENT.md records "GET /nonexistent-route → 404 תקין", which was
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 // "/" rather than /dashboard, which src/proxy.ts would bounce straight back for them.
 export default function NotFound() {
   return (
-    <main className="mx-auto flex max-w-md flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+    <main id={A11Y_MAIN_CONTENT_ID} className="mx-auto flex max-w-md flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
       <h1 className="text-2xl font-bold">הדף לא נמצא</h1>
       <p className="text-muted-foreground">
         הקישור שהגעתם דרכו כנראה שגוי, או שהדף כבר לא קיים.

@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { A11Y_MAIN_CONTENT_ID } from "@/lib/a11y/constants";
 import { getSessionUid } from "@/lib/auth/session";
 import { getListInviteGate, getListInvitePreview } from "@/lib/services/listInvites";
 import { inviteCodeSchema } from "@/lib/validation/listInvite";
@@ -8,6 +10,9 @@ import type { ListInviteGate, ListInvitePreview } from "@/types/listInvite";
 // a session (ADR #37). Deliberately outside (protected) — a recipient with no
 // account has to be able to see what they were invited to before signing in,
 // and src/proxy.ts only guards the protected page prefixes.
+// Per-page <title> (WCAG 2.4.2, Level A) — see the note in src/app/layout.tsx.
+export const metadata: Metadata = { title: "הזמנה לרשימה משותפת" };
+
 export default async function InvitePage({ params }: { params: Promise<{ code: string }> }) {
   const { code: rawCode } = await params;
 
@@ -38,7 +43,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
   }
 
   return (
-    <main className="mx-auto max-w-md space-y-6 p-6">
+    <main id={A11Y_MAIN_CONTENT_ID} className="mx-auto max-w-md space-y-6 p-6">
       <InvitePanel preview={preview} initialGate={gate} signedIn={uid !== null} />
     </main>
   );
@@ -46,7 +51,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
 
 function InviteError({ message }: { message: string }) {
   return (
-    <main className="mx-auto max-w-md space-y-4 p-6">
+    <main id={A11Y_MAIN_CONTENT_ID} className="mx-auto max-w-md space-y-4 p-6">
       <h1 className="text-2xl font-bold">הזמנה לרשימה</h1>
       <p className="text-muted-foreground">{message}</p>
     </main>

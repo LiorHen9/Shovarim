@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { formatUsd } from "@/lib/format";
@@ -11,6 +12,9 @@ import {
 // now carrying the Claude spend overview (Phase 9.6 layer 1 — Firestore
 // aggregations only, no new infrastructure). Access is already gated by
 // admin/layout.tsx.
+// Per-page <title> (WCAG 2.4.2, Level A) — see the note in src/app/layout.tsx.
+export const metadata: Metadata = { title: "פאנל ניהול" };
+
 export default async function AdminHomePage() {
   const usage = await getClaudeUsageOverview();
 

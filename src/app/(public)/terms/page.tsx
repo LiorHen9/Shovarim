@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
+import { A11Y_MAIN_CONTENT_ID } from "@/lib/a11y/constants";
+
+// Per-page <title> (WCAG 2.4.2, Level A) — see the note in src/app/layout.tsx.
+export const metadata: Metadata = { title: "תנאי שימוש" };
+
 export default function TermsPage() {
   return (
-    <main className="mx-auto max-w-2xl p-6 space-y-6">
+    <main id={A11Y_MAIN_CONTENT_ID} className="mx-auto max-w-2xl p-6 space-y-6">
       <h1 className="text-2xl font-bold">תנאי שימוש</h1>
 
       <section className="space-y-2">

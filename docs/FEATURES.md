@@ -39,7 +39,9 @@
 | הודעת "גרסה חדשה זמינה" אחרי rollout | ✅ הושלם | 2026-09-05, Phase 6.2 — `reportActionError` מזהה `UnrecognizedActionError` וסוגר את תקלת ADR #32 שעד היום התחזתה להודעת כשל גנרית |
 | Firestore offline persistence | ⛔ נדחה במודע | ADR #54 — משטח data-at-rest חדש עם זנב plaintext, purge שמתנגש עם multi-tab, ומודל כתיבה מפוצל בין client SDK ל-Server Actions |
 | מצב כהה (dark mode) | ✅ הושלם | 2026-09-05, Phase 6.4 — `ThemeProvider` הורכב סוף-סוף (הטוקנים והתלות היו שם מאז ה-scaffold, בלי provider), מתג בתפריט המשתמש. `tests/e2e/theme.spec.ts`. ראו ADR #55 |
-| בדיקות נגישות אוטומטיות | ✅ הושלם (חלקי) | 2026-09-05, Phase 6.4 — `@axe-core/playwright` (WCAG 2.1 A/AA, בשתי ערכות הנושא) + `eslint-plugin-jsx-a11y` מפורש. הסליס הזול מ-issue #41; בר הנגישות של issue #40 הוא מסלול נפרד (Phase 6.A) |
+| בדיקות נגישות אוטומטיות | ✅ הושלם | 2026-09-05, Phase 6.4 + 6.A — `@axe-core/playwright` (WCAG 2.1 A/AA) על 8 מסלולים, רובם בשתי ערכות הנושא ואחד גם במצב ניגודיות גבוהה, + `eslint-plugin-jsx-a11y` מפורש. issue #41 סגור |
+| בר נגישות + הצהרת נגישות (חובה חוקית) | ✅ הושלם | 2026-09-05, Phase 6.A — issue #40. `/accessibility` + `AccessibilityToolbar` (גודל טקסט, ניגודיות גבוהה, הדגשת קישורים/מיקוד, עצירת אנימציות), נבנה בבית ולא כ-widget צד-שלישי. ראו `docs/DECISIONS.md` #57 |
+| קישור "דלג לתוכן" + landmark + titles ייחודיים | ✅ הושלם | 2026-09-05, Phase 6.A — שלושה כשלי WCAG רמה A שהסריקה האוטומטית לא יכלה לתפוס: לא היה `<main>` בשום עמוד מוגן, לא היה קישור דילוג, ולכל עמוד היה אותו `<title>` |
 | PWA — Service Worker / offline מלא | ⛔ נדחה במודע | ראו `docs/ROADMAP.md` Phase 6 ו-`docs/DECISIONS.md` ADR #56: הוא הארטיפקט היחיד בסטאק ש-`apphosting:rollouts:create` לא מבטל, והערך שלו כאן חסום מאחורי Firestore persistence שנדחתה בעצמה (ADR #54) |
 | התראות תפוגה (push/email) | ⏳ מתוכנן | Phase 7 |
 | דוחות וסטטיסטיקות | ⏳ מתוכנן | Phase 8 |

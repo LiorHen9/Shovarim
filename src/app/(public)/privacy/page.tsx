@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
 import { PRIVACY_POLICY_VERSION } from "@/lib/legal/constants";
+import { A11Y_MAIN_CONTENT_ID } from "@/lib/a11y/constants";
+
+// Per-page <title> (WCAG 2.4.2, Level A) — see the note in src/app/layout.tsx.
+export const metadata: Metadata = { title: "מדיניות פרטיות" };
 
 export default function PrivacyPage() {
   return (
-    <main className="mx-auto max-w-2xl p-6 space-y-6">
+    <main id={A11Y_MAIN_CONTENT_ID} className="mx-auto max-w-2xl p-6 space-y-6">
       <h1 className="text-2xl font-bold">מדיניות פרטיות</h1>
       <p className="text-sm text-muted-foreground">גרסה מיום {PRIVACY_POLICY_VERSION}</p>
 

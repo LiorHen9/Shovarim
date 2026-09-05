@@ -3,6 +3,10 @@ import { Heebo } from "next/font/google";
 import "./globals.css";
 
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { A11yPreferencesScript } from "@/components/a11y/A11yPreferencesScript";
+import { AccessibilityToolbar } from "@/components/a11y/AccessibilityToolbar";
+import { SiteFooter } from "@/components/layout/SiteFooter";
+import { SkipLink } from "@/components/layout/SkipLink";
 import { Toaster } from "@/components/ui/sonner";
 import { getAppUrl } from "@/lib/appUrl";
 
@@ -14,7 +18,14 @@ const heebo = Heebo({
 export const metadata: Metadata = {
   // Makes the Open Graph image URL below absolute, which is what link scrapers need.
   metadataBase: new URL(getAppUrl()),
-  title: "שוברים",
+  // A template rather than a bare string. Every page in the app used to render the same
+  // <title>, which fails WCAG 2.4.2 Page Titled (Level A) — the title has to describe the
+  // page's topic or purpose, and it is the first thing a screen reader announces on
+  // navigation. axe never flagged it: its document-title rule only checks for emptiness.
+  title: {
+    default: "שוברים",
+    template: "%s · שוברים",
+  },
   description: "ניהול שוברים וכרטיסי מתנה",
   applicationName: "שוברים",
   appleWebApp: {
@@ -66,8 +77,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${heebo.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* Before anything renders, so a user who chose 150% text never sees 100% first. */}
+        <A11yPreferencesScript />
         <ThemeProvider>
+          {/* First focusable element in the document, by requirement. */}
+          <SkipLink />
           {children}
+          <SiteFooter />
+          <AccessibilityToolbar />
           <Toaster position="top-center" />
         </ThemeProvider>
       </body>

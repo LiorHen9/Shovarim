@@ -62,7 +62,13 @@
   --muted-foreground: oklch(0.556 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  /* Darkened from oklch(0.577 …) in Phase 6.A. The shadcn destructive variant renders as
+     `text-destructive` on `bg-destructive/10`, and at the old value that pairing measured
+     3.99:1 — a real WCAG 1.4.3 AA failure on every delete/block button in the app. It was
+     never caught because it passes on a plain white background (4.76:1), and the only two
+     pages scanned before now had no destructive control on them. At 0.52/0.22 it is 5.01:1
+     on the tint and 6.02:1 on white. The dark palette measured 5.30:1 and is unchanged. */
+  --destructive: oklch(0.52 0.22 27.325);
   --border: oklch(0.65 0 0);
   --input: oklch(0.65 0 0);
   --ring: oklch(0.708 0 0);
@@ -125,5 +131,101 @@
   }
   html {
     @apply font-sans;
+  }
+}
+/* ─────────────────────────────────────────────────────────────────────────────
+   Accessibility toolbar — Phase 6.A (issue #40)
+
+   Everything the toolbar does is expressed here, keyed off an attribute or a custom
+   property on <html>. Nothing reaches into individual elements, which is the difference
+   between this and a third-party overlay widget.
+
+   Placed after :root and .dark on purpose. `[data-a11y-contrast="high"]` has the same
+   specificity as `.dark` (0,1,0), so source order is what makes it win; the combined
+   `.dark[data-a11y-contrast="high"]` (0,2,0) then wins over both. This is a layer on top
+   of next-themes, not a competing theme mechanism.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Tailwind sizes both text and spacing in rem, so scaling the root font grows the whole
+   layout with the text — which is what a low-vision user actually wants. Browser zoom
+   still works on top of this; the viewport export deliberately does not lock it. */
+html {
+  font-size: calc(100% * var(--a11y-font-scale, 1));
+}
+
+[data-a11y-contrast="high"] {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0 0 0);
+  --primary: oklch(0 0 0);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(1 0 0);
+  --secondary-foreground: oklch(0 0 0);
+  /* muted-foreground is the one token in the default palette that sits near the 4.5:1
+     line (≈4.7:1 on white). In high contrast it stops being muted at all. */
+  --muted: oklch(1 0 0);
+  --muted-foreground: oklch(0 0 0);
+  --accent: oklch(0.9 0 0);
+  --accent-foreground: oklch(0 0 0);
+  --destructive: oklch(0.45 0.2 27.3);
+  --border: oklch(0 0 0);
+  --input: oklch(0 0 0);
+  --ring: oklch(0 0 0);
+}
+
+.dark[data-a11y-contrast="high"] {
+  --background: oklch(0 0 0);
+  --foreground: oklch(1 0 0);
+  --card: oklch(0 0 0);
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0 0 0);
+  --popover-foreground: oklch(1 0 0);
+  --primary: oklch(1 0 0);
+  --primary-foreground: oklch(0 0 0);
+  --secondary: oklch(0 0 0);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0 0 0);
+  --muted-foreground: oklch(1 0 0);
+  --accent: oklch(0.25 0 0);
+  --accent-foreground: oklch(1 0 0);
+  /* Lighter than the light-mode value: oklch(0.45 …) on black is only ~2.8:1. */
+  --destructive: oklch(0.75 0.15 27.3);
+  --border: oklch(1 0 0);
+  --input: oklch(1 0 0);
+  --ring: oklch(1 0 0);
+}
+
+[data-a11y-links="underline"] a {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+[data-a11y-focus="enhanced"] :focus-visible {
+  outline: 3px solid var(--foreground);
+  outline-offset: 2px;
+}
+
+/* Honour the OS setting as well as the toolbar's own switch — a user who has already told
+   their system they want less motion should not have to ask this site separately. */
+[data-a11y-motion="reduce"] *,
+[data-a11y-motion="reduce"] *::before,
+[data-a11y-motion="reduce"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

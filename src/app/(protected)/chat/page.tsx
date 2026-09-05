@@ -1,4 +1,8 @@
+import type { Metadata } from "next";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+
+// Per-page <title> (WCAG 2.4.2, Level A) — see the note in src/app/layout.tsx.
+export const metadata: Metadata = { title: "צ'אט" };
 
 export default function ChatPage() {
   return (
