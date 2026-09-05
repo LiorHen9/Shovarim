@@ -432,6 +432,26 @@ jsonPayload.event="auth_sign_in_failed"
 
 **אימות**: בדיקת בידוד (`storage.bucket()` נקרא בתוך תהליך Node טרי שמייבא **רק** את `functions/src/firebaseAdmin.ts`, בלי `src/lib/firebase/adminApp.ts`) — כי בדיקת עשן קודמת (Phase 9.4) עברה בטעות: היא ייבאה גם את `adminApp.ts` (ל-`adminAuth`/`adminDb`) **וגם** ישירות את ה-handler מ-`functions/src/adminActions.ts` **באותו תהליך**, כך ש-`getApps()[0]` ב-`firebaseAdmin.ts` מצא את ה-app שכבר אותחל ע"י `adminApp.ts` (עם bucket תקין מ-`.env.local`) ומעולם לא ניסה לאתחל בעצמו — false positive. לקח: כשבודקים קוד ש-`functions/` מייבא, לוודא בידוד תהליך אמיתי, לא רק ש"זה עבד באמולטור".
 
+## פוסט-מורטם: `sum()` באגרגציה דורש אינדקס מרוכב — דף המשתמש באדמין נפל ב-500 (2026-09-05)
+
+**מה קרה**: כניסה ל-`/admin/users/<uid>` בפרודקשן החזירה `This page couldn't load — A server error occurred` עם `ERROR 1810316195` (ה-digest של Next, לא קוד שגיאה אמיתי). הלוגים:
+
+```
+gcloud logging read 'resource.type="cloud_run_revision" AND (logName:"stderr" OR logName:"stdout")'   --project=shovarim-prod --freshness=2d --limit=40 --format='value(timestamp,textPayload)'
+```
+
+הראו `Error: 9 FAILED_PRECONDITION: The query requires an index` עם אותו `digest: '1810316195'`, והלינק ליצירת האינדקס הצביע על `claudeUsageLog` עם `uid` + `estimatedCostUsd`.
+
+**הסיבה**: `getClaudeUsageSummaryForUid` (Phase 9.5, ADR #49) מריצה `where("uid","==",uid).aggregate({ count(), sum("estimatedCostUsd") })`. ההנחה שתועדה ב-PR הייתה "פילטר שוויון על שדה בודד — האינדקס האוטומטי מספיק". זה נכון ל-`count()` אבל **לא** ל-`sum()`/`average()`: אגרגציה על ערך מספרי חייבת לקרוא את השדה המסוכם מתוך האינדקס עצמו, ולכן הצירוף `where(uid)` + `sum(estimatedCostUsd)` דורש אינדקס מרוכב `uid ASC, estimatedCostUsd ASC`.
+
+**למה זה לא נתפס קודם**: אותה סיבה כמו ב-ADR #33 — האמולטור בונה אינדקס לכל שאילתה שמגיעה אליו, ולכן `npm run test:e2e` וכל בדיקה מקומית עוברים גם כשהאינדקס חסר בפרודקשן. בנוסף, הדף נשבר רק אחרי הפריסה כי לפני Phase 9.5 הוא בכלל לא נגע ב-`claudeUsageLog`.
+
+**השלכה**: הדף כולו נפל, לא רק המספר — `getUserDetail` מריצה את האגרגציה בתוך אותו `Promise.all` עם שאר נתוני המשתמש, כך שכשל בקריאת טלמטריית עלות חסם גם מודרציה, מחיקה וקישורי ערוצים.
+
+**התיקון**: הוספת האינדקס ל-`firestore.indexes.json` (נפרס אוטומטית ב-`deploy-rules-and-functions` בדחיפה ל-`main`). בניית האינדקס אינה מיידית — עד שהוא ב-`READY` הדף ימשיך ליפול. מעקב: `gcloud firestore indexes composite list --project shovarim-prod`.
+
+**לקח**: כל `aggregate()` חדש עם `sum()`/`average()` — לוודא אינדקס מרוכב `(<שדות ה-where>, <השדה המסוכם>)` ידנית ב-`firestore.indexes.json`; "עבר באמולטור" לא מוכיח כלום לגבי אינדקסים.
+
 ## Rollback
 
 - **אפליקציה**: `firebase apphosting:rollouts:create shovarim-web --project shovarim-prod --git-commit <sha-קודם>` (backendId פוזיציוני). שימו לב: ל-CLI המותקן **אין** `apphosting:rollouts:list` — רשימת ה-rollouts הקודמים זמינה רק ב-Firebase Console → App Hosting → Rollouts, או ב-Cloud Build history.
