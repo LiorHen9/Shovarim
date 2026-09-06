@@ -25,9 +25,14 @@ export default async function AdminHomePage() {
         <p className="text-sm text-muted-foreground">צריכה כלל-מערכתית וניהול משתמשים</p>
       </div>
 
-      <Link href="/admin/users" className="inline-block underline underline-offset-2">
-        משתמשים
-      </Link>
+      <nav aria-label="מדורי ניהול" className="flex gap-4">
+        <Link href="/admin/users" className="underline underline-offset-2">
+          משתמשים
+        </Link>
+        <Link href="/admin/clubs" className="underline underline-offset-2">
+          מועדונים
+        </Link>
+      </nav>
 
       <section className="space-y-3">
         <h2 className="font-semibold">צריכת Claude API</h2>

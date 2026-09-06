@@ -5,11 +5,11 @@
 //
 // The write itself lives in src/lib/services/clubCatalog.ts, shared with the
 // Playwright fixture so there is one flattening path, not two, and the data
-// lives in scripts/clubs.data.ts so it can be imported by a test without
-// seeding anything. This file is only the runner.
+// lives in src/lib/services/clubCatalogData.ts so the admin panel and a unit
+// test can import it without seeding anything. This file is only the runner.
 import { adminDb } from "../src/lib/firebase/adminApp";
 import { seedClubCatalog } from "../src/lib/services/clubCatalog";
-import { CATALOG } from "./clubs.data";
+import { CATALOG } from "../src/lib/services/clubCatalogData";
 
 async function main() {
   const { clubs, cards } = await seedClubCatalog(adminDb, CATALOG);

@@ -7,7 +7,16 @@ export type AdminAuditAction =
   | "unblock"
   | "delete_scheduled"
   | "delete_cancelled"
-  | "delete_immediate";
+  | "delete_immediate"
+  // Club catalog (ADR #61, Phase 10.1.b). These are the first actions here
+  // whose target is not a user, which is what targetId below exists for.
+  | "club_upsert"
+  | "club_delete"
+  | "club_logo_set"
+  | "club_logo_clear"
+  | "club_card_upsert"
+  | "club_card_delete"
+  | "club_catalog_sync";
 
 // Append-only, written only via the Admin SDK. Deliberately separate from
 // auditLog (docs/DATA_MODEL.md): auditLog is per-user and travels with that
@@ -19,6 +28,14 @@ export interface AdminAuditLogEntry {
   id: string;
   adminUid: string;
   targetUid: string | null;
+  /**
+   * The non-user subject of the action — the clubs/{id} or clubCards/{id}
+   * document id — for actions on system data rather than on a person. Null for the
+   * user-targeted actions, which use targetUid. Kept as a separate field
+   * rather than overloading targetUid so "everything this admin did to this
+   * user" stays a clean query.
+   */
+  targetId: string | null;
   action: AdminAuditAction;
   reason: string | null;
   createdAt: Timestamp;

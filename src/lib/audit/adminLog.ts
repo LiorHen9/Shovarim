@@ -12,12 +12,15 @@ import type { AdminAuditAction } from "../../types/adminAuditLog";
 export async function writeAdminAuditLog(entry: {
   adminUid: string;
   targetUid?: string | null;
+  /** Non-user subject: a clubs/ or clubCards/ document id. See the type. */
+  targetId?: string | null;
   action: AdminAuditAction;
   reason?: string | null;
 }): Promise<void> {
   await adminDb.collection("adminAuditLog").add({
     adminUid: entry.adminUid,
     targetUid: entry.targetUid ?? null,
+    targetId: entry.targetId ?? null,
     action: entry.action,
     reason: entry.reason ?? null,
     createdAt: FieldValue.serverTimestamp(),

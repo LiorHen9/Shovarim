@@ -435,7 +435,17 @@ Cloud Function מתוזמן לתזכורות תפוגה, FCM push, email (Fireba
 - **ממצא צדדי — flake קיים מראש ב-`cards.spec.ts:6`**: `page.goto("/dashboard")` חורג מ-30ש׳ בהמתנה ל-`load` בערך פעם משלוש, למרות שה-snapshot מראה עמוד מרונדר במלואו. אומת שהוא **לא** נובע מהשינוי הזה — אותה תדירות בדיוק על הקוד ללא השינוי (`git stash` + build + `--repeat-each=3 --retries=0`). הריצה המלאה של 10.1 פשוט הגרילה מזל. לא טופל כאן כדי לא לערבב חקירה זרה ב-PR של הקטלוג; ה-`retries` של CI מסתירים אותו בינתיים.
 - **ניקוי צדדי**: `playwright-report/` ו-`test-results/` נוספו ל-`globalIgnores` ב-`eslint.config.mjs`. שניהם ב-`.gitignore`, אבל eslint לא קורא `.gitignore` — ולכן כל `npm run lint` אחרי `test:e2e` מקומי הטביע את הפלט באלפי אזהרות מקוד ה-viewer הארוז. CI לא נתקל בזה רק מפני שהוא מריץ lint לפני Playwright.
 
-> ⚠️ **הקטלוג בפרודקשן עדיין ריק.** ה-deploy מפרסם Rules וקוד, לא דאטה — `/clubs` יציג "אין מועדונים זמינים כרגע" עד הרצת `npm run seed:clubs` מול פרודקשן (Admin SDK, credentials של פרודקשן ולא `.env.local`).
+> ⚠️ **הקטלוג בפרודקשן עדיין ריק.** ה-deploy מפרסם Rules וקוד, לא דאטה. מאז שלב 10.1.b המילוי הראשון נעשה בלחיצה על "החלת הקטלוג המובנה" ב-`/admin/clubs`, בלי credentials כלל; `npm run seed:clubs` נשאר כחלופה ל-CLI (ואז צריך משתני `FIREBASE_ADMIN_*` אמיתיים ו**בלי** `FIRESTORE_EMULATOR_HOST`, שה-Admin SDK קורא ישירות ומנתב לפיו לאמולטור).
+
+### שלב 10.1.b — ניהול הקטלוג מפאנל האדמין ✅ הושלם (2026-09-06)
+`/admin/clubs`: הוספה, עריכה, השבתה ומחיקה של מועדונים ושל הכרטיסים שתחתיהם, והעלאת לוגו — הכל בלי commit ובלי deploy. `src/actions/adminClubs.ts` (`requireAdmin()` + Zod) → `src/lib/services/adminClubs.ts` (Admin SDK + `adminAuditLog`), אותה שרשרת בדיוק כמו חסימת משתמש. **`firestore.rules` לא נגע: `allow write: if false` על `clubs`/`clubCards` נשאר**, כי גם דפדפן של אדמין אינו כותב לקטלוג (ADR #61 החלטות 10–11).
+- **המניע היה תפעולי, לא פיצ'ר**: הזריעה הראשונה לפרודקשן דרשה חילוץ מפתח פרטי מ-Secret Manager אל קובץ `.env` על תחנת עבודה, וטקס כזה בכל הוספת מועדון. כפתור "החלת הקטלוג המובנה" מחליף אותו — `src/lib/services/clubCatalogData.ts` (עבר מ-`scripts/` ל-`src/` בשביל זה) מוחל בלחיצה.
+- **מחיקה מסורבת כשיש מחזיקים.** `deleteClubCard`/`deleteClub` מריצים `count()` על `clubMemberships` ומסרבים אם יש ולו מחזיק אחד — מחיקת דרג הייתה מייתמת בשקט את ההחזקה של מי שסימן אותו. הפאנל מציג את המספר ומשבית את הכפתור מראש, כדי שהסירוב לא יהיה הפתעה; ההשבתה (`isActive: false`) זמינה תמיד.
+- **לוגו**: `clubLogos/{clubId}` ב-Storage, `allow write: if false` — הקובץ עובר ב-Server Action (ולכן נחסם ל-512KB, מתחת למגבלת ה-1MB של Server Action) ונכתב ב-Admin SDK. ה-URL נבנה עם download token ולא `makePublic()`, שנכשל על bucket עם uniform bucket-level access.
+- **`/admin` נכנס לראשונה לכיסוי בדיקות.** לא היה E2E על הפאנל בכלל, וגם לא סריקת axe — הוא נבנה לפני מטאטא הנגישות של Phase 6.A ויושב מאחורי שער תפקיד שאף טסט לא עבר. נוסף `/e2e/grant-admin` (מוגן-אמולטור כמו `mintTestCustomToken`, ADR #18), `tests/e2e/adminClubs.spec.ts` (4 טסטים), וסריקת axe על `/admin` ו-`/admin/clubs` בשני ה-themes.
+- **ממצא נגישות שהטסט חשף**: בעמוד היו חמישה כפתורי "מחיקה" ושישה "עריכה" עם אותו שם נגיש בדיוק — locator ב-Playwright נכשל על strict-mode violation, וזו בדיוק החוויה של קורא-מסך (WCAG 2.4.6). כל כפתור קיבל `aria-label` שמנקב במה הוא נוגע.
+- **מחיקת מועדון מאחורי אישור**, מחיקת כרטיס לא — אותה פרופורציונליות כמו ב-`UserModerationSection` (רק הפעולה החמורה ביותר מבקשת אישור). מחיקת מועדון גוררת איתה את הכרטיסים שתחתיו ומאבדת שם, צבע ולוגו שהועלה; מחיקת כרטיס כבר חסומה ממילא כשיש מחזיקים.
+- אימות: `typecheck`/`lint`/`build`/`functions build` נקיים; `test:unit` 93 → **124**; `test:rules` 71; `test:e2e` 61 → **66**; axe נקי על שני עמודי האדמין בשני ה-themes.
 
 ### שלב 10.2 — שליפת ההטבות מהרשת (חסום על ADR)
 ### שלב 10.3 — הצגת ההטבות פר-משתמש

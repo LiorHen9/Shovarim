@@ -1,7 +1,16 @@
-// The consumer-club catalog itself, kept apart from scripts/seed-clubs.ts so it
-// can be imported without running a seed: tests/unit/clubCatalog.test.ts checks
-// every logoUrl against the files actually committed under public/clubs/, and
-// importing the script would have written to Firestore as a side effect.
+// The built-in consumer-club catalog: the list the system ships with.
+//
+// Deliberately not inside scripts/. It is imported by three callers — the seed
+// script (scripts/seed-clubs.ts), the admin panel's "restore built-in catalog"
+// action (src/lib/services/adminClubs.ts), and a unit test that checks every
+// logoUrl against the files actually committed under public/clubs/. Living in
+// src/ keeps it inside the app's own module graph instead of asking Next to
+// bundle a file from scripts/.
+//
+// Since Phase 10.1.b the live catalog is editable from /admin/clubs, so this
+// list is the *default*, not the source of truth: it bootstraps an empty
+// environment and restores a known-good state, and it overwrites admin edits
+// to the clubs it names when it is applied.
 //
 // Every website below was resolved by hand rather than guessed, because three
 // of the obvious spellings are wrong: חבר is hvr.co.il (not hever), בהצדעה is
@@ -12,7 +21,7 @@
 // own icon, taken from its App Store or Google Play listing (or, for חבר,
 // the apple-touch-icon on hvr.co.il), used to identify the club whose card the
 // user holds. Local copies, never hotlinks — see the note on Club.logoUrl.
-import type { SeedClub } from "../src/lib/services/clubCatalog";
+import type { SeedClub } from "./clubCatalog";
 
 // A club with a single tier still gets one card: a membership always points at
 // a card, never at a club (ADR #61). "כרטיס המועדון" rather than "רגיל" there,

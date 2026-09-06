@@ -135,6 +135,8 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 
 בניגוד ל-`categories`, **אין כאן שורות פר-משתמש ואין sentinel `ownerId: "system"`** — הקטלוג סגור: `allow read: if isSignedIn()`, `allow write: if false`. משתמש לא יכול להוסיף מועדון משלו, כי מועדון שהמערכת לא מכירה גם לא יוכל להביא לו הטבות בשכבה הבאה.
 
+**שני כותבים, ושניהם server-side** (מאז Phase 10.1.b): `scripts/seed-clubs.ts` לזריעה מהקוד, ו-`src/lib/services/adminClubs.ts` מאחורי `requireAdmin()` עבור עמוד `/admin/clubs`. `allow write: if false` נשאר בתוקף ולא השתנה — Admin SDK עוקף Rules בהגדרה, כך שגם דפדפן של אדמין לא כותב לקטלוג ישירות. אותה מחלקת אמון כמו `userModeration`.
+
 ## `clubCards/{clubCardId}`
 `src/types/clubCard.ts`. דרג כרטיס אחד תחת מועדון — מה שהמשתמש באמת מחזיק. `id` = `${clubId}-${tier}`, למשל `mifal-hapais-vip`. אותה מחלקת אמון כמו `clubs`.
 ```ts
@@ -367,12 +369,16 @@ Append-only, נכתב רק מ-Admin SDK דרך `writeAuditLog` המשותפת (`
 {
   id: string;
   adminUid: string;
-  targetUid: string | null;
-  action: "role_grant" | "role_revoke" | "block" | "unblock" | "delete_scheduled" | "delete_immediate";
+  targetUid: string | null;   // יעד שהוא משתמש
+  targetId: string | null;    // יעד שאינו משתמש: clubId או clubCardId
+  action: "role_grant" | "role_revoke" | "block" | "unblock" | "delete_scheduled" | "delete_immediate"
+        | "club_upsert" | "club_delete" | "club_logo_set" | "club_logo_clear"
+        | "club_card_upsert" | "club_card_delete" | "club_catalog_sync";
   reason: string | null;
   createdAt: Timestamp;
 }
 ```
+`targetId` נוסף ב-Phase 10.1.b, כשעריכת קטלוג המועדונים הפכה לפעולת אדמין: זו הפעולה הראשונה כאן שהיעד שלה אינו אדם. שדה נפרד ולא העמסה על `targetUid`, כדי ש"כל מה שהאדמין הזה עשה למשתמש הזה" יישאר שאילתה נקייה.
 Append-only, נכתב רק מ-Admin SDK. נפרד במכוון מ-`auditLog` הקיים למעלה: `auditLog` הוא per-user (מיוצא עם המשתמש, נשאר גם אחרי מחיקתו) ולא בנוי לשאילתות חוצות-משתמשים; `adminAuditLog` הוא הלדג'ר הייעודי לפעולות שאדמין מבצע **על** משתמשים — נכתב לפני כל mutation (כמו `deleteUserAccount` הקיים). `firestore.rules` חוסם קריאה וכתיבה מ-client לחלוטין, כולל לאדמין (תצוגה עתידית בפאנל תעבור דרך Server Action).
 
 ## `userModeration/{uid}`
