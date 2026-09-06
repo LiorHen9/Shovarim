@@ -84,8 +84,16 @@ test("an admin can create a club with a tier, publish it, and delete it again", 
   // Deleting is only offered while nobody holds the tier, which is exactly the
   // state here — and it leaves the shared emulator catalog as it was found.
   await gotoAdminClubs(page);
+
+  // Every destructive action on the page confirms first, so each one is two
+  // steps: the button that arms it, then the button inside the dialog.
+  await row.getByRole("button", { name: `מחיקת הכרטיס זהב ב${clubName}` }).click();
+  const tierConfirm = page.getByRole("dialog");
+  await expect(tierConfirm.getByText("אינה ניתנת לביטול", { exact: false })).toBeVisible();
+  await tierConfirm.getByRole("button", { name: "מחיקה" }).click();
+  await expect(row.getByText("אין כרטיסים", { exact: false })).toBeVisible();
+
   await page.getByRole("button", { name: `מחיקת ${clubName}` }).click();
-  // Deleting a club is the one action here behind a confirmation.
   const confirm = page.getByRole("dialog");
   await expect(confirm.getByText("אינה ניתנת לביטול", { exact: false })).toBeVisible();
   await confirm.getByRole("button", { name: "מחיקה" }).click();
@@ -125,7 +133,7 @@ test("a tier that users hold cannot be deleted", async ({ page }) => {
   ).toBeDisabled();
 });
 
-test("an admin can upload a club logo", async ({ page }) => {
+test("an admin can upload a club logo and remove it again", async ({ page }) => {
   await signInAsAdmin(page);
   await seedCatalog(page);
   await gotoAdminClubs(page);
@@ -141,4 +149,13 @@ test("an admin can upload a club logo", async ({ page }) => {
   // A Storage download URL, not a /clubs/ path: the bytes went through the
   // Server Action and the Admin SDK, which is the only writer clubLogos/ has.
   await expect(logo).toHaveAttribute("src", /\/v0\/b\/.*\/o\/clubLogos%2F.*token=/);
+
+  // Removal confirms too, and the wording says the file is deleted without
+  // calling it irreversible — re-uploading is the remedy. Also restores the
+  // shared emulator fixture to the state the test found it in.
+  await row.getByRole("button", { name: "הסרת הלוגו של מועדון בדיקה חד-כרטיסי" }).click();
+  const confirm = page.getByRole("dialog");
+  await expect(confirm.getByRole("button", { name: "הסרה" })).toBeVisible();
+  await confirm.getByRole("button", { name: "הסרה" }).click();
+  await expect(row.locator("img")).toHaveCount(0);
 });

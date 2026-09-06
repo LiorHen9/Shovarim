@@ -27,6 +27,18 @@ import type { AdminClub, AdminClubCard } from "@/lib/services/adminClubs";
 import { ClubFormDialog } from "./ClubFormDialog";
 import { ClubCardFormDialog } from "./ClubCardFormDialog";
 
+// One destructive action waiting for a confirmation. `key` is the same busy key
+// the action would have used unconfirmed, so the button that opened the dialog
+// stays disabled while the dialog's own button runs.
+interface PendingConfirm {
+  key: string;
+  title: string;
+  body: string;
+  confirmLabel: string;
+  success: string;
+  action: () => Promise<{ error: string } | object>;
+}
+
 // The catalog editor (docs/ROADMAP.md Phase 10.1.b). Everything here writes
 // through Server Actions that check adminRoles server-side — the catalog stays
 // `allow write: if false` for every browser, so nothing on this page talks to
@@ -42,13 +54,14 @@ export function ClubCatalogManager({ catalog }: { catalog: AdminClub[] }) {
     club: AdminClub | null;
     card: AdminClubCard | null;
   }>({ open: false, club: null, card: null });
-  // Deleting a club takes its tiers with it and cannot be undone. The service
-  // already refuses when anyone holds a tier, so the blast radius is limited to
-  // a club nobody uses — but a misclick still throws away a name, a colour and
-  // an uploaded logo, which is enough to be worth one confirmation. Tier
-  // deletes are not gated this way on purpose: same proportionality as
-  // UserModerationSection, where only the highest-impact action confirms.
-  const [pendingDelete, setPendingDelete] = useState<AdminClub | null>(null);
+  // Every destructive action on this page goes through this one dialog. They
+  // share a shape — the thing named in the title, one sentence on what is lost,
+  // and a verb on the button — and three near-identical dialogs would have
+  // drifted apart. The service already refuses to delete anything a user holds,
+  // so the blast radius is always a row nobody uses; the confirmation is here
+  // because a misclick still throws away a name, a colour or an uploaded file
+  // with no undo.
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
   // One helper for every mutation on this page: they all show a toast, refresh
@@ -109,7 +122,7 @@ export function ClubCatalogManager({ catalog }: { catalog: AdminClub[] }) {
           {catalog.map((club) => (
             <li key={club.id} className="rounded-lg border p-4">
               <div className="flex flex-wrap items-start gap-3">
-                <ClubLogoCell club={club} busy={busy} run={run} />
+                <ClubLogoCell club={club} busy={busy} run={run} onConfirm={setPendingConfirm} />
 
                 <div className="min-w-40 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -145,7 +158,20 @@ export function ClubCatalogManager({ catalog }: { catalog: AdminClub[] }) {
                     size="sm"
                     aria-label={`מחיקת ${club.name}`}
                     disabled={busy === `del-${club.id}`}
-                    onClick={() => setPendingDelete(club)}
+                    onClick={() =>
+                      setPendingConfirm({
+                        key: `del-${club.id}`,
+                        title: `למחוק את ${club.name}?`,
+                        body: `${
+                          club.cards.length
+                            ? `הפעולה תמחק גם ${club.cards.length} כרטיסים תחת המועדון, ואינה ניתנת לביטול.`
+                            : "הפעולה אינה ניתנת לביטול."
+                        } כדי להוריד מועדון מהתצוגה בלי למחוק אותו, אפשר לסמן אותו כלא-פעיל בעריכה.`,
+                        confirmLabel: "מחיקה",
+                        success: "המועדון נמחק",
+                        action: () => deleteClubAction(club.id),
+                      })
+                    }
                   >
                     מחיקה
                   </Button>
@@ -184,11 +210,15 @@ export function ClubCatalogManager({ catalog }: { catalog: AdminClub[] }) {
                           : undefined
                       }
                       onClick={() =>
-                        run(
-                          `delcard-${card.id}`,
-                          () => deleteClubCardAction(club.id, card.id.slice(club.id.length + 1)),
-                          "הכרטיס נמחק"
-                        )
+                        setPendingConfirm({
+                          key: `delcard-${card.id}`,
+                          title: `למחוק את הכרטיס ${card.name}?`,
+                          body: `הכרטיס יוסר מ${club.name} ויפסיק להופיע למשתמשים, והפעולה אינה ניתנת לביטול. כדי להסתיר כרטיס בלי למחוק אותו, אפשר לסמן אותו כלא-פעיל בעריכה.`,
+                          confirmLabel: "מחיקה",
+                          success: "הכרטיס נמחק",
+                          action: () =>
+                            deleteClubCardAction(club.id, card.id.slice(club.id.length + 1)),
+                        })
                       }
                     >
                       מחיקה
@@ -218,32 +248,30 @@ export function ClubCatalogManager({ catalog }: { catalog: AdminClub[] }) {
         </ul>
       )}
 
-      <Dialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+      <Dialog
+        open={pendingConfirm !== null}
+        onOpenChange={(open) => !open && setPendingConfirm(null)}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>למחוק את {pendingDelete?.name}?</DialogTitle>
-            <DialogDescription>
-              {pendingDelete?.cards.length
-                ? `הפעולה תמחק גם ${pendingDelete.cards.length} כרטיסים תחת המועדון, ואינה ניתנת לביטול.`
-                : "הפעולה אינה ניתנת לביטול."}{" "}
-              כדי להוריד מועדון מהתצוגה בלי למחוק אותו, אפשר לסמן אותו כלא-פעיל בעריכה.
-            </DialogDescription>
+            <DialogTitle>{pendingConfirm?.title}</DialogTitle>
+            <DialogDescription>{pendingConfirm?.body}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingDelete(null)}>
+            <Button variant="outline" onClick={() => setPendingConfirm(null)}>
               ביטול
             </Button>
             <Button
               variant="destructive"
-              disabled={busy?.startsWith("del-")}
+              disabled={busy === pendingConfirm?.key}
               onClick={async () => {
-                const club = pendingDelete;
-                if (!club) return;
-                await run(`del-${club.id}`, () => deleteClubAction(club.id), "המועדון נמחק");
-                setPendingDelete(null);
+                const pending = pendingConfirm;
+                if (!pending) return;
+                await run(pending.key, pending.action, pending.success);
+                setPendingConfirm(null);
               }}
             >
-              מחיקה
+              {pendingConfirm?.confirmLabel}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -273,10 +301,12 @@ function ClubLogoCell({
   club,
   busy,
   run,
+  onConfirm,
 }: {
   club: AdminClub;
   busy: string | null;
   run: (key: string, action: () => Promise<{ error: string } | object>, success: string) => Promise<void>;
+  onConfirm: (pending: PendingConfirm) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const key = `logo-${club.id}`;
@@ -347,7 +377,19 @@ function ClubLogoCell({
           className="h-auto p-0 text-xs underline"
           aria-label={`הסרת הלוגו של ${club.name}`}
           disabled={busy === key}
-          onClick={() => void run(key, () => clearClubLogoAction(club.id), "הלוגו הוסר")}
+          onClick={() =>
+            onConfirm({
+              key,
+              // Deliberately not "אינה ניתנת לביטול" like the two deletes: the
+              // file is gone, but the remedy is uploading it again, and claiming
+              // otherwise would make this read as heavy as deleting the club.
+              title: `להסיר את הלוגו של ${club.name}?`,
+              body: "הקובץ יימחק מהאחסון, ובמקומו יוצג אריח עם האות הראשונה של שם המועדון. אפשר להעלות לוגו חדש בכל רגע.",
+              confirmLabel: "הסרה",
+              success: "הלוגו הוסר",
+              action: () => clearClubLogoAction(club.id),
+            })
+          }
         >
           הסרה
         </Button>
