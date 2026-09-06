@@ -10,8 +10,23 @@ export interface Club {
   id: string;
   name: string;
   description: string;
-  /** Official club site, linked from the UI. */
-  website: string;
+  /**
+   * Official club site, linked from the UI. Nullable because not every club
+   * has a live one — אשמורת's domain currently serves an empty stub and the
+   * teachers' union domain is suspended, and a dead "לאתר המועדון" link is
+   * worse than no link at all.
+   */
+  website: string | null;
+  /**
+   * Path to a logo committed under `public/clubs/`, e.g. "/clubs/hot.jpg".
+   * Deliberately a local path and never a remote URL: hotlinking the clubs'
+   * own CDNs would make every visitor's browser contact seven third parties,
+   * which is a new recipient to disclose in docs/PRIVACY.md and a
+   * PRIVACY_POLICY_VERSION bump (ADR #59) for a decorative image. Null renders
+   * the letter tile in ClubsGrid instead, so a missing file is never a
+   * broken-image icon.
+   */
+  logoUrl: string | null;
   /** Hex, for the group's accent bar — same role as Category.color. */
   color: string;
   /** Retires a club from the catalog without deleting anyone's memberships. */

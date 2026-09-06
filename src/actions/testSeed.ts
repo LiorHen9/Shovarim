@@ -11,12 +11,19 @@ import { seedClubCatalog, type SeedClub } from "@/lib/services/clubCatalog";
 // A fixture rather than the real catalog from scripts/seed-clubs.ts: the test
 // asserts that tiers under one club are independent, and it should not start
 // failing the day someone adds a club or renames a tier in production data.
+//
+// The two rows differ in more than tier count on purpose: e2e-multi carries a
+// logo and a site, e2e-single carries neither, so a run exercises both the
+// image and the letter-tile branch of ClubLogo and both sides of the optional
+// "לאתר המועדון" link. The logo path is a file genuinely committed under
+// public/clubs/ — a fixture-only path would 404 and prove nothing.
 const TEST_CATALOG: SeedClub[] = [
   {
     id: "e2e-multi",
     name: "מועדון בדיקה רב-כרטיסים",
     description: "מועדון לבדיקות אוטומטיות.",
     website: "https://example.com",
+    logoUrl: "/clubs/behatsdaa.png",
     color: "#0ea5e9",
     cards: [
       { id: "regular", name: "רגיל", description: "" },
@@ -27,7 +34,8 @@ const TEST_CATALOG: SeedClub[] = [
     id: "e2e-single",
     name: "מועדון בדיקה חד-כרטיסי",
     description: "",
-    website: "https://example.com",
+    website: null,
+    logoUrl: null,
     color: "#16a34a",
     cards: [{ id: "regular", name: "רגיל", description: "" }],
   },

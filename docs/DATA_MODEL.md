@@ -118,18 +118,21 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 ```
 
 ## `clubs/{clubId}`
-`src/types/club.ts`. קטלוג מועדוני הצרכנות, נזרע ב-`scripts/seed-clubs.ts` (`npm run seed:clubs`) דרך Admin SDK. ראו `docs/DECISIONS.md` ADR #61.
+`src/types/club.ts`. קטלוג מועדוני הצרכנות, נזרע ב-`scripts/seed-clubs.ts` (`npm run seed:clubs`) דרך Admin SDK. הנתונים עצמם ב-`scripts/clubs.data.ts`, מודול נפרד כדי שאפשר יהיה לייבא אותו בטסט בלי לזרוע (`tests/unit/clubCatalog.test.ts`). ראו `docs/DECISIONS.md` ADR #61.
 ```ts
 {
   id: string;            // slug: "mifal-hapais"
-  name: string;          // "מועדון מפעל הפיס"
+  name: string;          // "מפעל הפיס"
   description: string;
-  website: string;       // אתר המועדון הרשמי, מקושר מה-UI
-  color: string;         // hex, לפס הצבע של הקבוצה
+  website: string | null;  // אתר המועדון הרשמי, מקושר מה-UI; null = אין אתר חי
+  logoUrl: string | null;  // נתיב מקומי תחת public/clubs/; null = אריח-אות בצבע המועדון
+  color: string;         // hex, לפס הצבע של הקבוצה ולאריח הנפילה
   isActive: boolean;     // הורדת מועדון מהקטלוג בלי למחוק חברויות קיימות
   sortOrder: number;
 }
 ```
+`logoUrl` הוא **תמיד נתיב מקומי, לעולם לא URL חיצוני**: hotlink ללוגו מה-CDN של המועדון היה גורם לדפדפן של כל מבקר לפנות לשבעה צדדים שלישיים — נמענים חדשים שחייבים גילוי ב-`docs/PRIVACY.md` ו-bump ל-`PRIVACY_POLICY_VERSION` (ADR #59), עבור תמונה דקורטיבית. `website` nullable כי לא לכל מועדון יש אתר חי (לאשמורת אין), וקישור מת גרוע מהיעדר קישור.
+
 בניגוד ל-`categories`, **אין כאן שורות פר-משתמש ואין sentinel `ownerId: "system"`** — הקטלוג סגור: `allow read: if isSignedIn()`, `allow write: if false`. משתמש לא יכול להוסיף מועדון משלו, כי מועדון שהמערכת לא מכירה גם לא יוכל להביא לו הטבות בשכבה הבאה.
 
 ## `clubCards/{clubCardId}`

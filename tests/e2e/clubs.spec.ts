@@ -125,6 +125,34 @@ test("marked club cards appear in the data export, with readable names", async (
   });
 });
 
+// The catalog carries a logo and a site per club, and both are optional. The
+// fixture has one club with each and one with neither, so this covers all four
+// states in a single load — including the one that only shows up in production:
+// a logoUrl that points at a file nobody committed still renders an <img>, so
+// the assertion is on naturalWidth, not on the element being there.
+test("a club shows its logo and site link only when the catalog carries them", async ({ page }) => {
+  const uid = `e2e-${randomUUID()}`;
+  await signInAsTestUser(page, { uid, email: `${uid}@example.com`, name: "בודק אוטומטי" });
+  await seedCatalog(page);
+  await gotoClubs(page);
+
+  const withAssets = page.getByRole("group", { name: "מועדון בדיקה רב-כרטיסים" });
+  const logo = withAssets.locator("img");
+  // Decorative on purpose: the club name is text right beside it, so a described
+  // logo would make a screen reader announce the club twice.
+  await expect(logo).toHaveAttribute("alt", "");
+  await expect
+    .poll(() => logo.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBeGreaterThan(0);
+  await expect(
+    withAssets.getByRole("link", { name: "לאתר של מועדון בדיקה רב-כרטיסים" })
+  ).toBeVisible();
+
+  const withNeither = page.getByRole("group", { name: "מועדון בדיקה חד-כרטיסי" });
+  await expect(withNeither.locator("img")).toHaveCount(0);
+  await expect(withNeither.getByRole("link")).toHaveCount(0);
+});
+
 test("a signed-out visitor is redirected away from /clubs", async ({ page }) => {
   // Deliberately a bare goto, not gotoClubs: the whole point is that /clubs
   // never renders for this visitor.

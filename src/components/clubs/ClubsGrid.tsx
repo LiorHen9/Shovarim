@@ -9,6 +9,43 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClubCatalog } from "@/hooks/useClubCatalog";
 import { useClubMemberships } from "@/hooks/useClubMemberships";
+import type { Club } from "@/types/club";
+
+// The club's own mark, on a white plate that does not follow the theme. These
+// are third-party logos drawn for their own backgrounds, and the app has both a
+// dark theme and a high-contrast mode (src/app/globals.css); letting either
+// reach the mark would show the white-background ones as pale squares on dark,
+// or recolour a mark that is not ours to recolour. Fixed plate, unaltered logo.
+//
+// alt="" on purpose: the club name is rendered as text right beside it, and a
+// described logo would make a screen reader announce the club twice.
+function ClubLogo({ club }: { club: Club }) {
+  if (!club.logoUrl) {
+    // No logo on file — a coloured initial rather than a broken-image icon, so
+    // adding a club to the catalog never depends on also finding artwork.
+    return (
+      <span
+        aria-hidden="true"
+        className="grid size-10 shrink-0 place-content-center rounded-md text-base font-bold text-white"
+        style={{ backgroundColor: club.color }}
+      >
+        {club.name.slice(0, 1)}
+      </span>
+    );
+  }
+
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element -- a fixed 40px local
+       asset in public/; next/image is not used anywhere in this repo. */
+    <img
+      src={club.logoUrl}
+      alt=""
+      width={40}
+      height={40}
+      className="size-10 shrink-0 rounded-md bg-white object-contain p-px"
+    />
+  );
+}
 
 export function ClubsGrid({ uid }: { uid: string }) {
   const { catalog, loading: catalogLoading, error: catalogError } = useClubCatalog();
@@ -110,20 +147,26 @@ export function ClubsGrid({ uid }: { uid: string }) {
             className="rounded-lg border border-s-4 p-4"
             style={{ borderInlineStartColor: club.color }}
           >
-            <legend className="px-1 font-semibold">{club.name}</legend>
+            <legend className="flex items-center gap-2 px-1 font-semibold">
+              <ClubLogo club={club} />
+              {club.name}
+            </legend>
 
             {club.description && (
               <p className="text-sm text-muted-foreground">{club.description}</p>
             )}
-            <a
-              href={club.website}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`לאתר של ${club.name}`}
-              className="text-sm underline underline-offset-2"
-            >
-              לאתר המועדון
-            </a>
+            {/* Not every club has a live site (אשמורת) — no link beats a dead one. */}
+            {club.website && (
+              <a
+                href={club.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`לאתר של ${club.name}`}
+                className="mt-1 inline-block text-sm underline underline-offset-2"
+              >
+                לאתר המועדון
+              </a>
+            )}
 
             <div className="mt-3 space-y-2">
               {club.cards.map((card) => {
