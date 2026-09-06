@@ -37,6 +37,7 @@ export async function deleteUserAccount(uid: string): Promise<void> {
     ownedListsSnap,
     ownedCardsSnap,
     ownedCategoriesSnap,
+    ownedClubMembershipsSnap,
     otherMembershipsSnap,
     channelLinksSnap,
     channelLinkCodesSnap,
@@ -46,6 +47,9 @@ export async function deleteUserAccount(uid: string): Promise<void> {
     db.collection("cardLists").where("ownerId", "==", uid).get(),
     db.collection("cards").where("ownerId", "==", uid).get(),
     db.collection("categories").where("ownerId", "==", uid).get(),
+    // ADR #61. The clubs/clubCards catalog itself is shared and stays; only
+    // this user's declarations of what they hold are theirs to erase.
+    db.collection("clubMemberships").where("ownerId", "==", uid).get(),
     // Deliberately unfiltered by status — an erasure must drop pending
     // invitations too, not only accepted memberships. Same single-field
     // collection-group shape as the export (src/lib/services/export.ts), and it
@@ -72,6 +76,7 @@ export async function deleteUserAccount(uid: string): Promise<void> {
   await Promise.all(ownedListsSnap.docs.map((listDoc) => db.recursiveDelete(listDoc.ref)));
   await Promise.all(ownedCardsSnap.docs.map((cardDoc) => db.recursiveDelete(cardDoc.ref)));
   await Promise.all(ownedCategoriesSnap.docs.map((categoryDoc) => categoryDoc.ref.delete()));
+  await Promise.all(ownedClubMembershipsSnap.docs.map((doc) => doc.ref.delete()));
   await Promise.all(otherMembershipsSnap.docs.map((memberDoc) => memberDoc.ref.delete()));
   await Promise.all(
     [

@@ -55,3 +55,6 @@
 | פאנל ניהול — מעקב שימוש/עלות Claude API | ✅ הושלם | 2026-09-02, Phase 9.5 — `claudeUsageLog` (רשומה לכל `messages.create()`, נכתבת מ-`runAgentTurn`), `estimateCostUsd` (`src/lib/mcp/pricing.ts`), סיכום פר-משתמש ב-`/admin/users/[uid]`. ראו `docs/DECISIONS.md` ADR #49 |
 | פאנל ניהול — סקירת צריכה כלל-מערכתית + בנק קרדיטים | ✅ הושלם | 2026-09-05, Phase 9.6 שכבה 1 — `/admin` מציג עלות וקריאות ב-4 חלונות זמן (24ש׳/7י/חודש נוכחי/מאז ומתמיד) דרך Firestore aggregations, ומתחתם יתרת בנק הקרדיטים המשוערת (`CLAUDE_CREDIT_BANK_USD`/`BALANCE_USD`/`BALANCE_AT`) — בנק משולם מראש שלא מתאפס בכל חודש. ראו `docs/DECISIONS.md` ADR #50 |
 | פאנל ניהול — אנליטיקס בקנה מידה (BigQuery/GA4) | ⏳ מתוכנן | Phase 9.6 שכבות 2–3, ראו `docs/ROADMAP.md` |
+| מועדוני חברות — סימון עצמי של כרטיסי מועדון | ✅ הושלם | 2026-09-06, Phase 10.1 — `/clubs`, קטלוג דו-שכבתי `clubs`/`clubCards` (`npm run seed:clubs`, Admin SDK בלבד) ו-`clubMemberships` עם מזהה דטרמיניסטי `${uid}_${clubCardId}`. נכלל בייצוא ובמחיקת חשבון. ראו `docs/DECISIONS.md` ADR #61 |
+| מועדוני חברות — שליפת הטבות מהרשת והצגתן | ⏳ מתוכנן | Phase 10.2–10.3. **חסום** על ההכרעה הפתוחה של issue #50 (allowlist מול fetch מוקשח + SSRF), שתיכתב כ-ADR לפני מימוש |
+| מועדוני חברות — שיחה על הטבות עם הבוט | ⏳ מתוכנן | Phase 10.4, אחרי שיש הטבות להציג |

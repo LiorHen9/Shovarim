@@ -609,6 +609,156 @@ describe("categories", () => {
   });
 });
 
+describe("club catalog (clubs, clubCards)", () => {
+  async function seedCatalog() {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "clubs/mifal-hapais"), {
+        id: "mifal-hapais",
+        name: "מועדון מפעל הפיס",
+        isActive: true,
+        sortOrder: 1,
+      });
+      await setDoc(doc(db, "clubCards/mifal-hapais-vip"), {
+        id: "mifal-hapais-vip",
+        clubId: "mifal-hapais",
+        name: "VIP",
+        isActive: true,
+        sortOrder: 2,
+      });
+    });
+  }
+
+  it("any signed-in user can read the catalog", async () => {
+    await seedCatalog();
+    const dbB = testEnv.authenticatedContext(USER_B).firestore();
+    await assertSucceeds(getDoc(doc(dbB, "clubs/mifal-hapais")));
+    await assertSucceeds(getDocs(collection(dbB, "clubCards")));
+  });
+
+  it("an unauthenticated visitor cannot read the catalog", async () => {
+    await seedCatalog();
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "clubs/mifal-hapais")));
+  });
+
+  it("client cannot write a club", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, "clubs/fake-club"), { id: "fake-club", name: "מועדון מזויף", isActive: true })
+    );
+  });
+
+  it("client cannot write a club card", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, "clubCards/fake-card"), {
+        id: "fake-card",
+        clubId: "mifal-hapais",
+        name: "מזויף",
+        isActive: true,
+      })
+    );
+  });
+});
+
+describe("clubMemberships", () => {
+  function membership(uid: string, clubCardId: string) {
+    return {
+      id: `${uid}_${clubCardId}`,
+      ownerId: uid,
+      clubCardId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+  }
+
+  it("owner can mark a club card as held", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertSucceeds(
+      setDoc(
+        doc(dbA, `clubMemberships/${USER_A}_mifal-hapais-vip`),
+        membership(USER_A, "mifal-hapais-vip")
+      )
+    );
+  });
+
+  // The doc-id invariant is what makes a duplicate holding unrepresentable and
+  // lets the client toggle with a blind set/delete. Without it the same card
+  // could be marked under any number of auto-ids.
+  it("cannot create a membership whose doc id does not match uid_clubCardId", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, "clubMemberships/some-other-id"), membership(USER_A, "mifal-hapais-vip"))
+    );
+  });
+
+  it("cannot create a membership whose id encodes a different card than the payload", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(
+        doc(dbA, `clubMemberships/${USER_A}_mifal-hapais-regular`),
+        membership(USER_A, "mifal-hapais-vip")
+      )
+    );
+  });
+
+  it("cannot create a membership owned by another user", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(
+        doc(dbA, `clubMemberships/${USER_B}_mifal-hapais-vip`),
+        membership(USER_B, "mifal-hapais-vip")
+      )
+    );
+  });
+
+  it("cannot read another user's memberships", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        context.firestore().doc(`clubMemberships/${USER_A}_mifal-hapais-vip`),
+        membership(USER_A, "mifal-hapais-vip")
+      );
+    });
+
+    const dbB = testEnv.authenticatedContext(USER_B).firestore();
+    await assertFails(getDoc(doc(dbB, `clubMemberships/${USER_A}_mifal-hapais-vip`)));
+  });
+
+  // Nothing in the document is mutable: changing your mind is a delete, and
+  // re-marking is a fresh create, which keeps createdAt honest.
+  it("owner cannot update an existing membership", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        context.firestore().doc(`clubMemberships/${USER_A}_mifal-hapais-vip`),
+        membership(USER_A, "mifal-hapais-vip")
+      );
+    });
+
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      updateDoc(doc(dbA, `clubMemberships/${USER_A}_mifal-hapais-vip`), {
+        clubCardId: "mifal-hapais-regular",
+      })
+    );
+  });
+
+  it("owner can delete their own membership, but another user cannot", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        context.firestore().doc(`clubMemberships/${USER_A}_mifal-hapais-vip`),
+        membership(USER_A, "mifal-hapais-vip")
+      );
+    });
+
+    const dbB = testEnv.authenticatedContext(USER_B).firestore();
+    await assertFails(deleteDoc(doc(dbB, `clubMemberships/${USER_A}_mifal-hapais-vip`)));
+
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertSucceeds(deleteDoc(doc(dbA, `clubMemberships/${USER_A}_mifal-hapais-vip`)));
+  });
+});
+
 describe("server-managed collections (reminders, auditLog)", () => {
   it("client cannot write to reminders even for their own uid", async () => {
     const dbA = testEnv.authenticatedContext(USER_A).firestore();
