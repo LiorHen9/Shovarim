@@ -19,7 +19,9 @@ export interface SeedClub {
   id: string;
   name: string;
   description: string;
-  website: string;
+  website: string | null;
+  /** Local path under public/clubs/, or null for the letter-tile fallback. */
+  logoUrl: string | null;
   color: string;
   cards: SeedClubCard[];
 }
@@ -41,6 +43,7 @@ export async function seedClubCatalog(
       name: club.name,
       description: club.description,
       website: club.website,
+      logoUrl: club.logoUrl,
       color: club.color,
       isActive: true,
       sortOrder: clubIndex + 1,

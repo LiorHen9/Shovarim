@@ -27,6 +27,12 @@ const eslintConfig = defineConfig([
     // functions/ is a separate TypeScript project (its own tsconfig/package.json,
     // see docs/DECISIONS.md #24) — only its compiled output needs excluding here.
     "functions/lib/**",
+    // Playwright's own output. Both are gitignored, but eslint does not read
+    // .gitignore, so after any local `npm run test:e2e` a subsequent `npm run
+    // lint` drowned in thousands of warnings from the bundled report viewer.
+    // CI never saw it only because it lints before it runs Playwright.
+    "playwright-report/**",
+    "test-results/**",
   ]),
 ]);
 
