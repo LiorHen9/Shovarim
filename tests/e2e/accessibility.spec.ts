@@ -71,6 +71,8 @@ test("signed-in pages have distinct, descriptive titles", async ({ page }) => {
   await expect(page).toHaveTitle("הכרטיסים שלי · שוברים");
   await page.goto("/settings");
   await expect(page).toHaveTitle("הגדרות · שוברים");
+  await page.goto("/clubs");
+  await expect(page).toHaveTitle("מועדוני חברות · שוברים");
 });
 
 // The statement has to be findable from anywhere, not only from the page that links it.
@@ -187,9 +189,16 @@ test("the remaining signed-in routes have no WCAG 2.1 AA violations", async ({ p
   // axe measured that blended colour at 3.69:1 and reported a violation — but WCAG 1.4.3
   // exempts inactive components outright, so the finding was an artefact of scanning a
   // transient state, not something to "fix" in the palette.
+  // /clubs renders "אין מועדונים זמינים כרגע." until the catalog exists, and an
+  // empty page proves nothing about the fieldset/legend grouping — so seed it
+  // first, the same way tests/e2e/clubs.spec.ts does.
+  await page.goto("/e2e/seed-clubs");
+  await expect(page.getByRole("status")).toHaveText("seeded");
+
   const routes: [path: string, heading: string, settled?: string][] = [
     ["/cards", "הכרטיסים שלי"],
     ["/cards/new", "כרטיס חדש"],
+    ["/clubs", "מועדוני חברות"],
     ["/settings", "הגדרות", "טוען ערוצים מקושרים…"],
     ["/chat", "צ'אט"],
   ];

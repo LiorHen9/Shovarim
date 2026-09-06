@@ -9,6 +9,9 @@ import type { CardListMember, ListMemberRole, ListMemberStatus } from "@/types/c
 import type { GiftCard, CardStatus } from "@/types/card";
 import type { UsageLogEntry } from "@/types/usageLog";
 import type { Category } from "@/types/category";
+import type { Club } from "@/types/club";
+import type { ClubCard } from "@/types/clubCard";
+import type { ClubMembership } from "@/types/clubMembership";
 import type { ChannelLinkSummary } from "@/types/channelLink";
 import { listChannelLinksForUid } from "@/lib/services/channelLinks";
 import { listChatSessionsForUid, type ExportedChatSession } from "@/lib/services/chatSessions";
@@ -35,6 +38,20 @@ interface SerializedListMembership {
   listId: string;
   role: ListMemberRole;
   status: ListMemberStatus;
+  createdAt: string | null;
+}
+
+// The stored document holds only clubCardId (ADR #61 — the club is derived
+// from the catalog, never written by the client). The catalog is resolved here
+// so the export reads as "מועדון מפעל הפיס · VIP" rather than a pair of slugs:
+// a right-to-access artifact is for a person to read. Names are null when the
+// catalog entry has since been removed — the holding is still the user's data
+// and is exported either way.
+interface SerializedClubMembership {
+  clubCardId: string;
+  clubId: string | null;
+  clubName: string | null;
+  cardName: string | null;
   createdAt: string | null;
 }
 
@@ -96,6 +113,7 @@ export interface UserDataExport {
   listMemberships: SerializedListMembership[];
   cards: SerializedCard[];
   categories: Category[];
+  clubMemberships: SerializedClubMembership[];
   // Phase 5.5 (ADR #29). Keyed by channelKey rather than uid, so it is not
   // reachable through the ownership queries above and needs its own pass — the
   // same reason functions/src/accountDeletion.ts queries it separately.
@@ -122,24 +140,32 @@ export interface UserDataExport {
 // (src/lib/crypto/fieldEncryption.ts) and decrypted below so the exported
 // JSON is human-readable, not ciphertext.
 export async function buildUserDataExport(uid: string): Promise<UserDataExport> {
-  const [userSnap, consentSnap, ownedListsSnap, membershipsSnap, ownedCardsSnap, categoriesSnap] =
-    await Promise.all([
-      adminDb.collection("users").doc(uid).get(),
-      adminDb.collection("consents").doc(uid).get(),
-      adminDb.collection("cardLists").where("ownerId", "==", uid).get(),
-      // No status filter, unlike every other members query (useCardLists,
-      // usePendingInvitations, cardLists.ts, cards.ts) — an export owes the
-      // user their pending invitations too, not just accepted ones. That makes
-      // it a single-field collection-group query, and Firestore does NOT create
-      // those automatically the way it does for collection scope: it needs the
-      // explicit COLLECTION_GROUP override on members.memberUid in
-      // firestore.indexes.json. Without it every export failed in production
-      // with FAILED_PRECONDITION while the emulator passed, because the
-      // emulator invents an index for whatever it is asked (ADR #33).
-      adminDb.collectionGroup("members").where("memberUid", "==", uid).get(),
-      adminDb.collection("cards").where("ownerId", "==", uid).get(),
-      adminDb.collection("categories").where("ownerId", "==", uid).get(),
-    ]);
+  const [
+    userSnap,
+    consentSnap,
+    ownedListsSnap,
+    membershipsSnap,
+    ownedCardsSnap,
+    categoriesSnap,
+    clubMembershipsSnap,
+  ] = await Promise.all([
+    adminDb.collection("users").doc(uid).get(),
+    adminDb.collection("consents").doc(uid).get(),
+    adminDb.collection("cardLists").where("ownerId", "==", uid).get(),
+    // No status filter, unlike every other members query (useCardLists,
+    // usePendingInvitations, cardLists.ts, cards.ts) — an export owes the
+    // user their pending invitations too, not just accepted ones. That makes
+    // it a single-field collection-group query, and Firestore does NOT create
+    // those automatically the way it does for collection scope: it needs the
+    // explicit COLLECTION_GROUP override on members.memberUid in
+    // firestore.indexes.json. Without it every export failed in production
+    // with FAILED_PRECONDITION while the emulator passed, because the
+    // emulator invents an index for whatever it is asked (ADR #33).
+    adminDb.collectionGroup("members").where("memberUid", "==", uid).get(),
+    adminDb.collection("cards").where("ownerId", "==", uid).get(),
+    adminDb.collection("categories").where("ownerId", "==", uid).get(),
+    adminDb.collection("clubMemberships").where("ownerId", "==", uid).get(),
+  ]);
 
   const profile = userSnap.exists
     ? (() => {
@@ -254,6 +280,31 @@ export async function buildUserDataExport(uid: string): Promise<UserDataExport> 
     ...(doc.data() as Omit<Category, "id">),
     id: doc.id,
   }));
+  // Two extra catalog reads only when the user actually holds something, so an
+  // export for the common case (no clubs marked) costs nothing.
+  const clubMemberships: SerializedClubMembership[] = [];
+  if (!clubMembershipsSnap.empty) {
+    const [clubsSnap, clubCardsSnap] = await Promise.all([
+      adminDb.collection("clubs").get(),
+      adminDb.collection("clubCards").get(),
+    ]);
+    const clubsById = new Map(clubsSnap.docs.map((d) => [d.id, d.data() as Club]));
+    const cardsById = new Map(clubCardsSnap.docs.map((d) => [d.id, d.data() as ClubCard]));
+
+    for (const membershipDoc of clubMembershipsSnap.docs) {
+      const membership = membershipDoc.data() as ClubMembership;
+      const card = cardsById.get(membership.clubCardId) ?? null;
+      const club = card ? (clubsById.get(card.clubId) ?? null) : null;
+      clubMemberships.push({
+        clubCardId: membership.clubCardId,
+        clubId: card?.clubId ?? null,
+        clubName: club?.name ?? null,
+        cardName: card?.name ?? null,
+        createdAt: toIso(membership.createdAt),
+      });
+    }
+  }
+
   const channelLinks = await listChannelLinksForUid(uid);
   const chatSessions = await listChatSessionsForUid(uid);
 
@@ -265,6 +316,7 @@ export async function buildUserDataExport(uid: string): Promise<UserDataExport> 
     listMemberships,
     cards,
     categories,
+    clubMemberships,
     channelLinks,
     chatSessions,
   };

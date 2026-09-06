@@ -18,6 +18,7 @@ import { clearSession } from "@/actions/auth";
 const NAV_LINKS = [
   { href: "/dashboard", label: "ראשי" },
   { href: "/cards", label: "כרטיסים" },
+  { href: "/clubs", label: "מועדונים" },
   { href: "/chat", label: "צ'אט" },
 ];
 

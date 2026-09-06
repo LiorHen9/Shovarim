@@ -117,6 +117,54 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 }
 ```
 
+## `clubs/{clubId}`
+`src/types/club.ts`. קטלוג מועדוני הצרכנות, נזרע ב-`scripts/seed-clubs.ts` (`npm run seed:clubs`) דרך Admin SDK. ראו `docs/DECISIONS.md` ADR #61.
+```ts
+{
+  id: string;            // slug: "mifal-hapais"
+  name: string;          // "מועדון מפעל הפיס"
+  description: string;
+  website: string;       // אתר המועדון הרשמי, מקושר מה-UI
+  color: string;         // hex, לפס הצבע של הקבוצה
+  isActive: boolean;     // הורדת מועדון מהקטלוג בלי למחוק חברויות קיימות
+  sortOrder: number;
+}
+```
+בניגוד ל-`categories`, **אין כאן שורות פר-משתמש ואין sentinel `ownerId: "system"`** — הקטלוג סגור: `allow read: if isSignedIn()`, `allow write: if false`. משתמש לא יכול להוסיף מועדון משלו, כי מועדון שהמערכת לא מכירה גם לא יוכל להביא לו הטבות בשכבה הבאה.
+
+## `clubCards/{clubCardId}`
+`src/types/clubCard.ts`. דרג כרטיס אחד תחת מועדון — מה שהמשתמש באמת מחזיק. `id` = `${clubId}-${tier}`, למשל `mifal-hapais-vip`. אותה מחלקת אמון כמו `clubs`.
+```ts
+{
+  id: string;
+  clubId: string;        // → clubs/{clubId}
+  name: string;          // שם הדרג בלבד: "רגיל", "VIP" — לא חוזר על שם המועדון
+  description: string;   // מותר להיות ריק
+  isActive: boolean;
+  sortOrder: number;     // סדר בתוך המועדון
+}
+```
+**collection שטוח ולא subcollection של `clubs`, במכוון**: ה-UI טוען את כל הקטלוג במכה אחת, ו-subcollection היה מחייב `collectionGroup()` — ואיתו רשומת `fieldOverrides` שהאמולטור לא תופס כשהיא חסרה (ראו סעיף האינדקסים למטה ו-ADR #33), ורול `{path=**}` נפרד. המיזוג נעשה בזיכרון ב-`src/hooks/useClubCatalog.ts`.
+
+## `clubMemberships/{ownerId}_{clubCardId}`
+`src/types/clubMembership.ts`. הצהרה עצמית של המשתמש על כרטיס מועדון שברשותו. **אינה מאומתת ואינה זכאות** — היא רק מסננת אילו הטבות יוצגו לו בהמשך.
+```ts
+{
+  id: string;            // `${ownerId}_${clubCardId}`
+  ownerId: string;
+  clubCardId: string;    // → clubCards/{clubCardId}
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+**מזהה דטרמיניסטי, נאכף ב-`firestore.rules`** (`membershipId == request.auth.uid + '_' + request.resource.data.clubCardId`): כפילות היא בלתי-ניתנת-לייצוג, ולכן הלקוח מסמן ומבטל ב-`setDoc`/`deleteDoc` עיוור בלי קריאה מקדימה. **אין `update`** — אין במסמך שדה שניתן לשנות; שינוי דעה הוא מחיקה, וסימון מחדש הוא create חדש, מה ששומר על `createdAt` כנה.
+
+**המועדון אינו מדונרמל לכאן במכוון.** `clubId` שהלקוח כותב הוא `clubId` שהלקוח יכול לשקר בו, וה-Rules לא יכולים לאמת אותו מול `clubCards` בלי `get()` על מסמך אחר. הוא נגזר מהקטלוג, שהוא מקור האמת היחיד.
+
+**ייצוא ומחיקה**: `buildUserDataExport` מייצא את החברויות עם שמות המועדון והכרטיס בטקסט מלא (לא רק slugs) — קובץ right-to-access נועד לקריאת אדם; `functions/src/accountDeletion.ts` מוחק אותן דרך `ownerId`. הקטלוג עצמו משותף ונשאר.
+
+**אינדקסים**: אין צורך בשום דבר ב-`firestore.indexes.json`. `where("ownerId", "==", uid)` על collection יחיד מכוסה באינדקס השדה-הבודד האוטומטי, `clubs`/`clubCards` נקראים ללא `where`, ואין `collectionGroup()`.
+
 ## `reminders/{reminderId}`
 מנוהל ע"י Cloud Function מתוזמן (Phase 3), read-only ל-client.
 ```ts

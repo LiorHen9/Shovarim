@@ -178,6 +178,40 @@ service cloud.firestore {
       allow update, delete: if isExistingOwner();
     }
 
+    // Consumer-club catalog: the clubs, and the card tiers offered under each
+    // (docs/DECISIONS.md ADR #61). Both are seeded by scripts/seed-clubs.ts
+    // through the Admin SDK. Unlike categories there are no per-user rows here
+    // — the catalog is closed — so there is no 'system' sentinel ownerId to
+    // check and no client write path at all.
+    match /clubs/{clubId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /clubCards/{clubCardId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Self-declared holdings: one doc per club card the user says they hold.
+    // Nothing here is an entitlement — it only decides which benefits get shown.
+    //
+    // The doc-id invariant is the point of this block. Pinning the id to
+    // `${uid}_${clubCardId}` makes a duplicate holding unrepresentable, so the
+    // client can toggle with setDoc/deleteDoc and never needs a read-then-write
+    // to check for one. Same idea as the doc-id==uid invariant on cardList
+    // members above.
+    //
+    // No update: the document has nothing mutable in it. Changing your mind is
+    // a delete, and re-marking is a fresh create — which keeps createdAt honest.
+    match /clubMemberships/{membershipId} {
+      allow read: if isExistingOwner();
+      allow create: if isNewOwner()
+        && membershipId == request.auth.uid + '_' + request.resource.data.clubCardId;
+      allow delete: if isExistingOwner();
+      allow update: if false;
+    }
+
     match /reminders/{reminderId} {
       // Reminders are produced by the scheduled Cloud Function (Admin SDK bypasses rules);
       // clients may only read their own.

@@ -14,7 +14,7 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/session";
 // also what node_modules/next/dist/docs .../proxy.md advises ("always verify
 // authentication and authorization inside each Server Function rather than
 // relying on Proxy alone").
-const PROTECTED_PREFIXES = ["/dashboard", "/cards", "/reports", "/settings", "/chat"];
+const PROTECTED_PREFIXES = ["/dashboard", "/cards", "/clubs", "/reports", "/settings", "/chat"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -35,6 +35,7 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/cards/:path*",
+    "/clubs/:path*",
     "/reports/:path*",
     "/settings/:path*",
     "/chat/:path*",

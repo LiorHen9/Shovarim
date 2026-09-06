@@ -33,13 +33,28 @@ export async function signInAsTestUser(page: Page, user: TestUser, next = "/dash
   // 2. Clicking is not enough; the overlay has to be gone before we return. grantConsent()
   //    is a Firestore write and the dialog unmounts only on the resulting snapshot, so
   //    returning right after the click hands the test a page that is still covered.
+  // 3. Detaching is not the same as durable. grantConsent() is a client Firestore
+  //    write, and the dialog unmounts on Firestore's *locally* compensated
+  //    snapshot — before the server has acked. Returning there let the caller
+  //    navigate immediately, which tears down the page context and discards the
+  //    still-pending write, so the very next protected page read the server,
+  //    correctly found no consent, and popped the modal again mid-test. That is
+  //    what made this helper's callers intermittently fail on a click that an
+  //    invisible overlay had swallowed. Reloading forces a server-backed read:
+  //    once the dialog does not come back on a fresh load, the consent is real.
   const consentDialog = page.getByRole("alertdialog");
   const consentButton = page.getByRole("button", { name: "מאשר/ת, המשך" });
-  try {
-    await consentButton.waitFor({ state: "visible", timeout: 15000 });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      // Generous on the first pass for the reason in (1); short afterwards,
+      // where absence is the expected answer and we only need to confirm it.
+      await consentButton.waitFor({ state: "visible", timeout: attempt === 0 ? 15000 : 3000 });
+    } catch {
+      // Nothing showing on a freshly loaded page — consent is granted and stuck.
+      return;
+    }
     await consentButton.click();
     await consentDialog.waitFor({ state: "detached", timeout: 15000 });
-  } catch {
-    // useConsent() already resolved to "granted"/not-needed — nothing to dismiss.
+    await page.reload();
   }
 }
