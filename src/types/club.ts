@@ -18,13 +18,14 @@ export interface Club {
    */
   website: string | null;
   /**
-   * Path to a logo committed under `public/clubs/`, e.g. "/clubs/hot.jpg".
-   * Deliberately a local path and never a remote URL: hotlinking the clubs'
-   * own CDNs would make every visitor's browser contact seven third parties,
-   * which is a new recipient to disclose in docs/PRIVACY.md and a
-   * PRIVACY_POLICY_VERSION bump (ADR #59) for a decorative image. Null renders
-   * the letter tile in ClubsGrid instead, so a missing file is never a
-   * broken-image icon.
+   * Either a path to a logo committed under `public/clubs/` (the built-in
+   * catalog, e.g. "/clubs/hot.jpg") or a Firebase Storage download URL for one
+   * uploaded from /admin/clubs. Never a link to the club's own CDN:
+   * hotlinking would make every visitor's browser contact a new third party,
+   * which is a disclosure in docs/PRIVACY.md and a PRIVACY_POLICY_VERSION bump
+   * (ADR #59) for a decorative image. Storage is already a disclosed processor
+   * for card images, so an upload adds no recipient. Null renders the letter
+   * tile in ClubsGrid instead, so a missing logo is never a broken-image icon.
    */
   logoUrl: string | null;
   /** Hex, for the group's accent bar — same role as Category.color. */

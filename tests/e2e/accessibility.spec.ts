@@ -275,3 +275,31 @@ test("the accessibility toolbar is centred on the vertical axis and opens inside
   expect(panel!.x + panel!.width).toBeLessThanOrEqual(viewport!.width);
   expect(panel!.y + panel!.height).toBeLessThanOrEqual(viewport!.height);
 });
+
+// /admin had never been scanned at all — it was built before the Phase 6.A
+// sweep and sits behind a role gate the other tests do not pass. Phase 10.1.b
+// added a whole CRUD surface there, which is exactly the kind of page that
+// accumulates unlabelled icon buttons and unassociated inputs.
+test("the admin routes have no WCAG 2.1 AA violations", async ({ page }) => {
+  const uid = `e2e-${randomUUID()}`;
+  await signInAsTestUser(page, { uid, email: `${uid}@example.com`, name: "אדמין בדיקה" });
+  await page.goto(`/e2e/grant-admin?uid=${uid}`);
+  await expect(page.getByRole("status")).toHaveText("granted", { timeout: 20_000 });
+
+  // An empty catalog would scan a single paragraph and prove nothing about the
+  // club rows, which is where the buttons and the logo controls live.
+  await page.goto("/e2e/seed-clubs");
+  await expect(page.getByRole("status")).toHaveText("seeded", { timeout: 20_000 });
+
+  for (const [path, heading, title] of [
+    ["/admin", "ניהול מערכת", "פאנל ניהול · שוברים"],
+    ["/admin/clubs", "ניהול מועדונים", "ניהול מועדונים · שוברים"],
+  ] as const) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
+    // WCAG 2.4.2, same reason as the titles tests above.
+    await expect(page).toHaveTitle(title);
+    await expectNoA11yViolations(page);
+    await expectNoA11yViolationsInDark(page);
+  }
+});

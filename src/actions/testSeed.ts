@@ -1,5 +1,7 @@
 "use server";
 
+import { FieldValue } from "firebase-admin/firestore";
+
 import { adminDb } from "@/lib/firebase/admin";
 import { seedClubCatalog, type SeedClub } from "@/lib/services/clubCatalog";
 
@@ -47,4 +49,22 @@ export async function seedTestClubCatalog(): Promise<void> {
   }
 
   await seedClubCatalog(adminDb, TEST_CATALOG);
+}
+
+// Grants adminRoles/{uid} so a Playwright run can exercise /admin. Same
+// emulator hard-guard as above and as mintTestCustomToken (ADR #18): the
+// production path to a first admin is scripts/grant-admin.ts, deliberately a
+// script, because a UI that can grant admin is a UI that can be tricked into
+// granting admin.
+export async function grantTestAdmin(uid: string): Promise<void> {
+  if (process.env.FIREBASE_USE_EMULATOR !== "true") {
+    throw new Error("grantTestAdmin is only available against the Firebase emulator");
+  }
+
+  await adminDb.doc(`adminRoles/${uid}`).set({
+    uid,
+    role: "super_admin",
+    grantedBy: "e2e",
+    grantedAt: FieldValue.serverTimestamp(),
+  });
 }

@@ -47,6 +47,10 @@ export async function adminDeleteUserNowHandler(callerUid: string | undefined, t
   await db.collection("adminAuditLog").add({
     adminUid: callerUid,
     targetUid,
+    // Null here, always: this action's subject is a user. The field exists for
+    // the club-catalog actions (ADR #61) and is written by every producer so
+    // AdminAuditLogEntry.targetId can stay non-optional.
+    targetId: null,
     action: "delete_immediate",
     reason: null,
     createdAt: Timestamp.now(),

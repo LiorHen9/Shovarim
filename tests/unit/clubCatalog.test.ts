@@ -2,13 +2,13 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { CATALOG } from "../../scripts/clubs.data";
+import { CATALOG } from "@/lib/services/clubCatalogData";
 
-// The catalog is data, not code, and nothing else type-checks it against the
-// filesystem: a typo in a logoUrl compiles, seeds, and only shows up as a
-// broken image in production, because the E2E suite deliberately runs against a
-// fixture catalog rather than this one (src/actions/testSeed.ts). These are the
-// invariants that a wrong edit to scripts/clubs.data.ts would break.
+// The built-in catalog is data, not code, and nothing else type-checks it
+// against the filesystem: a typo in a logoUrl compiles, seeds, and only shows
+// up as a broken image in production, because the E2E suite deliberately runs
+// against a fixture catalog rather than this one (src/actions/testSeed.ts).
+// These are the invariants that a wrong edit to clubCatalogData.ts would break.
 const PUBLIC_DIR = path.resolve(import.meta.dirname, "../../public");
 
 describe("club catalog", () => {

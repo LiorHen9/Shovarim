@@ -1,7 +1,7 @@
 # SECURITY
 
 ## עקרון על
-Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{document=**} { allow read, write: if false; }`, וכל collection מקבל חריגה מפורשת וממוקדת. אותו עיקרון ב-`storage.rules`.
+Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{document=**} { allow read, write: if false; }`, וכל collection מקבל חריגה מפורשת וממוקדת. אותו עיקרון ב-`storage.rules`, שבו יש שני נתיבים מותרים בלבד: `users/{uid}/cards/**` (הבעלים קורא וכותב תמונות) ו-`clubLogos/{clubId}` (כל משתמש מחובר קורא, **אף לקוח לא כותב** — ההעלאה מ-`/admin/clubs` עוברת ב-Server Action שבודק `adminRoles` וכותב ב-Admin SDK, ADR #61).
 
 ## Firestore Rules — עקרונות מיושמים
 - **Per-user isolation**: `request.auth.uid == resource.data.ownerId` לקריאה/עדכון/מחיקה, `request.auth.uid == request.resource.data.ownerId` ליצירה.
