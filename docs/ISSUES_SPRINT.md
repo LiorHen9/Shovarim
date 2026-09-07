@@ -193,14 +193,16 @@ https://github.com/LiorHen9/Shovarim/issues/38
 
 ---
 
-## 13. ☐ #50 — סקרייפינג לינק שובר ⚠️ החלטת אבטחה פתוחה
+## 13. ◐ #50 — סקרייפינג לינק שובר — **החלטת האבטחה הוכרעה** (ADR #62)
 https://github.com/LiorHen9/Shovarim/issues/50
 
 **קבצים**: `src/lib/mcp/toolSchemas.ts`, `src/lib/mcp/mcpServer.ts` (אין tool כזה היום), `src/lib/whatsapp/graph.ts:32` (סגנון fetch לצד שרת קיים, לא scraping).
 
 **ממצא**: אין כיום שום tool ל-fetch/scraping בין 10 ה-tools הקיימים, ואין utility ל-HTML parsing בפרויקט.
 
-**⚠️ החלטה פתוחה (המשתמש בחר לא להכריע מראש)**: allowlist דומיינים מוכר (בטוח יותר, דורש תחזוקה) **מול** fetch כללי עם הקשחות (חסימת IP פרטי למניעת SSRF, timeout, הגבלת גודל תגובה, ללא credentials/redirects פראיים). **להחליט את זה במפורש לפני מימוש** — לא לנחש. עד אז לתעד כ-ADR פתוח ב-`docs/DECISIONS.md`.
+**✅ ההחלטה הוכרעה ב-ADR #62 (Phase 10.2, 2026-09-07): allowlist קשיח של hosts.** המימוש קיים ב-`functions/src/benefits/http.ts` — התאמת host מדויקת (לא `endsWith`), https בלבד, `redirect: "manual"` עם בדיקה מחדש בכל hop, timeout 10 שניות, תקרת תגובה 10MB הנאכפת תוך כדי קריאת ה-stream, retry רק על 429/5xx, ו-User-Agent מזהה. כיסוי ב-`tests/unit/benefitHttp.test.ts`.
+
+**מה שנשאר ב-issue הזה**: ה-tool ל-MCP עצמו (סריקת לינק שובר שהמשתמש הדביק) טרם נכתב. שים לב שהוא מקרה **שונה מהותית** מ-10.2: שם ה-URL מגיע מהמשתמש, ולכן ה-allowlist לבדו לא מספיק והמקרה כן דורש את הקשחות ה-SSRF המלאות (חסימת IP פרטי ו-loopback אחרי רזולוציית DNS). את `fetchAllowedText` אפשר להרחיב לזה, אבל לא לאמץ אותו כמו שהוא.
 
 **Effort**: בינוני-גדול (תלוי בהחלטה).
 

@@ -118,7 +118,7 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 ```
 
 ## `clubs/{clubId}`
-`src/types/club.ts`. קטלוג מועדוני הצרכנות, נזרע ב-`scripts/seed-clubs.ts` (`npm run seed:clubs`) דרך Admin SDK. הנתונים עצמם ב-`scripts/clubs.data.ts`, מודול נפרד כדי שאפשר יהיה לייבא אותו בטסט בלי לזרוע (`tests/unit/clubCatalog.test.ts`). ראו `docs/DECISIONS.md` ADR #61.
+`src/types/club.ts`. קטלוג מועדוני הצרכנות, נזרע ב-`scripts/seed-clubs.ts` (`npm run seed:clubs`) דרך Admin SDK. הנתונים עצמם ב-`src/lib/services/clubCatalogData.ts`, מודול נפרד כדי שאפשר יהיה לייבא אותו בטסט בלי לזרוע (`tests/unit/clubCatalog.test.ts`) ומ-`/admin/clubs` בלי ש-Next יארוז קובץ מתוך `scripts/`. ראו `docs/DECISIONS.md` ADR #61.
 ```ts
 {
   id: string;            // slug: "mifal-hapais"
@@ -129,13 +129,14 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
   color: string;         // hex, לפס הצבע של הקבוצה ולאריח הנפילה
   isActive: boolean;     // הורדת מועדון מהקטלוג בלי למחוק חברויות קיימות
   sortOrder: number;
+  benefitScrapeLimit?: number;  // תקרת ההטבות לסריקה. 0 = ללא הגבלה. חסר = 50 (Phase 10.2)
 }
 ```
 `logoUrl` הוא **תמיד נתיב מקומי, לעולם לא URL חיצוני**: hotlink ללוגו מה-CDN של המועדון היה גורם לדפדפן של כל מבקר לפנות לשבעה צדדים שלישיים — נמענים חדשים שחייבים גילוי ב-`docs/PRIVACY.md` ו-bump ל-`PRIVACY_POLICY_VERSION` (ADR #59), עבור תמונה דקורטיבית. `website` nullable כי לא לכל מועדון יש אתר חי (לאשמורת אין), וקישור מת גרוע מהיעדר קישור.
 
 בניגוד ל-`categories`, **אין כאן שורות פר-משתמש ואין sentinel `ownerId: "system"`** — הקטלוג סגור: `allow read: if isSignedIn()`, `allow write: if false`. משתמש לא יכול להוסיף מועדון משלו, כי מועדון שהמערכת לא מכירה גם לא יוכל להביא לו הטבות בשכבה הבאה.
 
-**שני כותבים, ושניהם server-side** (מאז Phase 10.1.b): `scripts/seed-clubs.ts` לזריעה מהקוד, ו-`src/lib/services/adminClubs.ts` מאחורי `requireAdmin()` עבור עמוד `/admin/clubs`. `allow write: if false` נשאר בתוקף ולא השתנה — Admin SDK עוקף Rules בהגדרה, כך שגם דפדפן של אדמין לא כותב לקטלוג ישירות. אותה מחלקת אמון כמו `userModeration`.
+**שני כותבים, ושניהם server-side** (מאז Phase 10.1.b): `scripts/seed-clubs.ts` לזריעה מהקוד, ו-`src/lib/services/adminClubs.ts` מאחורי `requireAdmin()` עבור עמוד `/admin/clubs`. `allow write: if false` נשאר בתוקף ולא השתנה — Admin SDK עוקף Rules בהגדרה, כך שגם דפדפן של אדמין לא כותב לקטלוג ישירות. אותה מחלקת אמון כמו `userModeration`. מאז Phase 10.2 הטפסים בפאנל כוללים גם את `benefitScrapeLimit` — תקרת ההטבות שהסקרייפר ישמור למועדון ולכל דרג. השדה אופציונלי כי הוא לא היה קיים בזריעות קודמות; **כל קורא חייב `?? 50` ולא `|| 50`**, אחרת `0` ("ללא הגבלה") נקרא כ-falsy ומצמיד בשקט מועדון לא-מוגבל חזרה לברירת המחדל.
 
 ## `clubCards/{clubCardId}`
 `src/types/clubCard.ts`. דרג כרטיס אחד תחת מועדון — מה שהמשתמש באמת מחזיק. `id` = `${clubId}-${tier}`, למשל `mifal-hapais-vip`. אותה מחלקת אמון כמו `clubs`.
@@ -147,6 +148,7 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
   description: string;   // מותר להיות ריק
   isActive: boolean;
   sortOrder: number;     // סדר בתוך המועדון
+  benefitScrapeLimit?: number;  // תקרה פר-דרג, נאכפת לפני תקרת המועדון (Phase 10.2)
 }
 ```
 **collection שטוח ולא subcollection של `clubs`, במכוון**: ה-UI טוען את כל הקטלוג במכה אחת, ו-subcollection היה מחייב `collectionGroup()` — ואיתו רשומת `fieldOverrides` שהאמולטור לא תופס כשהיא חסרה (ראו סעיף האינדקסים למטה ו-ADR #33), ורול `{path=**}` נפרד. המיזוג נעשה בזיכרון ב-`src/hooks/useClubCatalog.ts`.
@@ -168,7 +170,70 @@ Top-level collections, כל מסמך נושא `ownerId` (=Firebase Auth uid), ל
 
 **ייצוא ומחיקה**: `buildUserDataExport` מייצא את החברויות עם שמות המועדון והכרטיס בטקסט מלא (לא רק slugs) — קובץ right-to-access נועד לקריאת אדם; `functions/src/accountDeletion.ts` מוחק אותן דרך `ownerId`. הקטלוג עצמו משותף ונשאר.
 
-**אינדקסים**: אין צורך בשום דבר ב-`firestore.indexes.json`. `where("ownerId", "==", uid)` על collection יחיד מכוסה באינדקס השדה-הבודד האוטומטי, `clubs`/`clubCards` נקראים ללא `where`, ואין `collectionGroup()`.
+**אינדקסים**: שלושת ה-collections האלה אינם דורשים דבר ב-`firestore.indexes.json`. `where("ownerId", "==", uid)` על collection יחיד מכוסה באינדקס השדה-הבודד האוטומטי, `clubs`/`clubCards` נקראים ללא `where`, ואין `collectionGroup()`. (`clubBenefits` ו-`benefitScrapeRuns` שנוספו ב-Phase 10.2 כן דורשים — ראו למטה.)
+
+## `clubBenefits/{benefitId}`
+`src/types/clubBenefit.ts` (משוקף ב-`functions/src/benefits/types.ts` — ADR #24). הטבות שנגרדו מהאתרים הציבוריים של המועדונים, Phase 10.2. `id` = `` `${clubId}__${encodeURIComponent(sourceKey)}` `` — דטרמיניסטי, כדי שסריקה חוזרת תדרוס במקום לשכפל. ראו `docs/DECISIONS.md` ADR #62.
+```ts
+{
+  id: string;
+  clubId: string;              // → clubs/{clubId}
+  clubCardIds: string[];       // → clubCards/{id}; לעולם לא ריק, יותר מאחד למועדון רב-דרגי
+  sourceKey: string;           // המזהה של ההטבה אצל המועדון (ייחודי בתוך המועדון בלבד)
+  benefitKind: "offer" | "acceptance";  // הטבה מתומחרת מול בית עסק שמכבד את הכרטיס
+  title: string;
+  description: string;         // טקסט נקי — ה-HTML של המקור מופשט בכניסה
+  categoryId: string;          // → categories/system-*; תמיד מלא, לא מזוהה → system-other
+  sourceCategory: string | null;  // שם הקטגוריה של המועדון, verbatim
+  priceFrom: number | null;    // "החל מ" בש"ח; null ל-acceptance ולהטבות טקסט בלבד
+  originalPrice: number | null;
+  discountText: string | null; // כשאין מספר: "20% הנחה", "חודש מתנה"
+  url: string;                 // עמוד ההטבה הציבורי באתר המועדון
+  imageUrl: string | null;     // ה-CDN של המועדון, לא Storage שלנו
+  provider: string | null;     // בית העסק
+  validUntil: Timestamp | null;
+  sourceMemberTypes: number[] | null;  // קודי זכאות גולמיים; רק פיס פלוס שולח היום
+  scrapeRunId: string;         // ← מנגנון הדריסה
+  firstSeenAt: Timestamp;      // נשמר על פני סריקות
+  updatedAt: Timestamp;
+}
+```
+**האוסף הוא תמונת מצב, לא יומן מצטבר.** כל סריקה מחתימה את מה שכתבה ב-`scrapeRunId` שלה, ואז מוחקת כל מסמך של אותו מועדון שנושא חותמת אחרת — כך הטבה שהמועדון הפסיק להציע נעלמת ולא נשארת כשארית. שאילתת הטאטוא היא `where("clubId","==",id).where("scrapeRunId","!=",runId)`, שקוראת רק את השאריות ולא את כל האוסף, ולכן היא דורשת אינדקס מורכב (למטה).
+
+**`benefitKind` אינו קישוט.** הנתונים הפתוחים של חבר הם מדריכי בתי עסק בלי מחירים כלל (ההטבות המתומחרות שלה מאחורי התחברות), ובלי ההבחנה כ-1,900 שורות חסרות מחיר היו נקראות כהטבות שהפרסור שלהן נכשל.
+
+**`imageUrl` מצביע על ה-CDN של המועדון** — `media.dolcemaster.co.il`, `cdn.hot.co.il` — ולא על Storage. זו חריגה מודעת מכלל ה-hotlink של `Club.logoUrl`, מנומקת ב-ADR #62 החלטה 5: מדובר בעשרות אלפי תמונות מוצר שמתחלפות יומית, ולא בשבעה לוגואים. **כששלב 10.3 יציג אותן למשתמש זה נמען צד-שלישי חדש שדורש גילוי ב-`docs/PRIVACY.md`.**
+
+**Rules**: `allow read: if isSignedIn()`, `allow write: if false`. הכותב היחיד הוא ה-Cloud Function המתוזמן דרך Admin SDK. הקריאה פתוחה לכל מחובר כי התוכן ממילא פומבי באתרי המועדונים, ואין כאן שום דבר פר-משתמש — ההתאמה לכרטיסים שהמשתמש מחזיק נעשית בצד הלקוח מול `clubMemberships` שלו.
+
+## `benefitScrapeRuns/{runId}`
+`id` = `` `${clubId}-${ISO}` ``. מסמך אחד לכל ריצה, מה שמזין את `/admin/benefits`.
+```ts
+{
+  id, clubId: string;
+  status: "running" | "success" | "aborted" | "failed";
+  startedAt: Timestamp; finishedAt: Timestamp | null;
+  sourceTotal: number;   // כמה קיימות במקור בסך הכל, לפני התקרה
+  fetched: number;       // כמה נמשכו בפועל, לפני התקרה
+  written: number;       // כמה נשמרו, אחרי התקרה
+  deleted: number;       // כמה שאריות נמחקו
+  limitsApplied: { club: number; cards: Record<string, number> };
+  cappedBy: "club" | "card" | null;
+  abortReason: string | null;
+  errors: string[];
+  triggeredBy: string;   // "schedule", "script", או ה-adminUid שלחץ
+}
+```
+**`sourceTotal` הוא מה שמגן על הנתונים.** ריצה מסרבת לכתוב ולמחוק אם המקור הצטמק מתחת ל-50% מהריצה המוצלחת האחרונה, או אם לא חזרה אף הטבה — הסטטוס `aborted` וההטבות הקיימות נשארות. ההשוואה חייבת להיות על `sourceTotal` ולא על `written`, כי `written` חסום בתקרה שהאדמין קובע: הורדת תקרה מ-50 ל-10 הייתה נראית כקריסה של 80%.
+
+**Rules**: `allow read, write: if false` — סגור לחלוטין ללקוח, בשונה מ-`clubBenefits`. הפאנל קורא דרך Admin SDK בצד השרת, ו-`abortReason` מתאר את מצבם של אתרי צד-שלישי, כלומר פרט תפעולי שאין לחבר המועדון מה לעשות איתו.
+
+**אינדקסים** (ב-`firestore.indexes.json`, שלושתם נדרשים):
+- `clubBenefits`: `clubId ASC, scrapeRunId ASC` — שאילתת הטאטוא.
+- `benefitScrapeRuns`: `clubId ASC, startedAt DESC` — הריצה האחרונה של מועדון, לפאנל.
+- `benefitScrapeRuns`: `clubId ASC, status ASC, startedAt DESC` — הריצה המוצלחת האחרונה, לשסתום.
+
+**מחיקת חשבון וייצוא**: אין ל-`clubBenefits` ול-`benefitScrapeRuns` שדה `ownerId` והם אינם נוגעים בנתוני משתמש — קטלוג משותף, כמו `clubs`. `functions/src/accountDeletion.ts` ו-`buildUserDataExport` לא נגעו.
 
 ## `reminders/{reminderId}`
 מנוהל ע"י Cloud Function מתוזמן (Phase 3), read-only ל-client.

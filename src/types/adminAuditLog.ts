@@ -16,7 +16,10 @@ export type AdminAuditAction =
   | "club_logo_clear"
   | "club_card_upsert"
   | "club_card_delete"
-  | "club_catalog_sync";
+  | "club_catalog_sync"
+  // Benefit scraping (ADR #62, Phase 10.2). targetId is the club when one was
+  // named, null when the admin ran every club at once.
+  | "benefits_scrape_run";
 
 // Append-only, written only via the Admin SDK. Deliberately separate from
 // auditLog (docs/DATA_MODEL.md): auditLog is per-user and travels with that

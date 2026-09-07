@@ -33,4 +33,17 @@ export interface Club {
   /** Retires a club from the catalog without deleting anyone's memberships. */
   isActive: boolean;
   sortOrder: number;
+  /**
+   * How many benefits the Phase 10.2 scraper may store for this club, across
+   * all of its cards. 0 means no cap. Editable from /admin/clubs.
+   *
+   * Optional because every club seeded before 10.2 predates the field; readers
+   * substitute DEFAULT_BENEFIT_SCRAPE_LIMIT, which is what lets the feature
+   * ship without a backfill.
+   *
+   * It bounds fetching as well as storage: the scrapers stop paging once the
+   * caps are full, so the default keeps the nightly run to a couple of
+   * requests per club instead of הוט's 237 pages.
+   */
+  benefitScrapeLimit?: number;
 }

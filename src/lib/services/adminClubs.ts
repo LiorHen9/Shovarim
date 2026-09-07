@@ -14,7 +14,7 @@ import { ActionError } from "../actions/errorsCore";
 import { writeAdminAuditLog } from "../audit/adminLog";
 import { seedClubCatalog } from "./clubCatalog";
 import { CATALOG } from "./clubCatalogData";
-import { validateClubLogo } from "../validation/club";
+import { DEFAULT_BENEFIT_SCRAPE_LIMIT, validateClubLogo } from "../validation/club";
 import type { ClubCardFormValues, ClubFormValues } from "../validation/club";
 import type { Club } from "../../types/club";
 import type { ClubCard } from "../../types/clubCard";
@@ -22,10 +22,15 @@ import type { ClubCard } from "../../types/clubCard";
 export interface AdminClubCard extends ClubCard {
   /** How many users say they hold this tier — what makes a delete unsafe. */
   membershipCount: number;
+  /** Narrowed from optional: listCatalogForAdmin() substitutes the default for
+   *  rows written before Phase 10.2, so the admin form always gets a number. */
+  benefitScrapeLimit: number;
 }
 
 export interface AdminClub extends Club {
   cards: AdminClubCard[];
+  /** Narrowed from optional — see AdminClubCard. */
+  benefitScrapeLimit: number;
 }
 
 // Everything, including retired rows: the admin view is the one place that has
@@ -63,9 +68,17 @@ export async function listCatalogForAdmin(): Promise<AdminClub[]> {
         // rather than hand `undefined` to a controlled form input.
         logoUrl: club.logoUrl ?? null,
         website: club.website ?? null,
+        // Absent on every club seeded before Phase 10.2. Normalised here so
+        // the form gets a number and the scraper's own default (duplicated in
+        // functions/src/benefits/runner.ts) never has to be guessed at twice.
+        benefitScrapeLimit: club.benefitScrapeLimit ?? DEFAULT_BENEFIT_SCRAPE_LIMIT,
         cards: cards
           .filter((card) => card.clubId === doc.id)
-          .map((card) => ({ ...card, membershipCount: countById.get(card.id) ?? 0 }))
+          .map((card) => ({
+            ...card,
+            benefitScrapeLimit: card.benefitScrapeLimit ?? DEFAULT_BENEFIT_SCRAPE_LIMIT,
+            membershipCount: countById.get(card.id) ?? 0,
+          }))
           .sort((a, b) => a.sortOrder - b.sortOrder),
       };
     })
@@ -96,6 +109,7 @@ export async function upsertClub(adminUid: string, values: ClubFormValues): Prom
       color: values.color,
       isActive: values.isActive,
       sortOrder: values.sortOrder,
+      benefitScrapeLimit: values.benefitScrapeLimit,
       ...(existing.exists ? {} : { logoUrl: null }),
     },
     { merge: true }
@@ -120,6 +134,7 @@ export async function upsertClubCard(adminUid: string, values: ClubCardFormValue
     description: values.description,
     isActive: values.isActive,
     sortOrder: values.sortOrder,
+    benefitScrapeLimit: values.benefitScrapeLimit,
   });
 }
 

@@ -32,6 +32,9 @@ export default async function AdminHomePage() {
         <Link href="/admin/clubs" className="underline underline-offset-2">
           מועדונים
         </Link>
+        <Link href="/admin/benefits" className="underline underline-offset-2">
+          הטבות
+        </Link>
       </nav>
 
       <section className="space-y-3">

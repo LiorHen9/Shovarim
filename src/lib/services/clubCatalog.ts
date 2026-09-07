@@ -1,5 +1,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 
+import { DEFAULT_BENEFIT_SCRAPE_LIMIT } from "../validation/club";
+
 // Shared writer for the clubs/clubCards catalog (ADR #61). Both writers of that
 // catalog go through here: scripts/seed-clubs.ts with the real list, and
 // src/actions/testSeed.ts with a small fixture for Playwright. The Firestore
@@ -47,6 +49,10 @@ export async function seedClubCatalog(
       color: club.color,
       isActive: true,
       sortOrder: clubIndex + 1,
+      // The built-in catalog is the default state, so it restores the default
+      // cap too. An admin who raised a club's cap and then pressed "restore
+      // built-in catalog" is asking for exactly that.
+      benefitScrapeLimit: DEFAULT_BENEFIT_SCRAPE_LIMIT,
     });
 
     club.cards.forEach((card, cardIndex) => {
@@ -58,6 +64,7 @@ export async function seedClubCatalog(
         description: card.description,
         isActive: true,
         sortOrder: cardIndex + 1,
+        benefitScrapeLimit: DEFAULT_BENEFIT_SCRAPE_LIMIT,
       });
       cards += 1;
     });

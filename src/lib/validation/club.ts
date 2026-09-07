@@ -40,6 +40,29 @@ export const clubWebsiteSchema = z
     message: "כתובת חייבת להתחיל ב-https:// או להישאר ריקה",
   });
 
+// How many benefits the Phase 10.2 scraper may keep for a club or a card.
+//
+// 50 rather than "everything" because the sources are far larger than they
+// look — הוט alone publishes ~7,100 benefits — and an uncapped first run would
+// put tens of thousands of documents in Firestore before anyone had seen
+// whether the parsing was even right.
+export const DEFAULT_BENEFIT_SCRAPE_LIMIT = 50;
+
+// 0 is "no cap", not "none" — stated in the field's own label in the form,
+// because a bare 0 in a numeric input reads as "disabled" to most people.
+//
+// A plain z.number() rather than z.coerce, matching sortOrder above: the form
+// registers this with { valueAsNumber: true }, so a number is what arrives.
+// Neither is there a .default() — the absent-field case belongs to
+// listCatalogForAdmin(), which substitutes DEFAULT_BENEFIT_SCRAPE_LIMIT for
+// rows written before Phase 10.2. Putting it here too would make the schema's
+// input and output types differ, which zodResolver cannot type.
+export const benefitScrapeLimitSchema = z
+  .number({ message: "יש להזין מספר" })
+  .int("יש להזין מספר שלם")
+  .min(0, "מספר לא תקין")
+  .max(10000, "מקסימום 10,000");
+
 export const clubFormSchema = z.object({
   id: clubSlugSchema,
   name: z.string().trim().min(1, "יש להזין שם").max(80),
@@ -48,6 +71,7 @@ export const clubFormSchema = z.object({
   color: clubColorSchema,
   sortOrder: z.number().int().min(0, "מספר לא תקין").max(9999),
   isActive: z.boolean(),
+  benefitScrapeLimit: benefitScrapeLimitSchema,
 });
 export type ClubFormValues = z.infer<typeof clubFormSchema>;
 
@@ -59,6 +83,7 @@ export const clubCardFormSchema = z.object({
   description: z.string().trim().max(300),
   sortOrder: z.number().int().min(0, "מספר לא תקין").max(9999),
   isActive: z.boolean(),
+  benefitScrapeLimit: benefitScrapeLimitSchema,
 });
 export type ClubCardFormValues = z.infer<typeof clubCardFormSchema>;
 

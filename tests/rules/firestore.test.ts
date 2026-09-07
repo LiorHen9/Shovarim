@@ -662,6 +662,71 @@ describe("club catalog (clubs, clubCards)", () => {
   });
 });
 
+describe("scraped benefits (clubBenefits, benefitScrapeRuns)", () => {
+  async function seedBenefit() {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "clubBenefits/hot__60841"), {
+        id: "hot__60841",
+        clubId: "hot",
+        clubCardIds: ["hot-regular"],
+        title: "הטבה",
+        scrapeRunId: "hot-2026-09-07T01:00:00.000Z",
+      });
+      await setDoc(doc(db, "benefitScrapeRuns/hot-2026-09-07T01:00:00.000Z"), {
+        id: "hot-2026-09-07T01:00:00.000Z",
+        clubId: "hot",
+        status: "success",
+      });
+    });
+  }
+
+  it("any signed-in user can read benefits", async () => {
+    await seedBenefit();
+    const dbB = testEnv.authenticatedContext(USER_B).firestore();
+    await assertSucceeds(getDoc(doc(dbB, "clubBenefits/hot__60841")));
+    await assertSucceeds(getDocs(collection(dbB, "clubBenefits")));
+  });
+
+  it("an unauthenticated visitor cannot read benefits", async () => {
+    await seedBenefit();
+    const db = testEnv.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "clubBenefits/hot__60841")));
+  });
+
+  it("client cannot write a benefit", async () => {
+    // The scraper runs in the Admin SDK, which bypasses Rules — so no client
+    // write path exists at all, exactly like the catalog above.
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(
+      setDoc(doc(dbA, "clubBenefits/fake"), { id: "fake", clubId: "hot", title: "מזויף" })
+    );
+  });
+
+  it("client cannot delete a benefit", async () => {
+    // Worth its own case: the sweep deletes, so an over-broad rule here would
+    // let any member wipe a club's benefits.
+    await seedBenefit();
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(deleteDoc(doc(dbA, "clubBenefits/hot__60841")));
+  });
+
+  it("nobody can read the scrape run log from a client", async () => {
+    // Unlike clubBenefits, which is public information republished. A run doc
+    // carries abortReason strings describing the state of third-party sites,
+    // which is operational detail for /admin/benefits (read server-side
+    // through the Admin SDK) and not something a member needs.
+    await seedBenefit();
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(getDoc(doc(dbA, "benefitScrapeRuns/hot-2026-09-07T01:00:00.000Z")));
+  });
+
+  it("client cannot write a scrape run", async () => {
+    const dbA = testEnv.authenticatedContext(USER_A).firestore();
+    await assertFails(setDoc(doc(dbA, "benefitScrapeRuns/fake"), { id: "fake", clubId: "hot" }));
+  });
+});
+
 describe("clubMemberships", () => {
   function membership(uid: string, clubCardId: string) {
     return {

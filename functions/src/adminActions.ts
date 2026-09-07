@@ -12,6 +12,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { db } from "./firebaseAdmin";
 import { deleteUserAccount } from "./accountDeletion";
+import { runAllScrapes, runScrapeForClub, type RunOutcome } from "./benefits/runner";
 
 interface AdminDeleteUserNowRequest {
   uid?: unknown;
@@ -65,4 +66,57 @@ export async function adminDeleteUserNowHandler(callerUid: string | undefined, t
 // Firestore/Storage; Cloud Functions callables enforce it this way instead.
 export const adminDeleteUserNow = onCall<AdminDeleteUserNowRequest>({ enforceAppCheck: true }, (request) =>
   adminDeleteUserNowHandler(request.auth?.uid, request.data.uid)
+);
+
+// --- benefit scraping ------------------------------------------------------
+
+// "Run now" for /admin/benefits. A callable rather than a Server Action for the
+// same reason adminDeleteUserNow is one: the scrape lives in functions/ (it is
+// what the scheduler triggers) and src/ cannot import it across the rootDir
+// boundary, so the Server Action calls this instead of the logic being
+// duplicated.
+//
+// Same trust model as above — a callable is a public HTTP endpoint, so admin
+// status is verified here and never taken from the client.
+interface AdminScrapeBenefitsRequest {
+  clubId?: unknown;
+}
+
+export async function adminScrapeBenefitsNowHandler(
+  callerUid: string | undefined,
+  clubId: unknown
+): Promise<{ outcomes: RunOutcome[] }> {
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "יש להתחבר");
+  }
+
+  const roleDoc = await db.doc(`adminRoles/${callerUid}`).get();
+  if (!roleDoc.exists) {
+    throw new HttpsError("permission-denied", "אין הרשאת ניהול");
+  }
+
+  // Audit-before-action, matching adminDeleteUserNow and every mutation in
+  // src/lib/services/adminClubs.ts. targetId is the club when one was named,
+  // null for "run everything".
+  await db.collection("adminAuditLog").add({
+    adminUid: callerUid,
+    targetUid: null,
+    targetId: typeof clubId === "string" && clubId ? clubId : null,
+    action: "benefits_scrape_run",
+    reason: null,
+    createdAt: Timestamp.now(),
+  });
+
+  if (typeof clubId === "string" && clubId) {
+    return { outcomes: [await runScrapeForClub(db, clubId, callerUid)] };
+  }
+  return { outcomes: await runAllScrapes(db, callerUid) };
+}
+
+// timeoutSeconds matches the scheduled trigger: pressing the button does the
+// same work, and a shorter timeout here would make the manual path fail on
+// exactly the uncapped runs an admin is most likely to be testing.
+export const adminScrapeBenefitsNow = onCall<AdminScrapeBenefitsRequest>(
+  { enforceAppCheck: true, timeoutSeconds: 540, memory: "512MiB" },
+  (request) => adminScrapeBenefitsNowHandler(request.auth?.uid, request.data.clubId)
 );

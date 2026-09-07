@@ -193,6 +193,27 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Benefits scraped from the clubs' own public sites (ADR #62, Phase 10.2).
+    // Written only by the scheduled Cloud Function through the Admin SDK, which
+    // bypasses Rules — so this stays closed to every client exactly like the
+    // catalog above. Readable by any signed-in user: the rows are already
+    // public information on the clubs' websites, and nothing here is
+    // per-user — which card a benefit applies to is matched client-side
+    // against the reader's own clubMemberships.
+    match /clubBenefits/{benefitId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Scrape bookkeeping: one doc per run, with counts and failure reasons.
+    // Closed to clients in both directions, unlike clubBenefits — this is
+    // operational detail for /admin/benefits, which reads it server-side
+    // through the Admin SDK, and its abortReason strings describe the state of
+    // third-party sites rather than anything a member needs.
+    match /benefitScrapeRuns/{runId} {
+      allow read, write: if false;
+    }
+
     // Self-declared holdings: one doc per club card the user says they hold.
     // Nothing here is an entitlement — it only decides which benefits get shown.
     //

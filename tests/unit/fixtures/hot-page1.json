@@ -1,0 +1,308 @@
+{
+ "data": {
+  "metaData": {
+   "totalResults": 7101
+  },
+  "records": [
+   {
+    "preview_mode": false,
+    "discount": 0,
+    "order": 2147483647,
+    "clean_title": "חיותא - ביטוח בריאות לחיות מחמד",
+    "expiryDate": "2026-12-31T22:00:00",
+    "exposureStartDate": null,
+    "exposureEndDate": null,
+    "createDate": "2026-06-30T11:26:00",
+    "is_promoted": false,
+    "benefitGroup": null,
+    "isNetwork": false,
+    "id": 60841,
+    "active": true,
+    "is_expired": false,
+    "type": 700,
+    "benefit_type": "700",
+    "title": "חיותא - ביטוח בריאות לחיות מחמד",
+    "benefit_name": "חיותא - ביטוח בריאות לחיות מחמד",
+    "imagePath": "/media/90c433fc-6eff-486c-8dea-85ccb6a9ba34.png",
+    "coverImagePath": "",
+    "content": "לרוכשים פוליסת ביטוח בחיותא",
+    "value": "חודש מתנה",
+    "description": "מותג הביטוח המוביל בישראל לחיות מחמד",
+    "hot_benefit": false,
+    "display_price_members_only": false,
+    "show_expiration": null,
+    "has_video": false,
+    "is_data_sharing_consent_required": false,
+    "is_marketing_consent_required": false,
+    "is_app_only": false,
+    "small_text": "",
+    "currency": "shekel",
+    "popularity": null,
+    "hide_location": true,
+    "display_date": "31-12-2026",
+    "multipass_type": "null",
+    "facebook": "",
+    "badges_arr": [],
+    "categories": [
+     "818",
+     "1067"
+    ],
+    "images": [
+     {
+      "type": "image",
+      "value": "/media/90c433fc-6eff-486c-8dea-85ccb6a9ba34.png"
+     },
+     {
+      "type": "image",
+      "value": "/media/b62ba6e2-99d7-4607-915b-f500e0e2e541.png"
+     },
+     {
+      "type": "image",
+      "value": "/media/aa4a7651-0442-470c-8a36-f7b4e4201334.png"
+     },
+     {
+      "type": "image",
+      "value": "/media/be8755d8-9b7f-4bdb-81eb-1d95210d6b81.png"
+     }
+    ],
+    "purchaseLogo": "",
+    "couponLogo": "",
+    "exclude_from_search_results": false,
+    "allowed_users_only": false,
+    "hideCouponReminderCheckbox": false,
+    "displayCouponReminderCheckbox": false,
+    "display_type": "price_and_text",
+    "free_text": "מותג הביטוח המוביל בישראל לחיות מחמד",
+    "small_description": "לרוכשים פוליסת ביטוח בחיותא",
+    "valueNum": null,
+    "supplierWebsite": "www.hot.co.il",
+    "awaitingRestocking": false,
+    "item_brand": "הוט מועדון צרכנות - רכישה ישירה",
+    "item_category": "ביטוח",
+    "is_preview_mode": false,
+    "breadcrumbs": [
+     {
+      "id": "818",
+      "title": "ביטוח"
+     },
+     {
+      "id": "60841",
+      "title": "חיותא - ביטוח בריאות לחיות מחמד"
+     }
+    ],
+    "keep_active_if_empty_inventory": null,
+    "is_subsidized": null,
+    "hideFromSearch": false,
+    "is_private": false
+   },
+   {
+    "preview_mode": false,
+    "discount": 0,
+    "order": 2147483647,
+    "clean_title": "תו קניה לרשת ShareSpa",
+    "expiryDate": null,
+    "exposureStartDate": null,
+    "exposureEndDate": null,
+    "createDate": "2026-02-22T08:18:12",
+    "is_promoted": false,
+    "benefitGroup": null,
+    "isNetwork": false,
+    "id": 59370,
+    "active": true,
+    "is_expired": false,
+    "type": 1300,
+    "benefit_type": "1300",
+    "title": "תו קניה לרשת ShareSpa",
+    "benefit_name": "תו קניה לרשת ShareSpa",
+    "imagePath": "/media/2a983262-ce0e-4df7-bb05-582fde45d849.jpg",
+    "coverImagePath": "",
+    "content": null,
+    "value": "30% הנחה",
+    "description": "במבחר בתי מלון יוקרתיים בכל הארץ",
+    "hot_benefit": false,
+    "display_price_members_only": false,
+    "show_expiration": 0,
+    "has_video": false,
+    "is_data_sharing_consent_required": false,
+    "is_marketing_consent_required": false,
+    "is_app_only": false,
+    "small_text": "כולל כפל מבצעים",
+    "currency": "shekel",
+    "popularity": null,
+    "hide_location": true,
+    "display_date": null,
+    "multipass_type": "1",
+    "facebook": "",
+    "badges_arr": [],
+    "categories": [
+     "975",
+     "936",
+     "1075",
+     "817"
+    ],
+    "images": [
+     {
+      "type": "image",
+      "value": "/media/2a983262-ce0e-4df7-bb05-582fde45d849.jpg"
+     },
+     {
+      "type": "image",
+      "value": "/media/d52f4508-e755-41e4-8694-972a444237b0.jpg"
+     },
+     {
+      "type": "image",
+      "value": "/media/e0088fe8-399f-43a7-91c5-5d40fb4b301a.jpg"
+     },
+     {
+      "type": "image",
+      "value": "/media/f0d7fa5e-726b-4ce7-a5bd-19d144882a18.jpg"
+     },
+     {
+      "type": "image",
+      "value": "/media/48eaa847-83a9-4598-9f39-70083cb7a2e2.jpg"
+     },
+     {
+      "type": "image",
+      "value": "/media/f6572c8c-577f-407e-9707-a592296ca7f8.jpg"
+     },
+     {
+      "type": "image",
+      "value": "/media/76c8a80c-9ebf-4b93-80ec-abeb161652e8.jpg"
+     },
+     {
+      "type": "image",
+      "value": "/media/cb1fba06-8c3b-416d-ae2c-c769e6ffe169.jpg"
+     },
+     {
+      "type": "image",
+      "value": "/media/be30e943-76bd-4f5c-be0d-94bf2f736a81.jpg"
+     },
+     {
+      "type": "image",
+      "value": "/media/928a21b3-188d-49f5-9f7c-9605a97fac3b.jpg"
+     },
+     {
+      "type": "image",
+      "value": "/media/e3a85eaa-b76a-4150-83bc-a976b9a6b9ac.jpg"
+     }
+    ],
+    "purchaseLogo": "",
+    "couponLogo": "",
+    "exclude_from_search_results": false,
+    "allowed_users_only": false,
+    "hideCouponReminderCheckbox": false,
+    "displayCouponReminderCheckbox": false,
+    "display_type": "price_and_text",
+    "free_text": "במבחר בתי מלון יוקרתיים בכל הארץ",
+    "trade_charge_type": "2",
+    "cashback_description": "",
+    "valueNum": null,
+    "supplierWebsite": "www.sharespa.co.il",
+    "awaitingRestocking": false,
+    "item_brand": "ShareSpa - שר ספא הרצליה_2",
+    "item_category": "ספא",
+    "is_preview_mode": false,
+    "breadcrumbs": [
+     {
+      "id": "817",
+      "title": "תרבות ופנאי"
+     },
+     {
+      "id": "975",
+      "title": "ספא"
+     },
+     {
+      "id": "59370",
+      "title": "תו קניה לרשת ShareSpa"
+     }
+    ],
+    "keep_active_if_empty_inventory": null,
+    "is_subsidized": null,
+    "hideFromSearch": false,
+    "is_private": false
+   },
+   {
+    "preview_mode": false,
+    "discount": 0,
+    "order": 2147483647,
+    "clean_title": "תו קניה למסעדת פאסטל",
+    "expiryDate": null,
+    "exposureStartDate": null,
+    "exposureEndDate": null,
+    "createDate": "2026-02-04T07:27:31",
+    "is_promoted": false,
+    "benefitGroup": 3,
+    "isNetwork": false,
+    "id": 59115,
+    "active": true,
+    "is_expired": false,
+    "type": 1300,
+    "benefit_type": "1300",
+    "title": "תו קניה למסעדת פאסטל",
+    "benefit_name": "תו קניה למסעדת פאסטל",
+    "imagePath": "/media/e984d516-6a71-4152-b9de-e4fe5f7467a5.jpg",
+    "coverImagePath": "",
+    "content": "",
+    "value": "15% הנחה",
+    "description": "",
+    "hot_benefit": false,
+    "display_price_members_only": false,
+    "show_expiration": null,
+    "has_video": false,
+    "is_data_sharing_consent_required": false,
+    "is_marketing_consent_required": true,
+    "is_app_only": false,
+    "price_before_discount": "500",
+    "price_after_discount": "425",
+    "small_text": "",
+    "currency": "shekel",
+    "popularity": null,
+    "hide_location": true,
+    "display_date": null,
+    "multipass_type": "0",
+    "facebook": "",
+    "badges_arr": [],
+    "categories": [
+     "1066",
+     "1088"
+    ],
+    "images": [
+     {
+      "type": "image",
+      "value": "/media/e984d516-6a71-4152-b9de-e4fe5f7467a5.jpg"
+     }
+    ],
+    "purchaseLogo": "",
+    "couponLogo": "",
+    "exclude_from_search_results": false,
+    "allowed_users_only": false,
+    "hideCouponReminderCheckbox": false,
+    "displayCouponReminderCheckbox": false,
+    "display_type": "price_before_and_after",
+    "free_text": null,
+    "trade_charge_type": "2",
+    "cashback_description": "",
+    "valueNum": null,
+    "supplierWebsite": "https://www.nofshonit.co.il/",
+    "awaitingRestocking": false,
+    "item_brand": "נופשונית",
+    "item_category": "הטבות הוטיותר",
+    "is_preview_mode": false,
+    "breadcrumbs": [
+     {
+      "id": "1066",
+      "title": "הטבות הוטיותר"
+     },
+     {
+      "id": "59115",
+      "title": "תו קניה למסעדת פאסטל"
+     }
+    ],
+    "keep_active_if_empty_inventory": null,
+    "is_subsidized": 1,
+    "hideFromSearch": false,
+    "is_private": false
+   }
+  ]
+ }
+}

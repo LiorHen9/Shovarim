@@ -24,6 +24,7 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 7. **צ'אטבוט/CLI (Phase 5) פועל בשם משתמש שגוי** — prompt injection או הזיית מודל שמנסה "לבקש" לפעול על נתוני משתמש אחר → נחסם מבנית: ה-`uid` הפועל נגזר תמיד בצד שרת (session cookie / מיפוי ערוץ מאומת) ולעולם אינו שדה בסכימת ה-tool שה-LLM יכול לספק. ראו הרחבה למטה ו-`docs/DECISIONS.md` #17.
 8. **משתמש חסום ממשיך לפעול דרך ערוץ ללא Auth token (Phase 9.3, ADR #44)** → Auth `disabled`+`revokeRefreshTokens` חוסם אוטומטית כל נתיב מבוסס-session (`verifySessionCookie(cookie, true)` כבר בודק את שניהם), אבל ב-WhatsApp ה-`uid` נגזר מ-`channelLinks` בלי Auth token בכלל (ADR #29) — שם `assertNotBlocked(uid)` הוא הבדיקה שסוגרת את הפער, מיד לפני כל קריאת Claude. ראו הרחבה למטה.
 9. **קריאה לא-מורשית ל-`adminDeleteUserNow` (Phase 9.4, ADR #45)** — callable הוא endpoint ציבורי, לא מוגן ע"י `firestore.rules`/`admin/layout.tsx` → הפונקציה מאמתת הרשאת אדמין בעצמה (`adminRoles/{caller uid}`) בצד שרת, לפני כל פעולה, ולא סומכת על כך שרק ה-UI קורא לה. מכוסה גם ע"י `enforceAppCheck: true` ברמת הפונקציה עצמה (לא Console-level Enforce — ראו הרחבה למטה).
+10. **שליפה יוצאת שהופכת ל-SSRF (Phase 10.2, ADR #62)** — הפיצ'ר הראשון שפונה לשרתים חיצוניים → נחסם מבנית: אין בו אף URL שמגיע ממשתמש, וכל בקשה עוברת ב-allowlist קשיח של hosts ב-`functions/src/benefits/http.ts`, כולל בדיקה מחדש בכל redirect. ראו הרחבה למטה.
 
 ## הצפנה
 - Firestore/Storage: הצפנה at-rest כברירת מחדל של Google Cloud — מספיקה לרוב השדות.
@@ -32,6 +33,30 @@ Deny-by-default בכל מקום. `firestore.rules` פותח עם `match /{docume
 - **מ-2026-08-30 (ADR #36) גם ה-MCP tools (`createCard`/`updateCard`) יכולים לכתוב את שני השדות** — אותה שכבת שירות בדיוק (`createCardForUid`/`updateCardDetailsForUid` ב-`src/lib/services/cards.ts`), אותה הצפנה, אותו Admin SDK. השינוי האמיתי הוא **מקור הערך**: עכשיו הוא יכול להגיע מטקסט חופשי שהמשתמש הקליד לצ'אט, לא רק מטופס. ראו סעיף "צ'אטבוט/CLI" למטה להשלכות.
 - `useCard`/`useCards` (client `onSnapshot`) ממשיכים לקבל את `cards/{cardId}` המלא כולל `cvv`/`barcodeOrCode` — אבל כערך מוצפן (`v1:...`), לא כטקסט גלוי. פענוח קורה רק על-פי דרישה מפורשת (`getCardSecrets`, כשמשתמש עם הרשאת ניהול פותח את דיאלוג העריכה) ובייצוא נתונים (`buildUserDataExport`) — לא נשמר ב-state של הדפדפן מעבר לכך.
 - כרטיסים שנוצרו/נערכו **לפני** השדרוג הזה עדיין מכילים `cvv`/`barcodeOrCode` בטקסט גלוי עד הרצת `npm run migrate:encrypt-fields` (חד-פעמי, אידמפוטנטי) — `decryptSensitiveField` מזהה ומחזיר ערכים לא-מוצפנים כמו שהם (backward-compat למעבר), ראו הערה בקוד.
+
+## שליפה יוצאת — סקרייפרים להטבות (Phase 10.2, ADR #62)
+
+הפיצ'ר הראשון שמבצע בקשות HTTP יוצאות לשרתים שאינם שלנו. `functions/src/benefits/http.ts` הוא **הדלת היחידה** — שום אדפטר לא קורא ל-`fetch` ישירות.
+
+**התכונה שעליה נשען כל טיעון האבטחה: אין כאן URL שמגיע ממשתמש.** כל בקשה נבנית מ-`ALLOWED_HOSTS` שבקוד ועוד מזהה שהגיע מתשובה קודמת של אותו host. אין בפיצ'ר endpoint מסוג "תביא לי את ה-URL הזה", ולכן צורות ה-SSRF הקלאסיות (`169.254.169.254`, `127.0.0.1`, `file://`) אינן מוגנות אלא **בלתי-נגישות**. ה-allowlist קיים כדי לשמר את זה כשהקוד יגדל: אדפטר חדש שמכוון ל-host שאינו ברשימה נכשל בקול, במקום להפוך בשקט ל-fetch proxy כללי.
+
+ההקשחות, וכל אחת בגלל כשל קונקרטי:
+- **התאמת host מדויקת (Set), לא `endsWith`/`includes`** — אחרת `api.hot.co.il.evil.example` עובר.
+- **https בלבד**, גם ל-host מורשה.
+- **`redirect: "manual"` עם בדיקת allowlist מחדש בכל hop** — עם `redirect: "follow"` הקפיצה מתבצעת לפני שהקוד שלנו רואה אותה, כלומר הערובה של ה-allowlist עוברת לידי מי ששולט במקור. `Location` יחסי נפתר מול ה-URL הנוכחי ואז נבדק. מקסימום 3 hops.
+- **timeout 10 שניות** לכל בקשה (`AbortSignal.timeout`).
+- **תקרת תגובה 10MB, נאכפת תוך כדי קריאת ה-stream** ולא רק מול `Content-Length` — הכותרת אופציונלית וניתנת לזיוף, ולכן בדיקה שלה בלבד אינה תקרה.
+- **retry רק על 429/5xx** — 401 ו-404 הם תשובה, וניסיון חוזר עליהם רק מאט ומעצבן. הבדיקה מול פלטפורמת DTS הסתמכה בדיוק על ההבחנה הזאת.
+- **מרווח מינימלי בין בקשות לאותו host**, ותקרות עמודים/קטגוריות קשיחות כ-backstop.
+- **User-Agent מזהה** (`ShovarimBot/1.0 (+<app-url>)`) ולא התחזות לדפדפן — כל המקורות מתירים את הנתיב ב-robots.txt, ואין מה להסתיר.
+
+**עמידה ב-robots.txt נבדקת פר-host ולא פר-דומיין**: `www.hot.co.il` אוסר `/api/`, אבל `api.hot.co.il` הוא host נפרד עם robots משלו שהוא `Allow: /`.
+
+**מה שלא נעשה, ובמכוון**: הפיצ'ר אינו מתחבר לאף מועדון סגור. חשבון שירות למועדון, אחסון אישורים per-user, ודפדפן שעוקף Imperva — כולם נשקלו ונדחו (ADR #62). המשמעות היא שאין בפיצ'ר הזה **שום סוד חדש**: אין `defineSecret`, אין ערך חדש ב-Secret Manager, ואין credential שנשלח החוצה.
+
+**מה שנכתב ל-Firestore הוא תוכן צד-שלישי.** `clubBenefits` מכיל טקסט שהגיע מאתרים חיצוניים; ה-HTML מופשט בכניסה (`stripHtml`) והשדות נשמרים כטקסט, לעולם לא מוזרקים חזרה כ-markup. `allow write: if false` — הכותב היחיד הוא ה-Cloud Function דרך Admin SDK; `benefitScrapeRuns` סגור לקריאה וגם לכתיבה מהלקוח, כי `abortReason` מתאר מצב של אתרי צד-שלישי.
+
+**נקודה לתשומת לב בשלב 10.3**: `imageUrl` מצביע על ה-CDN של המועדון ולא על Storage שלנו (ADR #62 החלטה 5). ברגע שההטבות יוצגו למשתמש, הדפדפן שלו יפנה ל-`media.dolcemaster.co.il` ו-`cdn.hot.co.il` — **נמענים חדשים שדורשים גילוי ב-`docs/PRIVACY.md`**, באותו היגיון של ADR #59.
 
 ## ניהול Secrets
 - Firebase **client** config (`NEXT_PUBLIC_FIREBASE_*`) — לא סוד אמיתי, מותר לחשוף ב-bundle. מוגן ע"י Security Rules, לא ע"י הסתרת ה-config.

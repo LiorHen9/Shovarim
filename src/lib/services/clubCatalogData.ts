@@ -54,7 +54,19 @@ export const CATALOG: SeedClub[] = [
     website: "https://www.hvr.co.il",
     logoUrl: "/clubs/hever.png",
     color: "#e6007e",
-    cards: SINGLE_TIER,
+    // Two tiers, not one, since Phase 10.2: חבר's public datasets
+    // (hvr.co.il/bs2/datasets/) describe two separate products with two
+    // separate merchant lists, and a benefit has to hang off the right one.
+    //
+    // The first keeps the id "regular" deliberately — renaming it to
+    // "giftcard" would change the doc id to hever-giftcard and orphan the
+    // clubMemberships already pointing at hever-regular, which is the exact
+    // failure assertNoMemberships() exists to prevent. Only the display name
+    // changed.
+    cards: [
+      { id: "regular", name: "כרטיס חבר", description: "כרטיס המועדון, כולל הגיפט קארד." },
+      { id: "teamim", name: "חבר טעמים", description: "כרטיס המסעדות ובתי הקפה של חבר." },
+    ],
   },
   {
     id: "shavve",

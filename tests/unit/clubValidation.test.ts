@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_BENEFIT_SCRAPE_LIMIT,
   MAX_CLUB_LOGO_BYTES,
+  benefitScrapeLimitSchema,
   clubCardFormSchema,
   clubColorSchema,
   clubFormSchema,
@@ -78,6 +80,7 @@ describe("clubFormSchema", () => {
     color: "#e6007e",
     sortOrder: 2,
     isActive: true,
+    benefitScrapeLimit: DEFAULT_BENEFIT_SCRAPE_LIMIT,
   };
 
   it("accepts a complete club", () => {
@@ -134,3 +137,42 @@ describe("validateClubLogo", () => {
     expect(MAX_CLUB_LOGO_BYTES).toBeLessThan(1024 * 1024);
   });
 });
+
+describe("benefitScrapeLimit", () => {
+  it("accepts the default and any whole number up to the cap", () => {
+    for (const value of [0, 1, DEFAULT_BENEFIT_SCRAPE_LIMIT, 10000]) {
+      expect(benefitScrapeLimitSchema.safeParse(value).success).toBe(true);
+    }
+  });
+
+  it("treats 0 as a legitimate value, not as absent", () => {
+    // 0 means "no cap" in the form. A schema that rejected it, or a reader
+    // that treated it as falsy, would silently pin an uncapped club to 50.
+    const parsed = benefitScrapeLimitSchema.parse(0);
+    expect(parsed).toBe(0);
+  });
+
+  it("rejects negatives, fractions and out-of-range values", () => {
+    for (const value of [-1, 1.5, 10001]) {
+      expect(benefitScrapeLimitSchema.safeParse(value).success).toBe(false);
+    }
+  });
+
+  it("rejects the NaN an empty number input produces", () => {
+    // register(..., { valueAsNumber: true }) yields NaN for a cleared field,
+    // so this is the message the admin actually sees.
+    expect(benefitScrapeLimitSchema.safeParse(Number.NaN).success).toBe(false);
+  });
+
+  it("is required on both the club and the card form", () => {
+    // The cap exists at both levels; a schema missing it on one would let the
+    // form silently drop that level's value on save.
+    expect(clubFormSchema.safeParse({
+      id: "x", name: "x", description: "", website: "", color: "#000000", sortOrder: 1, isActive: true,
+    }).success).toBe(false);
+    expect(clubCardFormSchema.safeParse({
+      clubId: "x", cardId: "y", name: "x", description: "", sortOrder: 1, isActive: true,
+    }).success).toBe(false);
+  });
+});
+

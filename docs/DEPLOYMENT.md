@@ -5,7 +5,12 @@
 ## ארכיטקטורה
 
 - **Firebase App Hosting** — מריץ את אפליקציית ה-Next.js (SSR, Server Actions). רץ בפועל על Cloud Run מתחת למכסה. מחובר ישירות ל-GitHub repo (`LiorHen9/Shovarim`, branch `main`) — **כל push ל-main מפעיל rollout אוטומטי דרך Cloud Build, בנפרד לגמרי מ-GitHub Actions**.
-- **Cloud Functions for Firebase** (`functions/`) — מיועד ל-webhooks (WhatsApp/Telegram לצ'אטבוט העתידי, Phase 5) ולעבודות רקע/מתוזמנות (Phase 7: תזכורות תפוגה). ריק כרגע (`functions/src/index.ts`).
+- **Cloud Functions for Firebase** (`functions/`) — עבודות רקע ופעולות אדמין. gen2, region `europe-west4` דרך `setGlobalOptions`. נכון ל-Phase 10.2 מכיל:
+  - `deleteExpiredAccounts` — `onSchedule("0 3 * * *")`, סבב מחיקת חשבונות (Phase 4.2).
+  - `scrapeClubBenefits` — `onSchedule("0 4 * * *", timeZone: "Asia/Jerusalem")`, סריקת ההטבות (Phase 10.2, ADR #62). `timeoutSeconds: 540`, `memory: "512MiB"` — הפונקציה היחידה כאן שמבצעת עבודה ממושכת.
+  - `adminDeleteUserNow`, `adminScrapeBenefitsNow` — `onCall` עם `enforceAppCheck`, שתיהן מאמתות הרשאת אדמין בעצמן.
+  
+  **אין ל-`functions/` שום secret**: אין `defineSecret`, וכל הסודות ב-Secret Manager מגיעים ל-App Hosting בלבד דרך `apphosting.yaml` (ADR #46). הסקרייפרים לא ניגשים לאף מועדון סגור ולכן לא הוסיפו סוד.
 - **Firestore, Auth, Storage** — משותפים בין App Hosting ל-Cloud Functions, אותו פרויקט Firebase.
 - **סביבה אחת בלבד**: production. אין staging נפרד כרגע.
 - **GitHub Actions** לא פורס את האפליקציה עצמה (App Hosting עושה זאת אוטומטית) — תפקידו: (א) quality gate על כל PR/push, (ב) פריסת Firestore rules/indexes, Storage rules, ו-Cloud Functions — אלה **לא** מנוהלים על ידי App Hosting.

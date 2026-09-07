@@ -17,4 +17,13 @@ export interface ClubCard {
   isActive: boolean;
   /** Order within the club. */
   sortOrder: number;
+  /**
+   * Per-tier cap on scraped benefits (Phase 10.2). 0 means no cap; absent on
+   * cards seeded before 10.2, where DEFAULT_BENEFIT_SCRAPE_LIMIT applies.
+   *
+   * Applied before the club-level cap: each card fills up to its own limit,
+   * and the club's limit then bounds the union. For a single-tier club the two
+   * coincide and the lower one wins.
+   */
+  benefitScrapeLimit?: number;
 }

@@ -21,7 +21,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { upsertClubAction } from "@/actions/adminClubs";
-import { clubFormSchema, type ClubFormValues } from "@/lib/validation/club";
+import {
+  clubFormSchema,
+  DEFAULT_BENEFIT_SCRAPE_LIMIT,
+  type ClubFormValues,
+} from "@/lib/validation/club";
 import type { AdminClub } from "@/lib/services/adminClubs";
 
 const EMPTY: ClubFormValues = {
@@ -32,6 +36,7 @@ const EMPTY: ClubFormValues = {
   color: "#0ea5e9",
   sortOrder: 1,
   isActive: true,
+  benefitScrapeLimit: DEFAULT_BENEFIT_SCRAPE_LIMIT,
 };
 
 // Create and edit share one dialog: the underlying write is an upsert keyed by
@@ -76,6 +81,7 @@ export function ClubFormDialog({
             color: club.color,
             sortOrder: club.sortOrder,
             isActive: club.isActive,
+            benefitScrapeLimit: club.benefitScrapeLimit,
           }
         : EMPTY
     );
@@ -231,6 +237,29 @@ export function ClubFormDialog({
               {errors.sortOrder && (
                 <p role="alert" className="text-sm text-destructive">
                   {errors.sortOrder.message}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="club-benefit-limit">מקסימום הטבות</Label>
+              <Input
+                id="club-benefit-limit"
+                type="number"
+                min={0}
+                max={10000}
+                className="w-24"
+                {...register("benefitScrapeLimit", { valueAsNumber: true })}
+                aria-describedby={
+                  errors.benefitScrapeLimit ? "club-benefit-limit-error" : "club-benefit-limit-hint"
+                }
+              />
+              <p id="club-benefit-limit-hint" className="text-xs text-muted-foreground">
+                כמה הטבות לשמור מהמועדון בכל סריקה. 0 = ללא הגבלה.
+              </p>
+              {errors.benefitScrapeLimit && (
+                <p id="club-benefit-limit-error" role="alert" className="text-sm text-destructive">
+                  {errors.benefitScrapeLimit.message}
                 </p>
               )}
             </div>

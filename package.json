@@ -14,6 +14,7 @@
     "seed:categories": "tsx --env-file=.env.local scripts/seed-categories.ts",
     "seed:clubs": "tsx --env-file=.env.local scripts/seed-clubs.ts",
     "mcp:cli": "tsx --env-file=.env.local scripts/mcp-cli.ts",
+    "scrape:benefits": "tsx --env-file=.env.local scripts/scrape-benefits.ts",
     "sweep:account-deletions": "tsx --env-file=.env.local scripts/sweep-account-deletions.ts",
     "grant-admin": "tsx --env-file=.env.local scripts/grant-admin.ts",
     "migrate:encrypt-fields": "tsx --env-file=.env.local scripts/migrate-encrypt-sensitive-fields.ts",

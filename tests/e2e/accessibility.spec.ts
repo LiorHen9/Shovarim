@@ -294,6 +294,9 @@ test("the admin routes have no WCAG 2.1 AA violations", async ({ page }) => {
   for (const [path, heading, title] of [
     ["/admin", "ניהול מערכת", "פאנל ניהול · שוברים"],
     ["/admin/clubs", "ניהול מועדונים", "ניהול מועדונים · שוברים"],
+    // The benefits panel is the app's only data table, so it is the only page
+    // where the table-specific rules (a caption, scoped headers) are exercised.
+    ["/admin/benefits", "הטבות מועדונים", "הטבות מועדונים · שוברים"],
   ] as const) {
     await page.goto(path);
     await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();

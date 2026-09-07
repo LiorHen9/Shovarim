@@ -21,7 +21,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { upsertClubCardAction } from "@/actions/adminClubs";
-import { clubCardFormSchema, type ClubCardFormValues } from "@/lib/validation/club";
+import {
+  clubCardFormSchema,
+  DEFAULT_BENEFIT_SCRAPE_LIMIT,
+  type ClubCardFormValues,
+} from "@/lib/validation/club";
 import type { AdminClub, AdminClubCard } from "@/lib/services/adminClubs";
 
 // A tier under one club. The stored doc id is `${clubId}-${cardId}`, so the
@@ -56,6 +60,7 @@ export function ClubCardFormDialog({
       description: "",
       sortOrder: 1,
       isActive: true,
+      benefitScrapeLimit: DEFAULT_BENEFIT_SCRAPE_LIMIT,
     },
   });
 
@@ -70,6 +75,7 @@ export function ClubCardFormDialog({
       description: card?.description ?? "",
       sortOrder: card?.sortOrder ?? club.cards.length + 1,
       isActive: card?.isActive ?? true,
+      benefitScrapeLimit: card?.benefitScrapeLimit ?? DEFAULT_BENEFIT_SCRAPE_LIMIT,
     });
   }, [open, club, card, reset]);
 
@@ -156,6 +162,29 @@ export function ClubCardFormDialog({
             {errors.sortOrder && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.sortOrder.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="card-benefit-limit">מקסימום הטבות</Label>
+            <Input
+              id="card-benefit-limit"
+              type="number"
+              min={0}
+              max={10000}
+              className="w-24"
+              {...register("benefitScrapeLimit", { valueAsNumber: true })}
+              aria-describedby={
+                errors.benefitScrapeLimit ? "card-benefit-limit-error" : "card-benefit-limit-hint"
+              }
+            />
+            <p id="card-benefit-limit-hint" className="text-xs text-muted-foreground">
+              כמה הטבות לשמור לכרטיס הזה. 0 = ללא הגבלה. תקרת המועדון גוברת אם היא נמוכה יותר.
+            </p>
+            {errors.benefitScrapeLimit && (
+              <p id="card-benefit-limit-error" role="alert" className="text-sm text-destructive">
+                {errors.benefitScrapeLimit.message}
               </p>
             )}
           </div>
